@@ -22,6 +22,7 @@ zip = "2"
 regex = "1"
 tempfile = "3"
 winreg = "0.52"
+sysinfo = "0.33"
 open = "5"
 
 [target.'cfg(windows)'.dependencies]

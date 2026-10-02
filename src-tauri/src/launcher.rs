@@ -157,33 +157,285 @@ pub fn select_game_path() -> Result<serde_json::Value, String> {
 
 // ==================== Game Launch ====================
 
+/// Python `get_launcher_version`: v8 > v7 > v6 по файлам в папке игры, иначе v8.
+fn detect_launcher_version(state: &AppState) -> String {
+    let game_path = state
+        .config
+        .lock()
+        .map(|c| c.game_path.clone())
+        .unwrap_or_default();
+    if game_path.is_empty() {
+        return "v8".to_string();
+    }
+    let game_dir = std::path::Path::new(&game_path)
+        .parent()
+        .map(|p| p.to_path_buf())
+        .unwrap_or_default();
+    let plugins_dir = game_dir.join("preloading_plugins");
+    let has_plugins = std::fs::read_dir(&plugins_dir)
+        .map(|mut rd| rd.next().is_some())
+        .unwrap_or(false);
+    if has_plugins {
+        if game_dir.join("ArizonaLauncher8.0_byAIR.exe").exists() {
+            return "v8".to_string();
+        }
+        if game_dir.join("ArizonaLauncher7.0_byAIR.exe").exists() {
+            return "v7".to_string();
+        }
+        if game_dir.join("ArizonaLauncher6_byAIR.exe").exists() {
+            return "v6".to_string();
+        }
+    }
+    "v8".to_string()
+}
+
+/// Python `kill_all_launchers`: убивает точные имена exe (не substring — чтобы не убить себя).
+fn kill_all_launchers() {
+    const LAUNCHER_EXES: [&str; 3] = [
+        "arizonalauncher6_byair.exe",
+        "arizonalauncher7.0_byair.exe",
+        "arizonalauncher8.0_byair.exe",
+    ];
+    let my_pid = std::process::id();
+    let mut sys = sysinfo::System::new();
+    sys.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
+    let mut killed = 0u32;
+    let mut denied = 0u32;
+    for (pid, proc) in sys.processes() {
+        if pid.as_u32() == my_pid {
+            continue;
+        }
+        let name = proc
+            .name()
+            .to_string_lossy()
+            .to_lowercase();
+        if LAUNCHER_EXES.contains(&name.as_str()) {
+            if proc.kill() {
+                killed += 1;
+            } else {
+                denied += 1;
+                log::warn!("kill_all_launchers: AccessDenied pid={} name={}", pid, name);
+            }
+        }
+    }
+    if denied > 0 {
+        log::warn!("kill_all_launchers: {} процессов не удалось убить (нет прав)", denied);
+    }
+    log::info!("kill_all_launchers: killed={}, denied={}", killed, denied);
+    std::thread::sleep(std::time::Duration::from_secs(1));
+}
+
+/// Python: санитайзер ника — убрать control-символы, обрезать до 20.
+fn sanitize_nickname(nick: &str) -> String {
+    let stripped: String = nick
+        .trim()
+        .chars()
+        .filter(|c| !c.is_control())
+        .collect();
+    stripped.chars().take(20).collect()
+}
+
+/// Python: валидация CDN, формат `\d+,\d+,\d+`, иначе fallback "1,1,1".
+fn validate_cdn(raw: &str) -> String {
+    let re = match regex::Regex::new(r"^\d+,\d+,\d+$") {
+        Ok(r) => r,
+        Err(_) => return "1,1,1".to_string(),
+    };
+    if re.is_match(raw) {
+        raw.to_string()
+    } else {
+        log::warn!("launch_game: некорректный CDN '{}', использую '1,1,1'", raw);
+        "1,1,1".to_string()
+    }
+}
+
 #[tauri::command]
-pub fn start_game(
+pub async fn start_game(
     state: State<'_, AppState>,
     nickname: String,
     server_data: Option<serde_json::Value>,
     launch_params: Option<serde_json::Value>,
 ) -> Result<serde_json::Value, String> {
-    let cfg = state.config.lock().map_err(|e| e.to_string())?;
-
-    if cfg.launcher_path.is_empty() || !std::path::Path::new(&cfg.launcher_path).exists() {
+    // Валидации (порядок как в Python)
+    let (launcher_path, game_path) = {
+        let cfg = state.config.lock().map_err(|e| e.to_string())?;
+        (cfg.launcher_path.clone(), cfg.game_path.clone())
+    };
+    if launcher_path.is_empty() || !std::path::Path::new(&launcher_path).exists() {
         return Ok(serde_json::json!({"success": false, "message": "Launcher not found", "code": "LAUNCHER_MISSING"}));
     }
-    if cfg.game_path.is_empty() || !std::path::Path::new(&cfg.game_path).exists() {
-        return Ok(serde_json::json!({"success": false, "message": "Game path is missing or invalid", "code": "GAME_MISSING"}));
+    if game_path.is_empty() || !std::path::Path::new(&game_path).exists() {
+        return Ok(serde_json::json!({"success": false,
+            "message": "Game path is missing or invalid — set it in Settings", "code": "GAME_MISSING"}));
     }
     if nickname.trim().is_empty() {
         return Ok(serde_json::json!({"success": false, "message": "Enter nickname", "code": "NICKNAME_EMPTY"}));
     }
+    let nickname = sanitize_nickname(&nickname);
+    if nickname.is_empty() {
+        return Ok(serde_json::json!({"success": false,
+            "message": "Nickname contains only invalid characters", "code": "NICKNAME_INVALID"}));
+    }
 
-    // TODO: spawn process, build cmdline args
-    Ok(serde_json::json!({"success": true, "message": format!("Launching for {}", nickname)}))
+    let srv_ip = server_data
+        .as_ref()
+        .and_then(|s| s.get("ip"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("payson.arizona-rp.com")
+        .to_string();
+    let srv_port = server_data
+        .as_ref()
+        .and_then(|s| s.get("port"))
+        .map(|v| v.to_string().trim_matches('"').to_string())
+        .unwrap_or_else(|| "7777".to_string());
+
+    let params = match launch_params {
+        Some(p) => serde_json::from_value::<crate::config::LaunchParams>(p).ok(),
+        None => None,
+    };
+    let params = match params {
+        Some(p) => p,
+        None => state
+            .config
+            .lock()
+            .map_err(|e| e.to_string())?
+            .launch_params
+            .clone(),
+    };
+
+    let launcher_ver = detect_launcher_version(&state);
+    let is_v7plus = launcher_ver == "v7" || launcher_ver == "v8";
+    let cdn_value = validate_cdn(&params.cdn);
+
+    // Базовая команда
+    let mut cmd = vec![
+        "-c".to_string(),
+        "-h".to_string(),
+        srv_ip,
+        "-p".to_string(),
+        srv_port,
+        "-mem".to_string(),
+        params.memory.to_string(),
+        "-n".to_string(),
+        nickname.clone(),
+        "-arizona".to_string(),
+    ];
+
+    // Общие флаги для всех версий (v6/v7/v8)
+    let common_flags: [(&bool, &str); 8] = [
+        (&params.widescreen, "-widescreen"),
+        (&params.texture_mode, "-t"),
+        (&params.color_depth_16, "-16bpp"),
+        (&params.allow_hdr, "-allow_hdr"),
+        (&params.enable_grass, "-enable_grass"),
+        (&params.ldo, "-ldo"),
+        (&params.auth_cef_enable, "-auth_cef_enable"),
+        (&params.autologin, "-x"),
+    ];
+    for (flag_on, name) in &common_flags {
+        if **flag_on {
+            cmd.push(name.to_string());
+        }
+    }
+
+    // Оконный режим: -window и -old_window взаимоисключающие
+    if is_v7plus && params.old_window {
+        cmd.push("-old_window".to_string());
+    } else if params.window_mode {
+        cmd.push("-window".to_string());
+    }
+
+    // Доп. флаги v7+
+    if is_v7plus {
+        let v7plus_flags: [(&bool, &str); 6] = [
+            (&params.enable_new_grass, "-enable_new_grass"),
+            (&params.use_d3dx9_43, "-use_d3dx9_43"),
+            (&params.show_dialog_ids, "-show_dialog_ids"),
+            (&params.offcef, "-offcef"),
+            (&params.modern_scale, "-modern_scale"),
+            (&params.trees_new, "-trees_new"),
+        ];
+        for (flag_on, name) in &v7plus_flags {
+            if **flag_on {
+                cmd.push(name.to_string());
+            }
+        }
+    }
+
+    cmd.push("-cdn".to_string());
+    cmd.push(cdn_value);
+
+    // kill_all_launchers перед стартом (в Python — синхронно с sleep 1s)
+    tokio::task::spawn_blocking(kill_all_launchers).await.ok();
+
+    let exe = std::path::PathBuf::from(&launcher_path);
+    let cwd = exe
+        .parent()
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|| std::path::PathBuf::from("."));
+
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+    let child = std::process::Command::new(&exe)
+        .args(&cmd)
+        .current_dir(&cwd)
+        .creation_flags(CREATE_NO_WINDOW)
+        .spawn();
+
+    let mut proc = match child {
+        Ok(p) => p,
+        Err(e) => {
+            log::error!("launch_game: {e}");
+            return Ok(serde_json::json!({"success": false, "message": e.to_string(), "code": "EXCEPTION"}));
+        }
+    };
+
+    // Poll до 2 секунд: stub-лаунчеры (Air v6/v7/v8) могут завершиться с кодом 0
+    // сразу после спавна дочернего процесса игры — это НЕ краш.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+    while std::time::Instant::now() < deadline {
+        match proc.try_wait() {
+            Ok(Some(_)) => break,
+            Ok(None) => tokio::time::sleep(std::time::Duration::from_millis(100)).await,
+            Err(_) => break,
+        }
+    }
+    let rc_now = proc.try_wait().ok().flatten().and_then(|st| st.code());
+
+    if rc_now.is_none() || rc_now == Some(0) {
+        // Сохраняем ник/сервер/параметры
+        {
+            let mut cfg = state.config.lock().map_err(|e| e.to_string())?;
+            cfg.last_nickname = nickname.clone();
+            if let Some(ref sd) = server_data {
+                if let Some(num) = sd.get("number").and_then(|v| v.as_u64()) {
+                    cfg.last_server = num as u32;
+                }
+            }
+            cfg.launch_params = params.clone();
+        }
+        state.save_config()?;
+        let pid = proc.id();
+        // Detach: не держим handle
+        std::mem::forget(proc);
+        Ok(serde_json::json!({"success": true, "message": format!("Launching for {}", nickname), "pid": pid}))
+    } else {
+        Ok(serde_json::json!({"success": false,
+            "message": format!("Launcher crashed (exit code {})", rc_now.unwrap_or(-1)),
+            "code": "LAUNCHER_CRASHED"}))
+    }
 }
 
 #[tauri::command]
 pub fn is_gta_running() -> Result<serde_json::Value, String> {
-    // TODO: check process list for gta_sa.exe
-    Ok(serde_json::json!({"running": false, "was_running": false}))
+    let mut sys = sysinfo::System::new();
+    sys.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
+    let running = sys
+        .processes()
+        .values()
+        .any(|p| p.name().to_string_lossy().eq_ignore_ascii_case("gta_sa.exe"));
+    Ok(serde_json::json!({"running": running, "was_running": false}))
 }
 
 // ==================== Server / News ====================
@@ -611,7 +863,7 @@ pub fn save_read_news_ids(state: State<'_, AppState>, ids: Vec<String>) -> Resul
 
 #[tauri::command]
 pub fn get_launcher_version(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
-    Ok(serde_json::json!({"success": true, "version": "v8"}))
+    Ok(serde_json::json!({"success": true, "version": detect_launcher_version(&state)}))
 }
 
 #[tauri::command]
