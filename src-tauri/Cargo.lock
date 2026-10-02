@@ -124,6 +124,7 @@ dependencies = [
  "base64 0.22.1",
  "chrono",
  "dirs",
+ "encoding_rs",
  "env_logger",
  "log",
  "open",

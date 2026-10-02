@@ -120,10 +120,18 @@ impl Default for LauncherConfig {
     }
 }
 
+pub struct ServersCache {
+    pub ts: std::time::Instant,
+    pub data: Vec<serde_json::Value>,
+    pub etag: Option<String>,
+    pub last_modified: Option<String>,
+}
+
 pub struct AppState {
     pub config: Mutex<LauncherConfig>,
     pub config_path: PathBuf,
     pub documents_path: PathBuf,
+    pub servers_cache: Mutex<Option<ServersCache>>,
 }
 
 impl AppState {
@@ -140,6 +148,7 @@ impl AppState {
             config: Mutex::new(config),
             config_path,
             documents_path,
+            servers_cache: Mutex::new(None),
         }
     }
 

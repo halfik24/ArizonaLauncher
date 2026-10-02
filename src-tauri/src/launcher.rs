@@ -189,22 +189,407 @@ pub fn is_gta_running() -> Result<serde_json::Value, String> {
 
 // ==================== Server / News ====================
 
-#[tauri::command]
-pub async fn get_servers() -> Result<serde_json::Value, String> {
-    // TODO: fetch from arizona-ping API
-    Ok(serde_json::json!([]))
+use crate::config::ServersCache;
+use base64::Engine as _;
+
+/// Директория кэша иконок серверов: %LOCALAPPDATA%\ArizonaLauncher\icons
+fn icon_cache_dir() -> PathBuf {
+    let base = std::env::var_os("LOCALAPPDATA")
+        .map(PathBuf::from)
+        .or_else(dirs::cache_dir)
+        .unwrap_or_else(|| dirs::home_dir().unwrap_or_default());
+    let dir = base.join("ArizonaLauncher").join("icons");
+    std::fs::create_dir_all(&dir).ok();
+    dir
+}
+
+/// Расширение файла иконки из URL (как в Python: Path(url).suffix.split('?')[0]).
+/// Допустимые значения — как в Python, иначе '.png'.
+fn icon_file_ext(url: &str) -> String {
+    let no_query = url.split('?').next().unwrap_or("");
+    let ext = no_query.rsplit('.').next().unwrap_or("");
+    match ext.to_ascii_lowercase().as_str() {
+        "png" | "jpg" | "jpeg" | "webp" | "ico" => format!(".{}", ext.to_ascii_lowercase()),
+        _ => ".png".to_string(),
+    }
+}
+
+fn icon_mime(ext: &str) -> &'static str {
+    match ext.trim_start_matches('.').to_ascii_lowercase().as_str() {
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "webp" => "image/webp",
+        "ico" => "image/x-icon",
+        _ => "image/png",
+    }
+}
+
+/// Python `_download_icon`: читает из кэша (b64 или исходный файл) и возвращает data: URI.
+/// Ничего не качает — скачивание делает prefetch в фоне.
+fn icon_data_uri(icon_url: &str, server_id: &str) -> String {
+    if icon_url.is_empty() {
+        return String::new();
+    }
+    let cache = icon_cache_dir();
+    let ext = icon_file_ext(icon_url);
+
+    // 1) Готовый base64 data URI
+    let b64_path = cache.join(format!("server_{}.b64", server_id));
+    if let Ok(s) = std::fs::read_to_string(&b64_path) {
+        let s = s.trim().to_string();
+        if !s.is_empty() {
+            return s;
+        }
+    }
+
+    // 2) Локальный файл — кодируем и сохраняем data URI
+    let local_path = cache.join(format!("server_{}{}", server_id, ext));
+    if let Ok(bytes) = std::fs::read(&local_path) {
+        if !bytes.is_empty() {
+            let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+            let data_uri = format!("data:{};base64,{}", icon_mime(&ext), b64);
+            std::fs::write(&b64_path, &data_uri).ok();
+            return data_uri;
+        }
+    }
+
+    String::new() // Нет в кэше — фоллбэк покажет номер
+}
+
+/// Python `_prefetch_all_icons`: фоновая докачка недостающих иконок в файловый кэш.
+async fn prefetch_icons(servers: Vec<serde_json::Value>) {
+    for s in &servers {
+        let icon_url = s
+            .get("original_icon")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        if icon_url.is_empty() {
+            continue;
+        }
+        let server_id = s
+            .get("number")
+            .map(|v| match v {
+                serde_json::Value::String(s) => s.clone(),
+                other => other.to_string(),
+            })
+            .unwrap_or_default();
+        if server_id.is_empty() {
+            continue;
+        }
+
+        let local_path =
+            icon_cache_dir().join(format!("server_{}{}", server_id, icon_file_ext(icon_url)));
+        if let Ok(md) = std::fs::metadata(&local_path) {
+            if md.len() > 0 {
+                continue;
+            }
+        }
+
+        if let Ok(resp) = reqwest::get(icon_url).await {
+            if resp.status().is_success() {
+                if let Ok(bytes) = resp.bytes().await {
+                    if !bytes.is_empty() {
+                        std::fs::write(&local_path, &bytes).ok();
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Python-семантика truthy для подбора полей (`a or b or c`).
+fn truthy(v: &serde_json::Value) -> bool {
+    match v {
+        serde_json::Value::Null => false,
+        serde_json::Value::Bool(b) => *b,
+        serde_json::Value::Number(n) => n.as_f64().map(|f| f != 0.0).unwrap_or(true),
+        serde_json::Value::String(s) => !s.is_empty(),
+        serde_json::Value::Array(a) => !a.is_empty(),
+        _ => true,
+    }
+}
+
+/// Первое truthy-значение среди ключей, как `s.get('a') or s.get('b', default)`.
+fn pick<'a>(v: &'a serde_json::Value, keys: &[&str]) -> Option<&'a serde_json::Value> {
+    let obj = v.as_object()?;
+    keys.iter().find_map(|k| obj.get(*k).filter(|x| truthy(x)))
+}
+
+fn jstr(v: &serde_json::Value, keys: &[&str], default: &str) -> String {
+    pick(v, keys)
+        .and_then(|x| x.as_str())
+        .unwrap_or(default)
+        .to_string()
+}
+
+fn jnum(v: &serde_json::Value, keys: &[&str], default: serde_json::Value) -> serde_json::Value {
+    pick(v, keys).cloned().unwrap_or(default)
+}
+
+/// Нормализация списка серверов Python `get_servers` (number/name/online/queue/...).
+fn normalize_servers(server_list: &[serde_json::Value]) -> Vec<serde_json::Value> {
+    let mut servers = Vec::new();
+    for s in server_list {
+        if !s.is_object() {
+            continue;
+        }
+        let server_id = pick(s, &["number", "serverNumber", "id"])
+            .cloned()
+            .unwrap_or_else(|| serde_json::json!(1));
+        let id_str = match &server_id {
+            serde_json::Value::String(x) => x.clone(),
+            other => other.to_string(),
+        };
+        let icon_url = jstr(s, &["icon"], "");
+        let icon = if icon_url.is_empty() {
+            String::new()
+        } else {
+            icon_data_uri(&icon_url, &id_str)
+        };
+        servers.push(serde_json::json!({
+            "number": server_id,
+            "name": jstr(s, &["name"], "Server"),
+            "online": jnum(s, &["online", "playersOnline"], serde_json::json!(0)),
+            "queue": jnum(s, &["queue", "queueLength"], serde_json::json!(0)),
+            "recommended": pick(s, &["recomend", "recommended"]).is_some(),
+            "ip": jstr(s, &["ip"], &format!("server{}.arizona-rp.com", id_str)),
+            "port": jnum(s, &["port"], serde_json::json!(7777)),
+            "maxplayers": jnum(s, &["maxplayers", "maxPlayers"], serde_json::json!(1000)),
+            "original_icon": icon_url,
+            "icon": icon,
+        }));
+    }
+    servers
+}
+
+/// Тело `get_servers`: кэш 60s, ETag/If-Modified-Since, 304 → кэш, нормализация, prefetch.
+async fn fetch_servers(state: &AppState) -> serde_json::Value {
+    const TTL: std::time::Duration = std::time::Duration::from_secs(60);
+
+    // Читаем состояние кэша (не держим лок через await)
+    let (cached_data, etag, last_modified, fresh) = {
+        let guard = match state.servers_cache.lock() {
+            Ok(g) => g,
+            Err(e) => e.into_inner(), // отравленный мьютекс — данные всё ещё читаемы
+        };
+        match guard.as_ref() {
+            Some(c) => (
+                Some(c.data.clone()),
+                c.etag.clone(),
+                c.last_modified.clone(),
+                c.ts.elapsed() < TTL,
+            ),
+            None => (None, None, None, false),
+        }
+    };
+
+    if fresh {
+        // Обновляем иконки в кэшированных данных, если они теперь доступны локально
+        if let Some(mut servers) = cached_data {
+            for s in servers.iter_mut() {
+                let has_icon = s.get("icon").and_then(|v| v.as_str()).map(|x| !x.is_empty()).unwrap_or(false);
+                if !has_icon {
+                    let icon_url = s.get("original_icon").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                    let id = pick(s, &["number", "serverNumber", "id"])
+                        .map(|v| match v {
+                            serde_json::Value::String(x) => x.clone(),
+                            other => other.to_string(),
+                        })
+                        .unwrap_or_default();
+                    if !icon_url.is_empty() && !id.is_empty() {
+                        let uri = icon_data_uri(&icon_url, &id);
+                        if let Some(obj) = s.as_object_mut() {
+                            obj.insert("icon".into(), serde_json::Value::String(uri));
+                        }
+                    }
+                }
+            }
+            return serde_json::Value::Array(servers);
+        }
+    }
+
+    let mut headers = reqwest::header::HeaderMap::new();
+    headers.insert(
+        reqwest::header::USER_AGENT,
+        reqwest::header::HeaderValue::from_static("ArizonaLauncher/1.0"),
+    );
+    if let Some(ref e) = etag {
+        if let Ok(v) = reqwest::header::HeaderValue::from_str(e) {
+            headers.insert(reqwest::header::IF_NONE_MATCH, v);
+        }
+    }
+    if let Some(ref lm) = last_modified {
+        if let Ok(v) = reqwest::header::HeaderValue::from_str(lm) {
+            headers.insert(reqwest::header::IF_MODIFIED_SINCE, v);
+        }
+    }
+
+    let client = match reqwest::Client::builder().build() {
+        Ok(c) => c,
+        Err(_) => return cached_data.map(serde_json::Value::Array).unwrap_or(serde_json::Value::Null),
+    };
+
+    let resp = match client
+        .get("https://arizona-ping.react.group/desktop/ping/Arizona/ping.json")
+        .headers(headers)
+        .timeout(std::time::Duration::from_secs(10))
+        .send()
+        .await
+    {
+        Ok(r) => r,
+        Err(e) => {
+            log::error!("Server fetch error: {e}");
+            return cached_data.map(serde_json::Value::Array).unwrap_or(serde_json::Value::Null);
+        }
+    };
+
+    let now = std::time::Instant::now();
+
+    // 304 Not Modified — отдаём кэшированные данные
+    if resp.status() == reqwest::StatusCode::NOT_MODIFIED {
+        if let Some(mut guard) = state.servers_cache.lock().ok() {
+            if let Some(ref mut c) = guard.as_mut() {
+                c.ts = now;
+            }
+        }
+        return cached_data.map(serde_json::Value::Array).unwrap_or(serde_json::Value::Null);
+    }
+
+    if !resp.status().is_success() {
+        log::error!("Server fetch HTTP {}", resp.status());
+        return cached_data.map(serde_json::Value::Array).unwrap_or(serde_json::Value::Null);
+    }
+
+    let etag_new = resp
+        .headers()
+        .get(reqwest::header::ETAG)
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string());
+    let lm_new = resp
+        .headers()
+        .get(reqwest::header::LAST_MODIFIED)
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string());
+
+    let data: serde_json::Value = match resp.json().await {
+        Ok(v) => v,
+        Err(e) => {
+            log::error!("Server fetch parse error: {e}");
+            return cached_data.map(serde_json::Value::Array).unwrap_or(serde_json::Value::Null);
+        }
+    };
+
+    let server_list: &Vec<serde_json::Value> = if data.is_object() {
+        match data.get("query") {
+            Some(q) if q.is_array() => q.as_array().unwrap(),
+            _ => match data.as_array() {
+                Some(a) => a,
+                None => {
+                    return cached_data.map(serde_json::Value::Array).unwrap_or(serde_json::Value::Null)
+                }
+            },
+        }
+    } else if let Some(a) = data.as_array() {
+        a
+    } else {
+        return cached_data.map(serde_json::Value::Array).unwrap_or(serde_json::Value::Null);
+    };
+
+    let servers = normalize_servers(server_list);
+
+    if let Ok(mut guard) = state.servers_cache.lock() {
+        *guard = Some(ServersCache {
+            ts: now,
+            data: servers.clone(),
+            etag: etag_new,
+            last_modified: lm_new,
+        });
+    }
+
+    // Предзагружаем иконки в фоне
+    let spawn_servers = servers.clone();
+    tauri::async_runtime::spawn(async move {
+        prefetch_icons(spawn_servers).await;
+    });
+
+    serde_json::Value::Array(servers)
 }
 
 #[tauri::command]
-pub async fn get_servers_and_news() -> Result<serde_json::Value, String> {
-    // TODO: parallel fetch servers + news
-    Ok(serde_json::json!({"success": true, "servers": [], "news": {"success": false}}))
+pub async fn get_servers(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
+    Ok(fetch_servers(&state).await)
+}
+
+#[tauri::command]
+pub async fn get_servers_and_news(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
+    let (servers, news) = tokio::join!(fetch_servers(&state), fetch_launcher_news());
+    Ok(serde_json::json!({
+        "success": true,
+        "servers": if servers.is_null() { serde_json::json!([]) } else { servers },
+        "news": news,
+    }))
+}
+
+/// Тело `get_launcher_news`: 3 fallback URL на GitHub, utf-8 → windows-1251.
+async fn fetch_launcher_news() -> serde_json::Value {
+    let urls = [
+        "https://raw.githubusercontent.com/worteng/ArizonaLauncher/main/updatenews.txt",
+        "https://raw.githubusercontent.com/worteng/ArizonaLauncher/refs/heads/main/updatenews.txt",
+        "https://github.com/worteng/ArizonaLauncher/raw/main/updatenews.txt",
+    ];
+
+    for url in urls {
+        log::info!("Пробуем загрузить новости: {url}");
+        let client = match reqwest::Client::builder().build() {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+        let resp = match client
+            .get(url)
+            .timeout(std::time::Duration::from_secs(20))
+            .header(reqwest::header::CACHE_CONTROL, "no-cache")
+            .header(reqwest::header::PRAGMA, "no-cache")
+            .header(reqwest::header::USER_AGENT, "Mozilla/5.0")
+            .send()
+            .await
+        {
+            Ok(r) => r,
+            Err(e) => {
+                log::error!("Ошибка при загрузке с {url}: {e}");
+                continue;
+            }
+        };
+        log::info!("Статус ответа: {}", resp.status());
+        let status = resp.status();
+        let bytes = match resp.bytes().await {
+            Ok(b) => b,
+            Err(e) => {
+                log::error!("Ошибка при чтении с {url}: {e}");
+                continue;
+            }
+        };
+        // utf-8, иначе windows-1251 (с заменой невалидных байтов, как errors='replace')
+        let text = match std::str::from_utf8(&bytes) {
+            Ok(s) => s.to_string(),
+            Err(_) => {
+                let (cow, _, _) = encoding_rs::WINDOWS_1251.decode(&bytes);
+                cow.into_owned()
+            }
+        };
+        if status == reqwest::StatusCode::OK && !text.trim().is_empty() {
+            return serde_json::json!({"success": true, "text": text});
+        }
+    }
+
+    serde_json::json!({
+        "success": false,
+        "message": "Не удалось загрузить новости (проверьте интернет или блокировку GitHub)"
+    })
 }
 
 #[tauri::command]
 pub async fn get_launcher_news() -> Result<serde_json::Value, String> {
-    // TODO: fetch updatenews.txt from GitHub
-    Ok(serde_json::json!({"success": false, "message": "Not implemented"}))
+    Ok(fetch_launcher_news().await)
 }
 
 #[tauri::command]
