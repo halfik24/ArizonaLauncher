@@ -139,6 +139,7 @@ dependencies = [
  "tauri-plugin-shell",
  "tempfile",
  "tokio",
+ "winapi",
  "winreg 0.52.0",
  "zip",
 ]

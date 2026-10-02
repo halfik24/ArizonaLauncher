@@ -1,5 +1,4 @@
 use crate::config::{AppState, LauncherConfig};
-use std::collections::HashMap;
 use std::path::PathBuf;
 use tauri::{Manager, State};
 
@@ -830,48 +829,575 @@ pub fn save_profiles(state: State<'_, AppState>, profiles: Vec<serde_json::Value
 
 // ==================== Patches ====================
 
-#[tauri::command]
-pub fn check_patches_status() -> Result<serde_json::Value, String> {
-    // TODO
-    Ok(serde_json::json!({"success": true, "status": {"status": "missing", "message": "Not implemented"}}))
+/// Папка preloading_plugins рядом с игрой (пустой путь, если game_path не задан).
+fn plugins_dir(state: &AppState) -> PathBuf {
+    let game_path = state
+        .config
+        .lock()
+        .map(|c| c.game_path.clone())
+        .unwrap_or_default();
+    if game_path.is_empty() {
+        return PathBuf::new();
+    }
+    PathBuf::from(&game_path)
+        .parent()
+        .map(|p| p.to_path_buf())
+        .unwrap_or_default()
+        .join("preloading_plugins")
+}
+
+fn patches_json_path(state: &AppState) -> PathBuf {
+    plugins_dir(state).join("#ArizonaPatches.json")
+}
+
+/// Python: версия DLL через win32api.GetFileVersionInfo → "1.0.0.0" | None.
+#[cfg(windows)]
+fn get_dll_version(path: &std::path::Path) -> Option<String> {
+    use std::os::windows::ffi::OsStrExt;
+    use winapi::um::winver::{GetFileVersionInfoSizeW, GetFileVersionInfoW, VerQueryValueW};
+
+    // Layout VS_FIXEDFILEINFO (winver.h) — определяем локально, чтобы не тянуть структуру winapi
+    #[repr(C)]
+    #[derive(Default)]
+    struct FixedFileInfo {
+        signature: u32,
+        struc_version: u32,
+        file_version_ms: u32,
+        file_version_ls: u32,
+        product_ms: u32,
+        product_ls: u32,
+        file_flags_mask: u32,
+        file_flags: u32,
+        file_os: u32,
+        file_type: u32,
+        file_subtype: u32,
+        file_date_ms: u32,
+        file_date_ls: u32,
+    }
+
+    let wide: Vec<u16> = path.as_os_str().encode_wide().chain(std::iter::once(0)).collect();
+    let root: Vec<u16> = "\\".encode_utf16().chain(std::iter::once(0)).collect();
+
+    unsafe {
+        let mut handle = 0u32;
+        let size = GetFileVersionInfoSizeW(wide.as_ptr(), &mut handle);
+        if size == 0 {
+            return None;
+        }
+        let mut buf = vec![0u8; size as usize];
+        if GetFileVersionInfoW(wide.as_ptr(), 0, size, buf.as_mut_ptr() as *mut _) == 0 {
+            return None;
+        }
+        let mut out: *mut winapi::ctypes::c_void = std::ptr::null_mut();
+        let mut len = 0u32;
+        if VerQueryValueW(buf.as_ptr() as *const _, root.as_ptr(), &mut out, &mut len) == 0
+            || out.is_null()
+        {
+            return None;
+        }
+        let ffi = out as *const FixedFileInfo;
+        let ms = (*ffi).file_version_ms;
+        let ls = (*ffi).file_version_ls;
+        Some(format!(
+            "{}.{}.{}.{}",
+            ms >> 16,
+            ms & 0xFFFF,
+            ls >> 16,
+            ls & 0xFFFF
+        ))
+    }
+}
+
+#[cfg(not(windows))]
+fn get_dll_version(_path: &std::path::Path) -> Option<String> {
+    None
+}
+
+/// Python: чтение #ArizonaPatches.json со срезанием строк-комментариев `//`.
+fn clean_patches_text(raw: &str) -> Result<String, String> {
+    let re = regex::Regex::new(r"(?m)^\s*//.*").map_err(|e| e.to_string())?;
+    let no_comments = re.replace_all(raw, "");
+    Ok(no_comments
+        .split('\n')
+        .filter(|l| !l.trim().is_empty())
+        .collect::<Vec<_>>()
+        .join("\n"))
+}
+
+/// Python: _create_patches_backup — бэкап перед записью, максимум 15 штук.
+fn create_patches_backup(state: &AppState, label: &str) -> Option<PathBuf> {
+    let src = patches_json_path(state);
+    if !src.exists() {
+        return None;
+    }
+    let backup_dir = state.documents_path.join("backups");
+    std::fs::create_dir_all(&backup_dir).ok()?;
+
+    let ts = chrono::Local::now().format("%Y%m%d_%H%M%S");
+    let suffix = if label.is_empty() {
+        String::new()
+    } else {
+        format!("_{}", label)
+    };
+    let dst = backup_dir.join(format!("patches_{}{}.json", ts, suffix));
+    std::fs::copy(&src, &dst).ok()?;
+
+    // Чистим старые бэкапы: максимум 15, сортировка по mtime
+    const MAX_BACKUPS: usize = 15;
+    let mut backups: Vec<(std::time::SystemTime, PathBuf)> = Vec::new();
+    if let Ok(rd) = std::fs::read_dir(&backup_dir) {
+        for e in rd.flatten() {
+            let name = e.file_name().to_string_lossy().to_string();
+            if name.starts_with("patches_") && name.ends_with(".json") {
+                if let Ok(md) = e.metadata() {
+                    if let Ok(mtime) = md.modified() {
+                        backups.push((mtime, e.path()));
+                    }
+                }
+            }
+        }
+    }
+    backups.sort_by_key(|(t, _)| *t);
+    while backups.len() > MAX_BACKUPS {
+        if let Some((_, p)) = backups.first() {
+            std::fs::remove_file(p).ok();
+        }
+        backups.remove(0);
+    }
+    Some(dst)
+}
+
+/// Проверка path traversal для имени файла бэкапа.
+fn safe_backup_path(state: &AppState, filename: &str) -> Result<PathBuf, String> {
+    if filename.is_empty()
+        || filename.contains('/')
+        || filename.contains('\\')
+        || filename == "."
+        || filename == ".."
+    {
+        return Err("Недопустимое имя файла".to_string());
+    }
+    let dir = state.documents_path.join("backups");
+    let path = dir.join(filename);
+    // Имя файла обязано совпадать (защита от "..", путей и т.п.)
+    if path.file_name().map(|n| n.to_string_lossy().to_string()).as_deref() != Some(filename) {
+        return Err("Недопустимое имя файла".to_string());
+    }
+    Ok(path)
 }
 
 #[tauri::command]
-pub fn check_patches_files() -> Result<serde_json::Value, String> {
-    // TODO
-    Ok(serde_json::json!({"json_exists": false, "dll_exists": false, "both_exist": false}))
+pub fn check_patches_status(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
+    let files = check_patches_files_inner(&state);
+    let installed_version = state
+        .config
+        .lock()
+        .map(|c| c.patches_version.clone())
+        .unwrap_or_default();
+    let url_v2 = patches_download_url("v2");
+
+    let both_exist = files
+        .get("both_exist")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+
+    // 1. Missing: нет json ИЛИ нет dll
+    if !both_exist {
+        let plugins = plugins_dir(&state);
+        let mut missing: Vec<&str> = Vec::new();
+        if !plugins.join("#ArizonaPatches.json").exists() {
+            missing.push("#ArizonaPatches.json");
+        }
+        if !plugins.join("#ArizonaPatches.dll").exists() {
+            missing.push("#ArizonaPatches.dll");
+        }
+        return Ok(serde_json::json!({
+            "status": "missing",
+            "version": serde_json::Value::Null,
+            "message": format!("Патчи недоступны: отсутствуют файлы: {}", missing.join(", ")),
+            "message_detail": "Файлы патчей не найдены в папке preloading_plugins. Необходимо скачать патчи.",
+            "can_update": true,
+            "download_url": url_v2,
+            "installed_version": serde_json::Value::Null
+        }));
+    }
+
+    // 2. Версия DLL 1.0.0.0 — блокируем настройки и отключаем старый DLL
+    let dll_version = files
+        .get("dll_version")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+    if dll_version.as_deref() == Some("1.0.0.0") {
+        if let Some(dll_path) = files.get("dll_path").and_then(|v| v.as_str()) {
+            disable_old_dll(std::path::Path::new(dll_path));
+        }
+        return Ok(serde_json::json!({
+            "status": "outdated_dll_v1",
+            "version": "1.0.0.0",
+            "message": "Патчи недоступны: устаревший ArizonaPatches.dll (1.0.0.0)",
+            "message_detail": "Установлен старый ArizonaPatches.dll (1.0.0.0), он вызывает краши игры. Ждите выхода v2 от EIR — тогда кнопка «Скачать» станет активной.",
+            "can_update": false,
+            "download_url": serde_json::Value::Null,
+            "installed_version": "1.0.0.0"
+        }));
+    }
+
+    // 4. Версия не задана, но файлы на месте и DLL не 1.0.0.0
+    if installed_version.is_none() {
+        if dll_version.is_some() {
+            return Ok(serde_json::json!({
+                "status": "current",
+                "version": "v2",
+                "message": "Патчи актуальны",
+                "message_detail": "Патчи установлены и работают корректно.",
+                "can_update": false,
+                "download_url": serde_json::Value::Null,
+                "installed_version": "v2"
+            }));
+        }
+        return Ok(serde_json::json!({
+            "status": "missing",
+            "version": serde_json::Value::Null,
+            "message": "Патчи не установлены",
+            "message_detail": "Патчи не были установлены через лаунчер. Необходимо скачать и установить патчи.",
+            "can_update": true,
+            "download_url": url_v2,
+            "installed_version": serde_json::Value::Null
+        }));
+    }
+
+    let installed = installed_version.unwrap();
+
+    // 5. outdated_v1
+    if installed == "v1" {
+        return Ok(serde_json::json!({
+            "status": "outdated_v1",
+            "version": "v1",
+            "message": "Патчи v1 не работают после глобальной обновы игры",
+            "message_detail": "У вас установлены патчи v1 — они не работают после глобальной обновы игры (февраль 2026). EIR выпустил исправленную версию v2.",
+            "can_update": true,
+            "download_url": url_v2,
+            "installed_version": "v1"
+        }));
+    }
+
+    // current
+    Ok(serde_json::json!({
+        "status": "current",
+        "version": installed,
+        "message": "Патчи актуальны",
+        "message_detail": "Патчи v2 установлены и работают корректно.",
+        "can_update": false,
+        "download_url": serde_json::Value::Null,
+        "installed_version": installed
+    }))
+}
+
+/// Python: _disable_old_dll — переименовывает старый DLL в .dll1.
+fn disable_old_dll(dll_path: &std::path::Path) -> Option<PathBuf> {
+    let s = dll_path.to_string_lossy().to_string();
+    // Уже переименован? (.1, .1.1, .1.2, ...)
+    let re = regex::Regex::new(r"\.1(\.\d+)?$").ok()?;
+    if re.is_match(&s) {
+        return None;
+    }
+    if !dll_path.exists() {
+        return None;
+    }
+    let backup = std::path::PathBuf::from(format!("{}.1", s));
+    if backup.exists() {
+        std::fs::remove_file(&backup).ok();
+    }
+    std::fs::rename(dll_path, &backup).ok()?;
+    log::info!("Old DLL renamed to .1: {}", backup.display());
+    Some(backup)
+}
+
+fn patches_download_url(version: &str) -> String {
+    format!(
+        "https://raw.githubusercontent.com/worteng/ArizonaLauncher/main/patches/arizonapatches_{}.zip",
+        version
+    )
+}
+
+fn check_patches_files_inner(state: &AppState) -> serde_json::Value {
+    let game_path = state
+        .config
+        .lock()
+        .map(|c| c.game_path.clone())
+        .unwrap_or_default();
+    if game_path.is_empty() {
+        return serde_json::json!({
+            "json_exists": false, "dll_exists": false, "dll_version": serde_json::Value::Null,
+            "message": "game_path не установлен", "both_exist": false
+        });
+    }
+    let plugins = plugins_dir(state);
+    if !plugins.is_dir() {
+        return serde_json::json!({
+            "json_exists": false, "dll_exists": false, "dll_version": serde_json::Value::Null,
+            "message": "preloading_plugins не найдена", "both_exist": false
+        });
+    }
+
+    let json_path = plugins.join("#ArizonaPatches.json");
+    let dll_path = plugins.join("#ArizonaPatches.dll");
+    let json_exists = json_path.exists();
+
+    // Ищем DLL: основной файл или любой бэкап (.1, .1.1, .1.2, etc.)
+    let mut dll_candidates: Vec<PathBuf> = Vec::new();
+    if dll_path.exists() {
+        dll_candidates.push(dll_path.clone());
+    }
+    if let Ok(rd) = std::fs::read_dir(&plugins) {
+        for e in rd.flatten() {
+            let name = e.file_name().to_string_lossy().to_string();
+            if name.starts_with("#ArizonaPatches.dll") && name != "#ArizonaPatches.dll" {
+                dll_candidates.push(e.path());
+            }
+        }
+    }
+
+    let mut dll_exists = false;
+    let mut dll_version: Option<String> = None;
+    let mut dll_path_checked: Option<PathBuf> = None;
+    for cand in dll_candidates {
+        if let Some(ver) = get_dll_version(&cand) {
+            dll_exists = true;
+            dll_version = Some(ver);
+            dll_path_checked = Some(cand);
+            break;
+        }
+    }
+
+    serde_json::json!({
+        "json_exists": json_exists,
+        "dll_exists": dll_exists,
+        "dll_version": dll_version,
+        "json_path": if json_exists { serde_json::json!(json_path.to_string_lossy()) } else { serde_json::Value::Null },
+        "dll_path": dll_path_checked.map(|p| serde_json::json!(p.to_string_lossy())).unwrap_or(serde_json::Value::Null),
+        "plugins_dir": dll_path.parent().map(|p| serde_json::json!(p.to_string_lossy())).unwrap_or(serde_json::Value::Null),
+        "both_exist": json_exists && dll_exists
+    })
 }
 
 #[tauri::command]
-pub fn read_patches() -> Result<serde_json::Value, String> {
-    // TODO
-    Ok(serde_json::json!({"success": false, "message": "Not implemented"}))
+pub fn check_patches_files(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
+    Ok(check_patches_files_inner(&state))
 }
 
 #[tauri::command]
-pub fn write_patches(data: serde_json::Value) -> Result<serde_json::Value, String> {
-    // TODO
-    Ok(serde_json::json!({"success": false, "message": "Not implemented"}))
+pub fn read_patches(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
+    let path = patches_json_path(&state);
+    let path_str = path.to_string_lossy().to_string();
+    if path_str.is_empty() {
+        return Ok(serde_json::json!({"success": false, "message": "patches_path пустой", "path": ""}));
+    }
+    if !path.exists() {
+        return Ok(serde_json::json!({"success": false, "message": format!("Файл не найден: {}", path_str), "path": path_str}));
+    }
+    let raw = match std::fs::read_to_string(&path) {
+        Ok(r) => r,
+        Err(e) => return Ok(serde_json::json!({"success": false, "message": e.to_string(), "path": path_str})),
+    };
+    let cleaned = match clean_patches_text(&raw) {
+        Ok(c) => c,
+        Err(e) => return Ok(serde_json::json!({"success": false, "message": e, "path": path_str})),
+    };
+    match serde_json::from_str::<serde_json::Value>(&cleaned) {
+        Ok(data) => {
+            let keys_count = data.as_object().map(|o| o.len()).unwrap_or(0);
+            Ok(serde_json::json!({"success": true, "data": data, "path": path_str, "keys_count": keys_count}))
+        }
+        Err(e) => Ok(serde_json::json!({"success": false, "message": e.to_string(), "path": path_str})),
+    }
 }
 
 #[tauri::command]
-pub fn list_patches_backups() -> Result<serde_json::Value, String> {
-    Ok(serde_json::json!([]))
+pub fn write_patches(state: State<'_, AppState>, data: serde_json::Value) -> Result<serde_json::Value, String> {
+    Ok(write_patches_inner(&state, &data))
 }
 
 #[tauri::command]
-pub fn restore_patches_backup(filename: String) -> Result<serde_json::Value, String> {
-    Ok(serde_json::json!({"success": false, "message": "Not implemented"}))
+pub fn list_patches_backups(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
+    let backup_dir = state.documents_path.join("backups");
+    if !backup_dir.exists() {
+        return Ok(serde_json::json!([]));
+    }
+    let mut items: Vec<(std::time::SystemTime, serde_json::Value)> = Vec::new();
+    if let Ok(rd) = std::fs::read_dir(&backup_dir) {
+        for e in rd.flatten() {
+            let name = e.file_name().to_string_lossy().to_string();
+            if !(name.starts_with("patches_") && name.ends_with(".json")) {
+                continue;
+            }
+            let Ok(md) = e.metadata() else { continue };
+            let Ok(mtime) = md.modified() else { continue };
+            let date = chrono::DateTime::<chrono::Local>::from(mtime)
+                .format("%d.%m.%Y %H:%M:%S")
+                .to_string();
+            items.push((
+                mtime,
+                serde_json::json!({
+                    "filename": name,
+                    "path": e.path().to_string_lossy(),
+                    "date": date,
+                    "size": md.len(),
+                }),
+            ));
+        }
+    }
+    // Новые первыми
+    items.sort_by(|a, b| b.0.cmp(&a.0));
+    Ok(serde_json::Value::Array(items.into_iter().map(|(_, v)| v).collect()))
 }
 
 #[tauri::command]
-pub fn delete_patches_backup(filename: String) -> Result<serde_json::Value, String> {
-    Ok(serde_json::json!({"success": false, "message": "Not implemented"}))
+pub fn restore_patches_backup(state: State<'_, AppState>, filename: String) -> Result<serde_json::Value, String> {
+    let backup_path = match safe_backup_path(&state, &filename) {
+        Ok(p) => p,
+        Err(m) => return Ok(serde_json::json!({"success": false, "message": m})),
+    };
+    if !backup_path.exists() {
+        return Ok(serde_json::json!({"success": false, "message": format!("Бэкап не найден: {}", filename)}));
+    }
+    let raw = match std::fs::read_to_string(&backup_path) {
+        Ok(r) => r,
+        Err(e) => return Ok(serde_json::json!({"success": false, "message": e.to_string()})),
+    };
+    let cleaned = match clean_patches_text(&raw) {
+        Ok(c) => c,
+        Err(e) => return Ok(serde_json::json!({"success": false, "message": e})),
+    };
+    let data: serde_json::Value = match serde_json::from_str(&cleaned) {
+        Ok(d) => d,
+        Err(e) => return Ok(serde_json::json!({"success": false, "message": e.to_string()})),
+    };
+
+    // Бэкап текущего перед восстановлением
+    let patches_path = patches_json_path(&state);
+    if patches_path.exists() {
+        create_patches_backup(&state, "before_restore");
+    }
+    let result = write_patches_inner(&state, &data);
+    if result.get("success").and_then(|v| v.as_bool()).unwrap_or(false) {
+        log::info!("restore_patches_backup: восстановлен {}", filename);
+        return Ok(serde_json::json!({"success": true, "data": data, "message": format!("Восстановлен: {}", filename)}));
+    }
+    Ok(result)
+}
+
+/// Общая тело записи патчей (используется и write_patches, и restore).
+fn write_patches_inner(state: &AppState, data: &serde_json::Value) -> serde_json::Value {
+    let path = patches_json_path(state);
+    if path.as_os_str().is_empty() {
+        return serde_json::json!({"success": false, "message": "Path not set"});
+    }
+    if path.exists() {
+        create_patches_backup(state, "");
+    }
+    let mut buf: Vec<u8> = Vec::new();
+    {
+        use serde::Serialize;
+        let mut ser = serde_json::Serializer::with_formatter(
+            &mut buf,
+            serde_json::ser::PrettyFormatter::with_indent(b"    "),
+        );
+        if let Err(e) = data.serialize(&mut ser) {
+            return serde_json::json!({"success": false, "message": e.to_string()});
+        }
+    }
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).ok();
+    }
+    match std::fs::write(&path, &buf) {
+        Ok(_) => serde_json::json!({"success": true, "message": "Saved"}),
+        Err(e) => serde_json::json!({"success": false, "message": e.to_string()}),
+    }
 }
 
 #[tauri::command]
-pub fn preview_patches_backup(filename: String) -> Result<serde_json::Value, String> {
-    Ok(serde_json::json!({"success": false, "message": "Not implemented"}))
+pub fn delete_patches_backup(state: State<'_, AppState>, filename: String) -> Result<serde_json::Value, String> {
+    let backup_path = match safe_backup_path(&state, &filename) {
+        Ok(p) => p,
+        Err(m) => return Ok(serde_json::json!({"success": false, "message": m})),
+    };
+    if !backup_path.exists() {
+        return Ok(serde_json::json!({"success": false, "message": "Файл не найден"}));
+    }
+    match std::fs::remove_file(&backup_path) {
+        Ok(_) => Ok(serde_json::json!({"success": true})),
+        Err(e) => Ok(serde_json::json!({"success": false, "message": e.to_string()})),
+    }
+}
+
+#[tauri::command]
+pub fn preview_patches_backup(state: State<'_, AppState>, filename: String) -> Result<serde_json::Value, String> {
+    let backup_path = match safe_backup_path(&state, &filename) {
+        Ok(p) => p,
+        Err(m) => return Ok(serde_json::json!({"success": false, "message": m})),
+    };
+    if !backup_path.exists() {
+        return Ok(serde_json::json!({"success": false, "message": "Файл не найден"}));
+    }
+    let size = std::fs::metadata(&backup_path).map(|m| m.len()).unwrap_or(0);
+    let raw = match std::fs::read_to_string(&backup_path) {
+        Ok(r) => r,
+        Err(e) => return Ok(serde_json::json!({"success": false, "message": e.to_string()})),
+    };
+    let cleaned = match clean_patches_text(&raw) {
+        Ok(c) => c,
+        Err(e) => return Ok(serde_json::json!({"success": false, "message": e})),
+    };
+    let data: serde_json::Value = match serde_json::from_str(&cleaned) {
+        Ok(d) => d,
+        Err(_) => return Ok(serde_json::json!({"success": false, "message": "Файл повреждён (не JSON)"})),
+    };
+
+    // Бэкап может быть плоским (bool-значения сверху) или вложенным ({"patches": {...}})
+    let obj = data.as_object();
+    let is_nested = obj
+        .map(|o| o.get("patches").map(|p| p.is_object()).unwrap_or(false))
+        .unwrap_or(false);
+    let mut patches: Vec<(String, bool)> = Vec::new();
+    let mut launch_params = serde_json::json!({});
+    if is_nested {
+        let o = obj.unwrap();
+        for (k, v) in o["patches"].as_object().unwrap() {
+            patches.push((k.clone(), v.as_bool().unwrap_or(false)));
+        }
+        launch_params = o.get("launch_params").cloned().unwrap_or_else(|| serde_json::json!({}));
+    } else if let Some(o) = obj {
+        for (k, v) in o {
+            if let Some(b) = v.as_bool() {
+                patches.push((k.clone(), b));
+            } else {
+                launch_params[k] = v.clone();
+            }
+        }
+    }
+    let enabled: Vec<&String> = patches.iter().filter(|(_, b)| *b).map(|(k, _)| k).collect();
+    let disabled: Vec<&String> = patches.iter().filter(|(_, b)| !*b).map(|(k, _)| k).collect();
+
+    let r#type = if filename.contains("before_import") {
+        "before_import"
+    } else if filename.contains("before_restore") {
+        "before_restore"
+    } else {
+        "save"
+    };
+
+    Ok(serde_json::json!({
+        "success": true,
+        "filename": filename,
+        "type": r#type,
+        "size": size,
+        "patches_total": patches.len(),
+        "patches_enabled": enabled,
+        "patches_disabled": disabled,
+        "launch_params": launch_params,
+        "saved_at": obj.and_then(|o| o.get("saved_at")).cloned().unwrap_or_else(|| serde_json::json!("")),
+    }))
 }
 
 #[tauri::command]
@@ -882,18 +1408,111 @@ pub async fn download_and_install_patches(version: Option<String>) -> Result<ser
 
 #[tauri::command]
 pub async fn get_patches_latest_version() -> Result<serde_json::Value, String> {
-    // TODO
-    Ok(serde_json::json!({"success": false, "message": "Not implemented"}))
+    // Python: чтение patches/version.txt с GitHub
+    let url = "https://raw.githubusercontent.com/worteng/ArizonaLauncher/main/patches/version.txt";
+    let client = match reqwest::Client::builder().build() {
+        Ok(c) => c,
+        Err(e) => return Ok(serde_json::json!({"success": false, "message": e.to_string()})),
+    };
+    let resp = match client
+        .get(url)
+        .timeout(std::time::Duration::from_secs(15))
+        .header(reqwest::header::USER_AGENT, "Mozilla/5.0")
+        .send()
+        .await
+    {
+        Ok(r) => r,
+        Err(e) => return Ok(serde_json::json!({"success": false, "message": e.to_string()})),
+    };
+    let status = resp.status();
+    let bytes = match resp.bytes().await {
+        Ok(b) => b,
+        Err(e) => return Ok(serde_json::json!({"success": false, "message": e.to_string()})),
+    };
+    let version = match std::str::from_utf8(&bytes) {
+        Ok(s) => s.trim().to_string(),
+        Err(_) => {
+            let (cow, _, _) = encoding_rs::WINDOWS_1251.decode(&bytes);
+            cow.trim().to_string()
+        }
+    };
+    if status == reqwest::StatusCode::OK && !version.is_empty() && version.starts_with('v') {
+        return Ok(serde_json::json!({
+            "success": true,
+            "version": version,
+            "download_url": patches_download_url(&version)
+        }));
+    }
+    Ok(serde_json::json!({"success": false, "message": format!("HTTP {}", status)}))
 }
 
 #[tauri::command]
 pub async fn check_patches_available(version: Option<String>) -> Result<serde_json::Value, String> {
-    Ok(serde_json::json!({"success": true, "available": false}))
+    let version = version.unwrap_or_else(|| "v2".to_string());
+    let url = patches_download_url(&version);
+    let client = match reqwest::Client::builder().build() {
+        Ok(c) => c,
+        Err(e) => {
+            return Ok(serde_json::json!({"success": true, "available": false, "message": e.to_string()}))
+        }
+    };
+    match client
+        .head(&url)
+        .timeout(std::time::Duration::from_secs(10))
+        .header(reqwest::header::USER_AGENT, "Mozilla/5.0")
+        .send()
+        .await
+    {
+        Ok(resp) => {
+            if resp.status() == reqwest::StatusCode::OK {
+                Ok(serde_json::json!({"success": true, "available": true, "url": url, "version": version}))
+            } else {
+                Ok(serde_json::json!({"success": true, "available": false,
+                    "message": format!("Патчи {} пока недоступны. Следите за обновлениями!", version)}))
+            }
+        }
+        Err(e) => {
+            log::warn!("check_patches_available error: {e}");
+            Ok(serde_json::json!({"success": true, "available": false,
+                "message": "Не удалось проверить доступность. Проверьте подключение к интернету."}))
+        }
+    }
 }
 
 #[tauri::command]
 pub async fn check_patches_update_status() -> Result<serde_json::Value, String> {
-    Ok(serde_json::json!({"success": true, "released": false}))
+    // Python: манифест updates/patches.json на GitHub
+    let url = "https://raw.githubusercontent.com/worteng/ArizonaLauncher/main/updates/patches.json";
+    let client = match reqwest::Client::builder().build() {
+        Ok(c) => c,
+        Err(e) => return Ok(serde_json::json!({"success": false, "message": e.to_string()})),
+    };
+    let resp = match client
+        .get(url)
+        .timeout(std::time::Duration::from_secs(15))
+        .send()
+        .await
+    {
+        Ok(r) => r,
+        Err(e) => return Ok(serde_json::json!({"success": false, "message": e.to_string()})),
+    };
+    if resp.status() != reqwest::StatusCode::OK {
+        return Ok(serde_json::json!({"success": false, "message": format!("HTTP {}", resp.status())}));
+    }
+    let text = match resp.text().await {
+        Ok(t) => t,
+        Err(e) => return Ok(serde_json::json!({"success": false, "message": e.to_string()})),
+    };
+    let data: serde_json::Value = match serde_json::from_str(text.trim()) {
+        Ok(d) => d,
+        Err(_) => return Ok(serde_json::json!({"success": false, "message": "Некорректный манифест"})),
+    };
+    Ok(serde_json::json!({
+        "success": true,
+        "released": data.get("released").and_then(|v| v.as_bool()).unwrap_or(false),
+        "latest_version": data.get("latest_version").map(|v| v.to_string().trim_matches('"').to_string()).unwrap_or_default(),
+        "notes": data.get("notes").map(|v| v.to_string().trim_matches('"').to_string()).unwrap_or_default(),
+    }))
 }
 
 #[tauri::command]

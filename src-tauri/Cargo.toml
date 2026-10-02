@@ -24,6 +24,9 @@ tempfile = "3"
 winreg = "0.52"
 open = "5"
 
+[target.'cfg(windows)'.dependencies]
+winapi = { version = "0.3", features = ["winver"] }
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
