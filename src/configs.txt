@@ -1,0 +1,20 @@
+# ArizonaLauncher — каталог конфигов ArizonaPatches
+# Формат блока:
+#   [config]
+#   name = Название конфига
+#   author = Автор
+#   description = Описание (одна строка)
+#   tag = Тег (Производительность / Графика / Баланс / Стиль / и т.д.)
+#   icon = Эмодзи-иконка
+#   url = https://raw.githubusercontent.com/.../file.json
+#
+# Пустые строки и строки начинающиеся с # — игнорируются.
+
+[config]
+name = Конфиг от Dapo Show
+author = Dapo Show
+description = Повышает фпс в популярных местах на +10-15 фпс
+tag = Производительность
+icon = ⚡
+url = https://raw.githubusercontent.com/worteng/ArizonaLauncher/main/presets/dapodopeV2.1.json
+

@@ -1,0 +1,21 @@
+[script]
+name = ARZMarket Loader
+author = ARZMarket
+description = Загружает ARZMarket для вас
+tag = Помощник
+icon = 🛍️
+file = ArzMarket_Loader.lua
+url = https://raw.githubusercontent.com/worteng/ArizonaLauncher/main/moonloader/ArzMarket_Loader.lua
+usage = 1. Установи скрипт\n2. Зайди в игру\n3. Он начнет качать библиотеки или сразу основной скрипт.
+image = https://i.imgur.com/0TQnVZ6.jpeg
+
+[script]
+name = Mimgui ScoreBoard
+author = MTG MODS
+description = Этот скрипт изменяет обычный самповский Sroreboard (TAB) на новый. Добавляет кнопки вызова моментально.
+tag = Замена
+icon = 🧾
+file = Mimgui_ScoreBoard.lua
+url = https://raw.githubusercontent.com/worteng/ArizonaLauncher/main/moonloader/Mimgui_ScoreBoard.lua
+usage = Используйте TAB.
+image = https://i.imgur.com/BG9bEc6.png
