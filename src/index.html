@@ -238,7 +238,8 @@
             border: 1px solid rgba(255, 255, 255, 0.1);
             border-right: none;
             transform: translateX(calc(100% - 48px));
-            transition: transform 0.45s cubic-bezier(0.4, 0, 0.2, 1);
+            transition: transform 0.45s cubic-bezier(0.4, 0, 0.2, 1),
+                        translate 0.4s cubic-bezier(0.4, 0, 0.2, 1);
             z-index: 50;
             overflow: hidden;
         }
@@ -249,12 +250,23 @@
 
         .right-panel.peek-anim {
             transform: translateX(calc(100% - 48px - 170px)) !important;
-            transition: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) !important;
+            transition: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1),
+                        translate 0.4s cubic-bezier(0.4, 0, 0.2, 1) !important;
         }
 
         .right-panel:not(.peek-anim) {
-            transition: transform 0.45s cubic-bezier(0.4, 0, 0.2, 1);
+            transition: transform 0.45s cubic-bezier(0.4, 0, 0.2, 1),
+                        translate 0.4s cubic-bezier(0.4, 0, 0.2, 1);
         }
+
+        /* ── Открытие настроек: язычок новостей (и раскрытая панель новостей)
+              плавно уезжает в бок за край окна, а не пропадает мгновенно.
+              `translate` — отдельное свойство, поэтому не конфликтует с
+              transform-переходом и инлайн-позицией (.news-left / peek). ── */
+        .right-panel.news-away            { translate: 48px 0; }   /* свёрнут: видна полоска 48px */
+        .right-panel.news-away.open       { translate: 100% 0; }   /* раскрыта: уезжает целиком */
+        .right-panel.news-away.news-left  { translate: -48px 0; }  /* язычок слева */
+        .right-panel.news-left.news-away.open { translate: -100% 0; }
 
         .right-panel.news-left {
             padding: 20px 58px 20px 20px;
@@ -7402,7 +7414,11 @@
             const iface = document.querySelector('.interface');
             const right = document.querySelector('.right-panel');
             if (iface) { iface.style.display = 'flex'; iface.style.visibility = ''; }
-            if (right) { right.style.display = 'flex'; right.style.visibility = ''; }
+            if (right) {
+                right.style.display = 'flex'; right.style.visibility = '';
+                // Язычок новостей плавно возвращается на место (обратно выезду)
+                right.classList.remove('news-away');
+            }
         }
 
         function _closeWithAnim(el, cb, duration = 260) {
@@ -10902,7 +10918,13 @@
         async function openSettings() {
             _lucideObserver.disconnect();
             document.querySelector('.interface').style.visibility = 'hidden';
-            document.querySelector('.right-panel').style.visibility = 'hidden';
+            // Вкладка новостей не гаснет мгновенно: язычок (и раскрытая панель
+            // новостей) плавно уезжает в бок за край окна — см. .news-away.
+            const rightPanel = document.querySelector('.right-panel');
+            if (rightPanel) {
+                rightPanel.style.visibility = 'visible';  // перекрываем наследование от скрытого .interface
+                rightPanel.classList.add('news-away');
+            }
             settingsPanel.style.display = 'flex';
             switchTab('patches');
 
