@@ -7467,7 +7467,36 @@
         function _showMainInterface() {
             const iface = document.querySelector('.interface');
             const right = document.querySelector('.right-panel');
-            if (iface) { iface.style.display = 'flex'; iface.style.visibility = ''; }
+            if (iface) {
+                // Ставим СТАРТ-состояние interfaceFadeIn инлайн ДО первого кадра:
+                // иначе между display:none→flex и реальным стартом CSS-анимации
+                // может мелькнуть резкий кадр «готового» меню («чёткое → размытое»).
+                iface.style.opacity   = '0';
+                iface.style.filter    = 'blur(12px)';
+                iface.style.transform = 'translateY(12px)';
+                iface.style.display   = 'flex';
+                iface.style.visibility = '';
+                void iface.offsetWidth; // style recalc — старт-состояние коммитится до paint
+                // Гарантированный рестарт анимации (display-переключение не всегда
+                // перезапускает её детерминированно в разных версиях движка)
+                iface.style.animation = 'none';
+                void iface.offsetWidth;
+                iface.style.animation = '';
+                // Снимаем инлайн-стили, когда анимация реально пошла
+                // (анимация перекрывает инлайн, но после окончания без fill
+                //  инлайн- opacity:0 оставил бы интерфейс невидимым)
+                const _clearStart = (e) => {
+                    if (e.target !== iface) return;
+                    if (e.animationName && e.animationName !== 'interfaceFadeIn') return;
+                    iface.style.opacity = iface.style.filter = iface.style.transform = '';
+                    iface.removeEventListener('animationstart', _clearStart);
+                };
+                iface.addEventListener('animationstart', _clearStart);
+                setTimeout(() => {
+                    iface.style.opacity = iface.style.filter = iface.style.transform = '';
+                    iface.removeEventListener('animationstart', _clearStart);
+                }, 600); // 0.5s анимация + запас, страховка если animationstart не пришёл
+            }
             if (right) {
                 right.style.display = 'flex'; right.style.visibility = '';
                 // Язычок новостей плавно возвращается на место (обратно выезду)
