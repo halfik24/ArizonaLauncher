@@ -1194,13 +1194,26 @@
             100% { opacity: 0; transform: translate(-50%, -50%) scale(0.85); }
         }
 
-        /* Закрытие настроек: панель «тонет» — прозрачность + лёгкое сжатие.
-           Анимируем отдельное свойство `scale`, а не `transform`: позиция
-           (по центру или уезжавшая влево в пикере обоев) при этом не трогается,
-           поэтому закрытие из пикера не прыгает в центроокна. */
+        /* Закрытие настроек (iOS-стиль): панель уходит «вглубь» —
+           увеличивается + размывается + гаснет одновременно, на одной кривой.
+           Позиционирующий translate обязан жить ВНУТРИ transform-списка
+           keyframes: отдельное свойство scale применяется после translate и
+           «масштабирует» его — панель тогда улетает вверх-влево.
+           Две вариации — по центру и уезжавшая влево (пикер обоев). */
         @keyframes settingsSink {
-            0%   { opacity: 1; scale: 1; }
-            100% { opacity: 0; scale: 0.94; }
+            0%   { opacity: 1; transform: translate(-50%, -50%) scale(1);    filter: blur(0); }
+            100% { opacity: 0; transform: translate(-50%, -50%) scale(1.08); filter: blur(14px); }
+        }
+        @keyframes settingsSinkWp {
+            0%   { opacity: 1; transform: translate(calc(12px - 50vw), -50%) scale(1);    filter: blur(0); }
+            100% { opacity: 0; transform: translate(calc(12px - 50vw), -50%) scale(1.08); filter: blur(14px); }
+        }
+        /* Открытие настроек — зеркало settingsSink: панель приходит из глубины
+           (увеличенная, размытая, прозрачная) и наверстывает в резкость.
+           settingsIn при этом не трогаем — его использует .folder-modal. */
+        @keyframes settingsRise {
+            0%   { opacity: 0; transform: translate(-50%, -50%) scale(1.08); filter: blur(14px); }
+            100% { opacity: 1; transform: translate(-50%, -50%) scale(1);    filter: blur(0); }
         }
 
         @keyframes modsIn {
@@ -1253,7 +1266,9 @@
         .script-detail-overlay.closing                { animation: overlayFadeOut 0.25s ease forwards; }
         .script-detail-overlay.closing .script-detail-panel { animation: slideOutRight 0.22s ease forwards; }
 
-        .settings-panel.closing { animation: settingsSink 0.35s cubic-bezier(0.32, 0.72, 0, 1) forwards; }
+        .settings-panel.closing { animation: settingsSink 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards; }
+        /* Закрытие из пикера обоев: та же анимация, но на «левой» позиции */
+        .settings-panel.wp-mode.closing { animation-name: settingsSinkWp; }
 
         .folder-modal.closing { animation: settingsOut 0.25s cubic-bezier(0.4, 0, 1, 1) forwards; }
 
@@ -1490,7 +1505,7 @@
             flex-direction: row;
             align-items: stretch;
             overflow: hidden;
-            animation: settingsIn 0.2s ease-out;
+            animation: settingsRise 0.4s cubic-bezier(0.4, 0, 0.2, 1);
             box-shadow: 0 8px 40px rgba(0, 0, 0, 0.4);
         }
 
@@ -10972,7 +10987,7 @@
         }
 
         function closeSettings() {
-            // Длительность = анимации settingsSink (0.35s) + запас на кадр
+            // Длительность = анимации settingsSink (0.4s) + запас на кадр
             _closeWithAnim(settingsPanel, () => {
                 settingsPanel.style.display = 'none';
                 // Если закрыли настройки, будучи в пикере обоев — сбрасываем режим
@@ -10982,7 +10997,7 @@
                 const cats = document.getElementById('patchesCategories');
                 if (cats) cats.innerHTML = '';
                 _lucideObserver.observe(document.body, { childList: true, subtree: true });
-            }, 360);
+            }, 440);
         }
 
         async function saveSettings() {
