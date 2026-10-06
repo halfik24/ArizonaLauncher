@@ -12350,6 +12350,7 @@
         /* ── Layout editor (inline mode) ── */
         let _layoutPosition = 'center';
         let _layoutEditPrevPos = 'center';
+        let _layoutFlipTimer = null;
 
         function startLayoutEdit() {
             // Close settings panel
@@ -12357,7 +12358,13 @@
             if (sp) sp.style.display = 'none';
             // Restore interface visibility (hidden by openSettings)
             document.querySelector('.interface').style.visibility = '';
-            document.querySelector('.right-panel').style.visibility = '';
+            const rp = document.querySelector('.right-panel');
+            if (rp) {
+                rp.style.visibility = '';
+                // Настройки закрыты в обход closeSettings — язычок новостей
+                // иначе остался бы выехавшим за край (класс от openSettings)
+                rp.classList.remove('news-away');
+            }
             // Show float bar
             const bar = document.getElementById('layoutFloatBar');
             if (bar) bar.style.display = 'flex';
@@ -12381,7 +12388,12 @@
             _layoutPosition = zone;
             const container = document.querySelector('.left-panel');
             if (!container) return;
-            container.style.transition = 'margin 0.35s cubic-bezier(0.4, 0, 0.2, 1)';
+            // Плавный переезд главного меню: margin 0 ↔ auto не интерполируется
+            // (браузер прыгает мгновенно), поэтому новые отступы ставим сразу,
+            // а фактический сдвиг проигрываем через transform (FLIP).
+            const before = container.getBoundingClientRect().left;
+            container.style.transition = 'none';
+            container.style.transform = '';
             if (zone === 'left') {
                 container.style.marginLeft = '0';
                 container.style.marginRight = 'auto';
@@ -12391,6 +12403,22 @@
             } else {
                 container.style.marginLeft = '';
                 container.style.marginRight = '';
+            }
+            const after = container.getBoundingClientRect().left;
+            const dx = before - after;
+            if (dx) {
+                container.style.transform = `translateX(${dx}px)`;  // старт с прежнего места
+                void container.offsetWidth;                         // reflow: зафиксировать сдвиг
+                container.style.transition = 'transform 0.35s cubic-bezier(0.4, 0, 0.2, 1)';
+                container.style.transform = '';                     // едем к новому месту
+                if (_layoutFlipTimer) clearTimeout(_layoutFlipTimer);
+                _layoutFlipTimer = setTimeout(() => {
+                    container.style.transition = '';
+                    container.style.transform = '';
+                    _layoutFlipTimer = null;
+                }, 400);
+            } else {
+                container.style.transition = '';
             }
             document.querySelectorAll('#layoutFloatBar .layout-zone-btn').forEach(b => {
                 b.classList.toggle('active', b.dataset.zone === zone);
