@@ -1194,6 +1194,15 @@
             100% { opacity: 0; transform: translate(-50%, -50%) scale(0.85); }
         }
 
+        /* Закрытие настроек: панель «тонет» — прозрачность + лёгкое сжатие.
+           Анимируем отдельное свойство `scale`, а не `transform`: позиция
+           (по центру или уезжавшая влево в пикере обоев) при этом не трогается,
+           поэтому закрытие из пикера не прыгает в центроокна. */
+        @keyframes settingsSink {
+            0%   { opacity: 1; scale: 1; }
+            100% { opacity: 0; scale: 0.94; }
+        }
+
         @keyframes modsIn {
             0%   { opacity: 0; transform: scale(0.97); }
             100% { opacity: 1; transform: scale(1); }
@@ -1244,7 +1253,7 @@
         .script-detail-overlay.closing                { animation: overlayFadeOut 0.25s ease forwards; }
         .script-detail-overlay.closing .script-detail-panel { animation: slideOutRight 0.22s ease forwards; }
 
-        .settings-panel.closing { animation: settingsOut 0.25s cubic-bezier(0.4, 0, 1, 1) forwards; }
+        .settings-panel.closing { animation: settingsSink 0.35s cubic-bezier(0.32, 0.72, 0, 1) forwards; }
 
         .folder-modal.closing { animation: settingsOut 0.25s cubic-bezier(0.4, 0, 1, 1) forwards; }
 
@@ -1483,6 +1492,89 @@
             overflow: hidden;
             animation: settingsIn 0.2s ease-out;
             box-shadow: 0 8px 40px rgba(0, 0, 0, 0.4);
+        }
+
+        /* ── Пикер обоев: панель уезжает в левый край окна (iOS-push) ── */
+        .settings-panel {
+            transition: transform 0.5s cubic-bezier(0.32, 0.72, 0, 1),
+                        width 0.5s cubic-bezier(0.32, 0.72, 0, 1);
+        }
+
+        .settings-panel.wp-mode {
+            transform: translate(calc(12px - 50vw), -50%);
+            width: min(430px, 92vw);
+        }
+
+        /* Настройки уезжают влево и гаснут... */
+        #mainSettingsNav,
+        .settings-body {
+            transition: opacity 0.28s ease,
+                        transform 0.5s cubic-bezier(0.32, 0.72, 0, 1),
+                        visibility 0s;
+        }
+
+        .settings-panel.wp-mode #mainSettingsNav,
+        .settings-panel.wp-mode .settings-body {
+            opacity: 0;
+            visibility: hidden;
+            pointer-events: none;
+            transform: translateX(-32px);
+            transition: opacity 0.24s ease,
+                        transform 0.5s cubic-bezier(0.32, 0.72, 0, 1),
+                        visibility 0s linear 0.5s;
+        }
+
+        /* ...а пикер обоев наезжает поверх панели */
+        #wallpaperNav {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            width: auto;
+            background: transparent;
+            backdrop-filter: none;
+            -webkit-backdrop-filter: none;
+            border-right: none;
+            opacity: 0;
+            visibility: hidden;
+            transform: translateX(36px);
+            pointer-events: none;
+            z-index: 5;
+            transition: opacity 0.3s ease,
+                        transform 0.5s cubic-bezier(0.32, 0.72, 0, 1),
+                        visibility 0s linear 0.5s;
+        }
+
+        .settings-panel.wp-mode #wallpaperNav {
+            opacity: 1;
+            visibility: visible;
+            transform: translateX(0);
+            pointer-events: auto;
+            transition: opacity 0.3s ease 0.1s,
+                        transform 0.5s cubic-bezier(0.32, 0.72, 0, 1),
+                        visibility 0s;
+        }
+
+        /* Шапка пикера «Обои / Назад» прилипает при прокрутке */
+        .wp-picker-top {
+            position: sticky;
+            top: 0;
+            z-index: 2;
+            background: rgba(var(--surface-rgb), 0.88);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            padding-bottom: 6px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+        }
+
+        .wp-picker-top .settings-nav-title { padding-bottom: 8px; }
+
+        #wallpaperNav::-webkit-scrollbar { width: 5px; }
+        #wallpaperNav::-webkit-scrollbar-track { background: transparent; }
+        #wallpaperNav::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.12);
+            border-radius: 3px;
         }
 
         /* ── Левая навигация ── */
@@ -2551,6 +2643,39 @@
             color: rgba(255,255,255,0.3);
             letter-spacing: 1.2px;
             text-transform: uppercase;
+            flex-shrink: 0;
+        }
+
+        /* Кнопка «Обои» + тумблер «Старый стиль» */
+        .wp-controls {
+            display: flex;
+            align-items: stretch;
+            gap: 12px;
+            flex-shrink: 0;
+        }
+        .wp-controls .s-btn { flex: 1; }
+        .wp-old-style {
+            margin: 0;
+            padding: 0 12px;
+            flex-shrink: 0;
+            background: rgba(255,255,255,0.03);
+        }
+        .wp-old-style .launch-item-name { white-space: nowrap; }
+
+        /* Пикер обоев в левой колонке настроек */
+        .wp-picker-hint {
+            padding: 14px 20px 2px;
+            font-family: 'Montserrat Alternates', sans-serif;
+            font-size: 10px;
+            line-height: 1.5;
+            color: rgba(255,255,255,0.3);
+            flex-shrink: 0;
+        }
+        .wp-picker-list {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            padding: 12px 14px 18px;
             flex-shrink: 0;
         }
 
@@ -5230,7 +5355,7 @@
         <!-- Модальное окно настроек -->
         <div class="settings-panel" id="settingsPanel" role="dialog" aria-modal="true" aria-labelledby="settingsPanelTitle">
             <!-- Левый сайдбар -->
-            <div class="settings-nav">
+            <div class="settings-nav" id="mainSettingsNav">
                 <div class="settings-nav-title">Настройки</div>
                 <button id="tabBtnPatches" class="settings-nav-item active" role="tab" aria-selected="true" onclick="switchTab('patches')">
                     <span class="snav-icon"><i data-lucide="shield"></i></span> Патчи
@@ -5249,6 +5374,18 @@
                 <button id="tabBtnDebug" class="settings-nav-item" role="tab" aria-selected="false" onclick="switchTab('debug')">
                     <span class="snav-icon"><i data-lucide="bug"></i></span> Debug
                 </button>
+            </div>
+
+            <!-- Пикер обоев: панель настроек уезжает в левый край окна (wp-mode) -->
+            <div class="settings-nav" id="wallpaperNav">
+                <div class="wp-picker-top">
+                    <div class="settings-nav-title">Обои</div>
+                    <button class="settings-nav-item" onclick="closeWallpaperPicker()">
+                        <span class="snav-icon"><i data-lucide="arrow-left"></i></span> Настройки
+                    </button>
+                </div>
+                <div class="wp-picker-hint">Нажми на обои — они применятся сразу, окно справа показывает фон вживую.</div>
+                <div class="wp-picker-list" id="wallpaperNavGrid"></div>
             </div>
 
             <!-- Правая часть -->
@@ -5605,7 +5742,20 @@
                     </div>
 
                     <div class="wp-section-title"><i data-lucide="image"></i> ОБОИ</div>
-                    <div id="wallpaperGrid" class="wallpaper-grid"></div>
+                    <div class="wp-controls">
+                        <button class="s-btn" onclick="openWallpaperPicker()" style="height:36px;">
+                            <i data-lucide="images" style="width:14px;height:14px;"></i> Обои
+                        </button>
+                        <label class="launch-item wp-old-style" title="Сетка обоев прямо под кнопкой, как раньше"
+                               onclick="event.preventDefault(); toggleWallpaperOldStyle(!document.getElementById('wpOldStyleCheck').checked)">
+                            <input type="checkbox" id="wpOldStyleCheck">
+                            <div class="s-toggle"></div>
+                            <div class="launch-item-text">
+                                <span class="launch-item-name">Старый стиль</span>
+                            </div>
+                        </label>
+                    </div>
+                    <div id="wallpaperGrid" class="wallpaper-grid" style="display:none;"></div>
 
                 </div>
 
@@ -9495,6 +9645,9 @@
 
         // Переключение вкладок
         function switchTab(tabName) {
+            // Пикер обоев (панель уезжает влево) закрывается при любом переходе по вкладкам
+            const wpPanel = document.getElementById('settingsPanel');
+            if (wpPanel) wpPanel.classList.remove('wp-mode');
             document.querySelectorAll('.settings-nav-item').forEach(t => { t.classList.remove('active'); t.setAttribute('aria-selected', 'false'); });
             document.querySelectorAll('.settings-tab-content').forEach(c => c.classList.remove('active'));
             const tabMap = {
@@ -10019,61 +10172,127 @@
             renderWallpaperGrid();
         }
 
-        function renderWallpaperGrid() {
-            const grid = document.getElementById('wallpaperGrid');
-            if (!grid) return;
-            const current = launcherSettings.bg_image;
-            grid.innerHTML = '';
-
-            // Карточка "Нет фона"
-            const noneCard = document.createElement('div');
-            noneCard.className = 'wp-card' + (!current ? ' wp-card-active' : '');
-            noneCard.innerHTML = `<div class="wp-thumb wp-thumb-none"><i data-lucide="x"></i></div><div class="wp-label">Нет</div>`;
-            noneCard.onclick = clearBgImage;
-            grid.appendChild(noneCard);
-
-            // Карточки из wallpapers/ — загружаем thumb по одному
-            if (_wallpapers.length > 0) {
-                _wallpapers.forEach(wp => {
-                    const isActive = current === wp.filename;
-                    const card = document.createElement('div');
-                    card.className = 'wp-card' + (isActive ? ' wp-card-active' : '');
-                    card.innerHTML = `
-                        <div class="wp-thumb wp-thumb-loading"></div>
-                        <div class="wp-label">${wp.name}</div>`;
-                    card.onclick = () => applyLocalWallpaper(wp);
-                    grid.appendChild(card);
-
-                    // Загружаем thumb асинхронно
-                    if (window.pywebview && window.pywebview.api.get_wallpaper_thumb) {
-                        window.pywebview.api.get_wallpaper_thumb(wp.filename).then(res => {
-                            if (res && res.success) {
-                                wp.data_url = res.data_url;
-                                const thumb = card.querySelector('.wp-thumb');
-                                if (thumb) {
-                                    thumb.style.backgroundImage = `url('${res.data_url}')`;
-                                    thumb.classList.remove('wp-thumb-loading');
-                                    if (isActive) thumb.innerHTML = '<div class="wp-check"><i data-lucide="check"></i></div>';
-                                    if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
-                                }
-                            }
-                        });
-                    }
-                });
-            }
-
-            // Карточка "Своя"
+        // Карточка «Своя» — свой фон (диалог выбора файла)
+        function createCustomWallpaperCard(current) {
             const isCustom = current && !_wallpapers.find(w => w.filename === current);
             const customPreview = isCustom ? _normalizeBgUrl(launcherSettings.bg_data || current) : null;
-            const customCard = document.createElement('div');
-            customCard.className = 'wp-card' + (isCustom ? ' wp-card-active' : '');
-            customCard.innerHTML = `
+            const card = document.createElement('div');
+            card.className = 'wp-card' + (isCustom ? ' wp-card-active' : '');
+            card.innerHTML = `
                 <div class="wp-thumb wp-thumb-custom" ${customPreview ? `style="background-image:url('${customPreview}')"` : ''}>
                     ${!isCustom ? '<i data-lucide="image"></i>' : '<div class="wp-check"><i data-lucide="check"></i></div>'}
                 </div>
                 <div class="wp-label">Своя</div>`;
-            customCard.onclick = selectBgImage;
-            grid.appendChild(customCard);
+            card.onclick = selectBgImage;
+            return card;
+        }
+
+        // Общая карточка обоев — её используют и сетка (старый стиль), и пикер слева
+        function createWallpaperCard(wp, isActive, onPick) {
+            const card = document.createElement('div');
+            card.className = 'wp-card' + (isActive ? ' wp-card-active' : '');
+            card.innerHTML = `
+                <div class="wp-thumb wp-thumb-loading"></div>
+                <div class="wp-label">${escapeHtml(wp.name)}</div>`;
+            card.onclick = () => onPick(wp);
+
+            const paint = (dataUrl) => {
+                const thumb = card.querySelector('.wp-thumb');
+                if (!thumb) return;
+                thumb.style.backgroundImage = `url('${dataUrl}')`;
+                thumb.classList.remove('wp-thumb-loading');
+                if (isActive) thumb.innerHTML = '<div class="wp-check"><i data-lucide="check"></i></div>';
+                if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
+            };
+
+            if (wp.data_url) {
+                paint(wp.data_url); // повторный рендер — без повторных запросов за thumb
+            } else if (window.pywebview && window.pywebview.api.get_wallpaper_thumb) {
+                window.pywebview.api.get_wallpaper_thumb(wp.filename).then(res => {
+                    if (res && res.success) {
+                        wp.data_url = res.data_url;
+                        paint(res.data_url);
+                    }
+                });
+            }
+            return card;
+        }
+
+        function renderWallpaperGrid() {
+            const grid = document.getElementById('wallpaperGrid');
+            if (grid) {
+                const current = launcherSettings.bg_image;
+                grid.innerHTML = '';
+
+                // Карточка "Нет фона"
+                const noneCard = document.createElement('div');
+                noneCard.className = 'wp-card' + (!current ? ' wp-card-active' : '');
+                noneCard.innerHTML = `<div class="wp-thumb wp-thumb-none"><i data-lucide="x"></i></div><div class="wp-label">Нет</div>`;
+                noneCard.onclick = clearBgImage;
+                grid.appendChild(noneCard);
+
+                // Карточки из wallpapers/
+                _wallpapers.forEach(wp => {
+                    grid.appendChild(createWallpaperCard(wp, current === wp.filename, applyLocalWallpaper));
+                });
+
+                // Карточка "Своя"
+                grid.appendChild(createCustomWallpaperCard(current));
+            }
+
+            // Пикер слева (если открыт) должен показывать актуальное состояние
+            renderWallpaperPicker();
+        }
+
+        // ---- Пикер обоев: левая колонка настроек вместо меню ----
+        function isWallpaperPickerOpen() {
+            const panel = document.getElementById('settingsPanel');
+            return !!panel && panel.classList.contains('wp-mode');
+        }
+
+        function openWallpaperPicker() {
+            const panel = document.getElementById('settingsPanel');
+            if (!panel) return;
+            if (_wallpapers.length === 0) loadWallpapers();
+            // Панель плавно уезжает в левый край окна, внутри — список обоев
+            panel.classList.add('wp-mode');
+            renderWallpaperPicker();
+            if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
+        }
+
+        function closeWallpaperPicker() {
+            const panel = document.getElementById('settingsPanel');
+            if (panel) panel.classList.remove('wp-mode');
+            // switchTab вернёт меню и заголовок вкладки «Лаунчер»
+            switchTab('launcher');
+        }
+
+        function renderWallpaperPicker() {
+            const list = document.getElementById('wallpaperNavGrid');
+            if (!list || !isWallpaperPickerOpen()) return;
+            const current = launcherSettings.bg_image;
+            list.innerHTML = '';
+
+            const noneCard = document.createElement('div');
+            noneCard.className = 'wp-card' + (!current ? ' wp-card-active' : '');
+            noneCard.innerHTML = `<div class="wp-thumb wp-thumb-none"><i data-lucide="x"></i></div><div class="wp-label">Нет фона</div>`;
+            noneCard.onclick = clearBgImage;
+            list.appendChild(noneCard);
+
+            _wallpapers.forEach(wp => {
+                list.appendChild(createWallpaperCard(wp, current === wp.filename, applyLocalWallpaper));
+            });
+            list.appendChild(createCustomWallpaperCard(current));
+            if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
+        }
+
+        // «Старый стиль» — сетка обоев прямо под кнопкой, как раньше
+        function toggleWallpaperOldStyle(on) {
+            const cb = document.getElementById('wpOldStyleCheck');
+            const grid = document.getElementById('wallpaperGrid');
+            if (cb) cb.checked = !!on;
+            if (grid) grid.style.display = on ? '' : 'none';
+            try { localStorage.setItem('arp_wp_old_style', on ? '1' : '0'); } catch (e) {}
         }
 
         function applyLocalWallpaper(wp) {
@@ -10154,6 +10373,11 @@
             applyHideProfiles();
             const hideCb = document.getElementById('hideProfilesCheck');
             if (hideCb) hideCb.checked = !!launcherSettings.hide_profiles;
+
+            // «Старый стиль» обоев (сетка под кнопкой вместо пикера слева)
+            let wpOldStyle = false;
+            try { wpOldStyle = localStorage.getItem('arp_wp_old_style') === '1'; } catch (e) {}
+            toggleWallpaperOldStyle(wpOldStyle);
 
             // Заголовок окна уже в launcherSettings.window_title — отдельный вызов не нужен
             const winTitle = launcherSettings.window_title;
@@ -10748,14 +10972,17 @@
         }
 
         function closeSettings() {
+            // Длительность = анимации settingsSink (0.35s) + запас на кадр
             _closeWithAnim(settingsPanel, () => {
                 settingsPanel.style.display = 'none';
+                // Если закрыли настройки, будучи в пикере обоев — сбрасываем режим
+                settingsPanel.classList.remove('wp-mode');
                 // Очищаем только динамический контент категорий патчей,
                 // не трогая тулбар (поиск + чипы) — он статический HTML.
                 const cats = document.getElementById('patchesCategories');
                 if (cats) cats.innerHTML = '';
                 _lucideObserver.observe(document.body, { childList: true, subtree: true });
-            });
+            }, 360);
         }
 
         async function saveSettings() {
@@ -10871,6 +11098,8 @@
                     return !!el && getComputedStyle(el).display !== 'none';
                 });
             if (blocking) return;
+            // Из пикера обоев ESC сначала возвращает в настройки
+            if (isWallpaperPickerOpen()) { closeWallpaperPicker(); return; }
             closeSettings();
         });
 

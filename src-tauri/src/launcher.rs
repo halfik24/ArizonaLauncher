@@ -68,10 +68,69 @@ pub fn update_server(state: State<'_, AppState>, server_number: u32) -> Result<s
     })
 }
 
+// ==================== IPC-граница фронт ↔ бэк ====================
+//
+// Фронт (и легаси-версия на Python) говорит в `snake_case`, а структуры
+// конфига помечены `#[serde(rename_all = "camelCase")]`. Без конвертации:
+//   * `update_launch_params` падал с «missing field `textureMode`» —
+//     параметры запуска не сохранялись вообще;
+//   * `save_launcher_settings` молча обнулял поля (неизвестные ключи
+//     serde игнорирует) — например, выбранные обои не переживали рестарт.
+const IPC_KEY_PAIRS: &[(&str, &str)] = &[
+    ("texture_mode", "textureMode"),
+    ("color_depth_16", "colorDepth16"),
+    ("allow_hdr", "allowHdr"),
+    ("enable_grass", "enableGrass"),
+    ("auth_cef_enable", "authCefEnable"),
+    ("window_mode", "windowMode"),
+    ("enable_new_grass", "enableNewGrass"),
+    ("old_window", "oldWindow"),
+    ("use_d3dx9_43", "useD3dx943"),
+    ("show_dialog_ids", "showDialogIds"),
+    ("modern_scale", "modernScale"),
+    ("trees_new", "treesNew"),
+    ("bg_image", "bgImage"),
+    ("window_title", "windowTitle"),
+    ("window_size", "windowSize"),
+    ("layout_order", "layoutOrder"),
+];
+
+fn map_ipc_keys(value: serde_json::Value, to_camel: bool) -> serde_json::Value {
+    match value {
+        serde_json::Value::Object(map) => serde_json::Value::Object(
+            map.into_iter()
+                .map(|(key, val)| {
+                    let renamed = IPC_KEY_PAIRS
+                        .iter()
+                        .find(|(snake, camel)| if to_camel { *snake == key.as_str() } else { *camel == key.as_str() })
+                        .map(|(snake, camel)| if to_camel { (*camel).to_string() } else { (*snake).to_string() })
+                        .unwrap_or(key);
+                    (renamed, map_ipc_keys(val, to_camel))
+                })
+                .collect(),
+        ),
+        serde_json::Value::Array(arr) => {
+            serde_json::Value::Array(arr.into_iter().map(|v| map_ipc_keys(v, to_camel)).collect())
+        }
+        other => other,
+    }
+}
+
+/// Ключи из фронта (snake_case) → в формат структур конфига (camelCase).
+fn ipc_keys_to_camel(value: serde_json::Value) -> serde_json::Value {
+    map_ipc_keys(value, true)
+}
+
+/// Ключи из структур конфига (camelCase) → в формат фронта (snake_case).
+fn ipc_keys_to_snake(value: serde_json::Value) -> serde_json::Value {
+    map_ipc_keys(value, false)
+}
+
 #[tauri::command]
 pub fn update_launch_params(state: State<'_, AppState>, params: serde_json::Value) -> Result<serde_json::Value, String> {
     util::update_config(&state, |cfg| {
-        cfg.launch_params = serde_json::from_value(params).map_err(|e| e.to_string())?;
+        cfg.launch_params =
+            serde_json::from_value(ipc_keys_to_camel(params)).map_err(|e| e.to_string())?;
         Ok(())
     })
 }
@@ -79,7 +138,8 @@ pub fn update_launch_params(state: State<'_, AppState>, params: serde_json::Valu
 #[tauri::command]
 pub fn read_launch_params(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
     let cfg = util::lock_config(&state)?;
-    Ok(serde_json::to_value(&cfg.launch_params).map_err(|e| e.to_string())?)
+    let value = serde_json::to_value(&cfg.launch_params).map_err(|e| e.to_string())?;
+    Ok(ipc_keys_to_snake(value))
 }
 
 // ==================== Game Path Commands ====================
@@ -991,14 +1051,16 @@ pub fn open_url(url: String) -> Result<serde_json::Value, String> {
 #[tauri::command]
 pub fn get_launcher_settings(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
     let cfg = util::lock_config(&state)?;
-    Ok(serde_json::json!({"success": true, "data": cfg.launcher_settings}))
+    let data = serde_json::to_value(&cfg.launcher_settings).map_err(|e| e.to_string())?;
+    Ok(serde_json::json!({"success": true, "data": ipc_keys_to_snake(data)}))
 }
 
 #[tauri::command]
 pub fn save_launcher_settings(state: State<'_, AppState>, settings: serde_json::Value) -> Result<serde_json::Value, String> {
     {
         let mut cfg = util::lock_config(&state)?;
-        cfg.launcher_settings = serde_json::from_value(settings).map_err(|e| e.to_string())?;
+        cfg.launcher_settings =
+            serde_json::from_value(ipc_keys_to_camel(settings)).map_err(|e| e.to_string())?;
     }
     state.save_config()?;
     util::ok_true()
