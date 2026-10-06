@@ -565,7 +565,6 @@
             background: rgba(255, 255, 255, 0.08);
             color: rgba(255, 255, 255, 0.6);
         }
-        .version-stable .vs-prompt { display: none; }
         .version-stable .vs-arrow  { color: rgba(255, 255, 255, 0.4); }
         .version-stable .ver-num {
             color: rgba(255, 255, 255, 0.7);
@@ -577,117 +576,6 @@
             font-weight: 600;
             text-shadow: 0 0 6px rgba(0, 255, 130, 0.4);
         }
-
-        /* Тултип-changelog */
-        .version-tooltip {
-            position: fixed;
-            transform: scale(0.92);
-            background: rgba(0, 0, 0, 0.35);
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            border-radius: 6px;
-            padding: 14px 18px;
-            min-width: 360px;
-            max-width: 440px;
-            font-family: 'Consolas', 'Courier New', monospace;
-            font-size: 11px;
-            line-height: 1.7;
-            color: rgba(255, 255, 255, 0.6);
-            text-align: left;
-            opacity: 0;
-            pointer-events: none;
-            transition: opacity 0.25s ease, transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-            z-index: 99999;
-            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
-            backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
-            white-space: normal;
-        }
-        .version-tooltip.visible {
-            opacity: 1;
-            transform: scale(1);
-            pointer-events: auto;
-        }
-        .version-tooltip::before {
-            content: '';
-            position: absolute;
-            top: -6px;
-            left: 50%;
-            transform: translateX(-50%) rotate(45deg);
-            width: 10px;
-            height: 10px;
-            background: rgba(0, 0, 0, 0.35);
-            border-left: 1px solid rgba(255, 255, 255, 0.08);
-            border-top: 1px solid rgba(255, 255, 255, 0.08);
-        }
-        .tt-header {
-            color: rgba(255, 255, 255, 0.4);
-            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-            padding-bottom: 6px;
-            margin-bottom: 8px;
-            display: flex;
-            justify-content: space-between;
-        }
-        .tt-header span:first-child { font-size: 11px; color: rgba(255, 255, 255, 0.5); font-weight: 600; }
-        .tt-header span:last-child { font-size: 10px; color: rgba(255, 255, 255, 0.25); }
-        .tt-line {
-            opacity: 0;
-            transform: translateX(-4px);
-            transition: opacity 0.2s, transform 0.2s;
-            display: flex;
-            align-items: center;
-        }
-        .version-tooltip.visible .tt-line { opacity: 1; transform: translateX(0); }
-        .version-tooltip.visible .tt-line:nth-child(2)  { transition-delay: 0.05s; }
-        .version-tooltip.visible .tt-line:nth-child(3)  { transition-delay: 0.15s; }
-        .version-tooltip.visible .tt-line:nth-child(4)  { transition-delay: 0.25s; }
-        .version-tooltip.visible .tt-line:nth-child(5)  { transition-delay: 0.35s; }
-        .version-tooltip.visible .tt-line:nth-child(6)  { transition-delay: 0.45s; }
-        .version-tooltip.visible .tt-line:nth-child(7)  { transition-delay: 0.55s; }
-        .version-tooltip.visible .tt-line:nth-child(8)  { transition-delay: 0.65s; }
-        .version-tooltip.visible .tt-line:nth-child(9)  { transition-delay: 0.75s; }
-        .version-tooltip.visible .tt-line:nth-child(10) { transition-delay: 0.85s; }
-        .version-tooltip.visible .tt-line:nth-child(11) { transition-delay: 0.95s; }
-        .version-tooltip.visible .tt-line:nth-child(12) { transition-delay: 1.05s; }
-        .version-tooltip.visible .tt-line:nth-child(13) { transition-delay: 1.15s; }
-        .version-tooltip.visible .tt-line:nth-child(14) { transition-delay: 1.25s; }
-        .tt-feat svg[data-lucide] { color: #4ade80; width: 14px; height: 14px; }
-        .tt-fix  svg[data-lucide] { color: #fbbf24; width: 14px; height: 14px; }
-        .tt-add  svg[data-lucide] { color: #4fc3f7; width: 14px; height: 14px; }
-        .tt-feat svg[data-lucide], .tt-fix svg[data-lucide], .tt-add svg[data-lucide] {
-            vertical-align: -2px;
-            margin-right: 6px;
-            flex-shrink: 0;
-        }
-        .tt-easter {
-            margin-top: 8px;
-            padding-top: 6px;
-            border-top: 1px solid rgba(255, 255, 255, 0.08);
-            color: rgba(255, 255, 255, 0.35);
-            font-size: 10.5px;
-            opacity: 0;
-            transition: opacity 0.5s;
-        }
-        .version-tooltip.visible .tt-easter { opacity: 1; transition-delay: 1.6s; }
-
-        /* Контейнер пасхалки под бейджем */
-        .ver-easter-output {
-            position: absolute;
-            top: calc(100% + 12px + 200px);
-            left: 50%;
-            transform: translateX(-50%);
-            font-family: 'Consolas', 'Courier New', monospace;
-            font-size: 10px;
-            color: rgba(255, 180, 100, 0.85);
-            text-align: left;
-            min-width: 380px;
-            max-width: 460px;
-            pointer-events: none;
-            opacity: 0;
-            transition: opacity 0.3s;
-            white-space: pre;
-            z-index: 10000;
-        }
-        .ver-easter-output.visible { opacity: 1; }
 
         /* Поле ввода никнейма и выбора сервера */
         .nickname-section {
@@ -4729,16 +4617,7 @@
         .fl-welcome-ver .version-stable-text {
             font-size: 11px;
         }
-        .fl-welcome-ver .version-tooltip {
-            min-width: 320px;
-            max-width: 360px;
-            font-size: 10px;
-        }
-        .fl-welcome-ver .ver-easter-output {
-            min-width: 320px;
-            max-width: 360px;
-            font-size: 9px;
-        }
+        
         .fl-welcome-desc {
             font-family: 'Montserrat Alternates', sans-serif;
             font-size: 13px; color: rgba(255,255,255,0.45);
@@ -5247,23 +5126,9 @@
                     <div class="title">Arizona RP</div>
                     <div class="subtitle">
                         <span>Launcher</span>
-                        <div class="version-stable" data-ver-badge onclick="onVersionBadgeClick(event, this)">
-                            <span class="vs-prompt">$</span>
+                        <div class="version-stable">
                             <span class="vs-arrow">ver</span>
-                            <span class="ver-num">v1.8.2</span>
-                            <div class="version-tooltip">
-                                <div class="tt-header">
-                                    <span>Что нового в v1.8.2</span>
-                                    <span>обновление</span>
-                                </div>
-                                <div class="tt-line tt-add"><i data-lucide="plus"></i>Кэширование серверов для быстрой загрузки</div>
-                                <div class="tt-line tt-add"><i data-lucide="plus"></i>Лаунчер теперь не жрёт много GPU и CPU</div>
-                                <div class="tt-line tt-fix"><i data-lucide="wrench"></i>Исправлен выбор сервера</div>
-                                <div class="tt-line tt-fix"><i data-lucide="wrench"></i>Синхронизация кнопок CDN</div>
-                                <div class="tt-line tt-fix"><i data-lucide="wrench"></i>Плавное переключение модалок</div>
-                                <div class="tt-easter">Пасхалка: кликни 5 раз на версию</div>
-                            </div>
-                            <div class="ver-easter-output"></div>
+                            <span class="ver-num">v2.0.0 dev</span>
                         </div>
             </div>
         </div>
@@ -5768,7 +5633,7 @@
                     <div class="debug-section-title" style="margin-top:10px;"><i data-lucide="monitor"></i> Лаунчер</div>
                     <div class="debug-row">
                         <span class="debug-label">Версия приложения</span>
-                        <span class="debug-value" id="dbgAppVersion">v1.8.2</span>
+                        <span class="debug-value" id="dbgAppVersion">v2.0.0 dev</span>
                     </div>
                     <div class="debug-row">
                         <span class="debug-label">Конфиг</span>
@@ -5929,7 +5794,7 @@
                             <i data-lucide="hard-drive"></i> Установленные
                         </button>
                         <button id="libSubCatalog" class="ml-sub-tab" onclick="switchLibSub('catalog')">
-                            <i data-lucide="cloud-download"></i> Каталог
+                            <i data-lucide="package"></i> Каталог
                         </button>
                     </div>
 
@@ -5966,17 +5831,6 @@
                     <div id="patchPresetsStatus" style="font-family:'Montserrat Alternates';font-size:12px;color:rgba(255,255,255,0.35);min-height:16px;"></div>
                     <div id="patchPresetsGrid" class="mods-grid">
                         <!-- Заполняется через JS -->
-                    </div>
-                </div>
-
-                <!-- Прогресс установки патчей (скрыт до начала) -->
-                <div id="patchInstallProgress" style="display:none; margin-top:16px; padding:12px; background:rgba(255,255,255,0.02); border-radius:8px;">
-                    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-                        <div id="patchProgressMsg" style="font-family:'Montserrat Alternates';font-size:11px;color:rgba(255,255,255,0.8);">Подготовка...</div>
-                        <div id="patchProgressPct" style="font-family:'Montserrat Alternates';font-size:11px;font-weight:600;color:rgba(130,220,150,1);">0%</div>
-                    </div>
-                    <div style="height:6px;background:rgba(255,255,255,0.1);border-radius:3px;overflow:hidden;">
-                        <div id="patchProgressFill" style="width:0%;height:100%;background:linear-gradient(90deg,rgba(130,220,150,1),rgba(80,200,120,1));border-radius:3px;transition:width 0.3s;"></div>
                     </div>
                 </div>
             </div>
@@ -6363,6 +6217,39 @@
                 .replace(/>/g, '&gt;')
                 .replace(/"/g, '&quot;')
                 .replace(/'/g, '&#39;');
+        }
+
+        /** Открыть внешнюю ссылку: в приложении — бэкендом (WebView2 не даёт window.open), в браузере — как есть. */
+        function openExternal(url) {
+            if (window.pywebview && window.pywebview.api.open_url) {
+                window.pywebview.api.open_url(url).then(function (r) {
+                    if (!r || !r.success) showNotification('Не удалось открыть ссылку', 'error');
+                }).catch(function () {
+                    showNotification('Не удалось открыть ссылку', 'error');
+                });
+                return;
+            }
+            window.open(url, '_blank');
+        }
+
+        /** Служебные ответы бэка, которые не стоит показывать пользователю сырыми. */
+        function apiMsg(msg) {
+            if (msg === 'Not implemented' || msg === 'Not implemented yet') return 'Функция пока не реализована';
+            return msg || '';
+        }
+
+        /** Ошибки запуска игры: код из бэка → текст по-русски. */
+        const START_ERRORS = {
+            LAUNCHER_MISSING: 'Лаунчер игры не найден — укажите его путь в настройках',
+            GAME_MISSING: 'Путь к игре не задан или неверен — укажите его в настройках',
+            NICKNAME_EMPTY: 'Введите никнейм',
+            NICKNAME_INVALID: 'Ник состоит только из недопустимых символов',
+            LAUNCHER_CRASHED: 'Лаунчер игры аварийно завершился',
+            EXCEPTION: 'Не удалось запустить игру'
+        };
+        function startErrorMessage(result) {
+            if (!result) return 'Неизвестная ошибка';
+            return START_ERRORS[result.code] || apiMsg(result.message) || 'Неизвестная ошибка';
         }
 
         async function _loadProfiles() {
@@ -6811,7 +6698,7 @@
                                         ${news.date ? `<div class="news-item-date">${escapeHtml(news.date)}</div>` : ''}
                                         <div class="news-item-link-hint"><i data-lucide="link"></i> Открыть релиз на GitHub</div>`;
                                     newsItem.addEventListener('click', () => {
-                                        window.open('https://github.com/worteng/ArizonaLauncher/releases', '_blank');
+                                        openExternal('https://github.com/worteng/ArizonaLauncher/releases');
                                     });
                                     launcherNewsDiv.appendChild(newsItem);
                                 });
@@ -6852,57 +6739,6 @@
                 }
             } catch (error) {
                 console.error('Ошибка загрузки серверов:', error);
-            }
-        }
-
-        async function loadLauncherNews() {
-            const launcherNewsDiv = document.getElementById('launcherNews');
-            showSkeleton(launcherNewsDiv, 6);
-
-            try {
-                if (!window.pywebview || !window.pywebview.api || !window.pywebview.api.get_launcher_news) {
-                    throw new Error("Python API недоступен");
-                }
-
-                const result = await window.pywebview.api.get_launcher_news();
-
-                if (!result.success) {
-                    throw new Error(result.message || "Ошибка загрузки");
-                }
-
-                const text = result.text;
-                const newsBlocks = parseNewsFromText(text);
-
-                launcherNewsDiv.innerHTML = '';
-
-                if (newsBlocks.length > 0) {
-                    newsBlocks.forEach((news, idx) => {
-                        const newsItem = document.createElement('div');
-                        newsItem.className = 'news-item news-item-clickable';
-                        const newsId = 'news_' + idx + '_' + (news.title || '').replace(/\W/g, '').substring(0, 20);
-                        newsItem.dataset.newsId = newsId;
-                        newsItem.innerHTML = `
-                            <div class="news-item-title">${escapeHtml(news.title)}</div>
-                            <div class="news-item-content">${escapeHtml(news.content)}</div>
-                            ${news.date ? `<div class="news-item-date">${escapeHtml(news.date)}</div>` : ''}
-                            <div class="news-item-link-hint"><i data-lucide="link"></i> Открыть релиз на GitHub</div>`;
-                        newsItem.addEventListener('click', () => {
-                            window.open('https://github.com/worteng/ArizonaLauncher/releases', '_blank');
-                        });
-                        launcherNewsDiv.appendChild(newsItem);
-                    });
-                } else {
-                    launcherNewsDiv.innerHTML = '<div class="news-loading">Нет новостей</div>';
-                }
-
-            } catch (error) {
-                console.error("Ошибка загрузки новостей:", error);
-                showErrorWithRetry(launcherNewsDiv, 'Не удалось загрузить новости: ' + (error.message || ''), () => loadLauncherNews());
-            }
-
-            const unread = await updateNewsBadge();
-            if (unread > 0) {
-                startNewsPeek();
             }
         }
 
@@ -6978,14 +6814,14 @@
                 item.className = 'cs-item' + (selectedServer && String(server.number) === String(selectedServer.number) ? ' selected' : '');
                 item.dataset.value = server.number;
                 const iconHtml = server.icon
-                    ? `<img class="cs-item-icon" src="${server.icon}" alt="" onerror="this.style.display='none'">`
+                    ? `<img class="cs-item-icon" src="${escapeHtml(server.icon)}" alt="" onerror="this.style.display='none'">`
                     : `<span class="cs-item-num">#${server.number}</span>`;
                 const queueHtml = server.queue > 0 ? `<span style="font-size:10px;color:rgba(255,185,0,0.8);margin-left:4px;"><i data-lucide="loader"></i>${server.queue}</span>` : '';
-                const recHtml = server.recomend ? `<span style="font-size:9px;color:rgba(0,210,100,0.8);margin-left:4px;"><i data-lucide="star"></i></span>` : '';
+                const recHtml = server.recommended ? `<span style="font-size:9px;color:rgba(0,210,100,0.8);margin-left:4px;"><i data-lucide="star"></i></span>` : '';
                 item.innerHTML = `
                     <div class="cs-item-top">
                         ${iconHtml}
-                        <span class="cs-item-name">${server.name}${recHtml}</span>
+                        <span class="cs-item-name">${escapeHtml(server.name)}${recHtml}</span>
                         <span class="cs-item-count">${server.online}/${server.maxplayers}${queueHtml}</span>
                     </div>
                     <div class="cs-item-bar-wrap">
@@ -7077,7 +6913,7 @@
                             <div class="news-item-link-hint"><i data-lucide="link"></i> Открыть релиз на GitHub</div>
                         `;
                         newsItem.addEventListener('click', () => {
-                            window.open('https://github.com/worteng/ArizonaLauncher/releases', '_blank');
+                            openExternal('https://github.com/worteng/ArizonaLauncher/releases');
                         });
                         launcherNewsDiv.appendChild(newsItem);
                     });
@@ -7315,10 +7151,10 @@
                             // Запускаем слежение за GTA — развернём окно когда игра закроется
                             startGtaWatcher();
                         } else {
-                            setLaunchStatus('Ошибка: ' + result.message, 0);
+                            setLaunchStatus('Ошибка: ' + startErrorMessage(result), 0);
                             await new Promise(resolve => setTimeout(resolve, 1800));
                             hideLaunchScreen();
-                            showNotification('Ошибка: ' + result.message, 'error');
+                            showNotification('Ошибка: ' + startErrorMessage(result), 'error');
                         }
                     } else {
                         // Демо-режим
@@ -7560,7 +7396,7 @@
             try {
                 const result = await window.pywebview.api.get_moonloader_scripts();
                 if (!result.success) {
-                    pane.innerHTML = '<div class="mods-empty"><i data-lucide="x-circle"></i> ' + result.message + '</div>';
+                    pane.innerHTML = '<div class="mods-empty"><i data-lucide="x-circle"></i> ' + apiMsg(result.message) + '</div>';
                     return;
                 }
                 if (result.scripts.length === 0) {
@@ -7627,7 +7463,7 @@
                 if (!result.success) {
                     btn.classList.toggle('on', enabled);
                     btn.dataset.enabled = String(enabled);
-                    showNotification('Ошибка: ' + result.message, 'error');
+                    showNotification('Ошибка: ' + apiMsg(result.message), 'error');
                 }
             } catch(e) {
                 btn.classList.toggle('on', enabled);
@@ -8693,7 +8529,7 @@
                 if (window.pywebview && window.pywebview.api.fetch_others_catalog) {
                     const result = await window.pywebview.api.fetch_others_catalog();
                     if (result && result.success) items = result.data;
-                    else if (result) { lastError = result.message; status.innerHTML = '<i data-lucide="x-circle"></i> ' + result.message; }
+                    else if (result) { lastError = result.message; status.innerHTML = '<i data-lucide="x-circle"></i> ' + apiMsg(result.message); }
                 }
             } catch(e) { lastError = e.message; }
 
@@ -8927,7 +8763,7 @@
                     if (!result.success) {
                         document.getElementById('patchInstallProgress').style.display = 'none';
                         document.getElementById('patchStatusAlert').style.display = 'block';
-                        showNotification('Ошибка: ' + result.message, 'error');
+                        showNotification('Ошибка: ' + apiMsg(result.message), 'error');
                     }
                 } else {
                     throw new Error('API недоступно');
@@ -9114,7 +8950,7 @@
                         closeFolderModal();
                         openInstallModal(result.folder, result.missing);
                     } else if (result.message !== 'Папка не выбрана') {
-                        showNotification(result.message || 'Ошибка', 'error');
+                        showNotification(apiMsg(result.message) || 'Ошибка', 'error');
                     }
                 } else {
                     showNotification('Функция доступна только в приложении', 'error');
@@ -9692,7 +9528,7 @@
                     if (result.success) {
                         setImportStatus('<i data-lucide="check-circle"></i> ' + result.message, '#0f0');
                     } else {
-                        setImportStatus(result.message === 'Отменено' ? '' : '<i data-lucide="x-circle"></i> ' + result.message, '#f44');
+                        setImportStatus(result.message === 'Отменено' ? '' : '<i data-lucide="x-circle"></i> ' + apiMsg(result.message), '#f44');
                     }
                 } else {
                     setImportStatus('<i data-lucide="alert-triangle"></i> Функция доступна только в приложении', '#ff0');
@@ -9707,7 +9543,7 @@
                 if (window.pywebview && window.pywebview.api.import_patches) {
                     const result = await window.pywebview.api.import_patches();
                     if (!result.success) {
-                        setImportStatus(result.message === 'Отменено' ? '' : '<i data-lucide="x-circle"></i> ' + result.message, '#f44');
+                        setImportStatus(result.message === 'Отменено' ? '' : '<i data-lucide="x-circle"></i> ' + apiMsg(result.message), '#f44');
                         return;
                     }
                     patchesData = JSON.parse(JSON.stringify(result.data));
@@ -9774,7 +9610,7 @@
                 showNotification('<i data-lucide="check-circle"></i> Конфиг восстановлен из бэкапа', 'success');
                 loadBackupsList();
             } else {
-                showNotification('<i data-lucide="x-circle"></i> Ошибка: ' + result.message, 'error');
+                showNotification('<i data-lucide="x-circle"></i> Ошибка: ' + apiMsg(result.message), 'error');
             }
         }
 
@@ -9799,7 +9635,7 @@
             }
             const result = await window.pywebview.api.preview_patches_backup(filename);
             if (!result.success) {
-                showNotification('Ошибка: ' + result.message, 'error');
+                showNotification('Ошибка: ' + apiMsg(result.message), 'error');
                 return;
             }
             const typeLabel = result.type === 'before_import' ? 'Перед импортом'
@@ -10154,7 +9990,7 @@
                         applyLauncherSettings();
                         renderWallpaperGrid();
                     } else if (result.message !== 'Отменено') {
-                        showNotification('Ошибка: ' + result.message, 'error');
+                        showNotification('Ошибка: ' + apiMsg(result.message), 'error');
                     }
                 } else {
                     showNotification('Функция доступна только в приложении', 'error');
@@ -10366,7 +10202,7 @@
                         _patchesSchema = r.data;
                         return _patchesSchema;
                     }
-                    console.warn('[patches] схема не загружена с GitHub, fallback:', r.message);
+                    console.warn('[patches] схема не загружена с GitHub, fallback:', apiMsg(r.message));
                 }
             } catch (e) {
                 console.warn('[patches] ошибка загрузки схемы:', e);
@@ -10514,12 +10350,25 @@
                     cb.style.display = 'none';
                     const toggle = document.createElement('div');
                     toggle.className = 's-toggle' + (cb.checked ? ' on' : '');
+                    // Кастомный тумблер вместо чекбокса — дублируем ему роль/фокус,
+                    // иначе настройками патчей нельзя управлять с клавиатуры.
+                    toggle.setAttribute('role', 'switch');
+                    toggle.setAttribute('aria-label', s.title || s.id);
+                    toggle.setAttribute('aria-checked', String(cb.checked));
+                    toggle.tabIndex = 0;
                     cb.addEventListener('change', () => {
                         toggle.classList.toggle('on', cb.checked);
+                        toggle.setAttribute('aria-checked', String(cb.checked));
                         patchesData[s.id] = cb.checked;
                         checkPatchesConflicts();
                     });
                     toggle.onclick = () => { cb.checked = !cb.checked; cb.dispatchEvent(new Event('change')); };
+                    toggle.onkeydown = (e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            toggle.click();
+                        }
+                    };
                     control.appendChild(cb);
                     control.appendChild(toggle);
                     break;
@@ -11011,6 +10860,19 @@
                 }
             }
         }
+
+        // ESC закрывает настройки, если поверх них нет другой открытой модалки
+        document.addEventListener('keydown', function (e) {
+            if (e.key !== 'Escape' || !settingsPanel) return;
+            if (settingsPanel.style.display !== 'flex') return;
+            const blocking = ['__genericModal', 'bitsEditorOverlay', 'folderModal', 'modsModal', 'drag-overlay']
+                .some(id => {
+                    const el = document.getElementById(id);
+                    return !!el && getComputedStyle(el).display !== 'none';
+                });
+            if (blocking) return;
+            closeSettings();
+        });
 
         // Запуск при загрузке
         window.addEventListener('pywebviewready', function() {
@@ -11544,7 +11406,7 @@
                         _setDebugEl('dbgPythonVersion',  d.python_version  || '—');
                         
                         // Лаунчер
-                        _setDebugEl('dbgAppVersion',     d.app_version     || 'v1.8.2');
+                        _setDebugEl('dbgAppVersion',     d.app_version     || 'v2.0.0 dev');
                         _setDebugEl('dbgConfigPath',     d.config_path     || '—');
                         _setDebugEl('dbgDocsPath',       d.docs_path       || '—');
                         
@@ -11576,7 +11438,7 @@
             _setDebugEl('dbgOsVersion',         'Доступно только в приложении');
             _setDebugEl('dbgArchitecture',      'Доступно только в приложении');
             _setDebugEl('dbgPythonVersion',     'Доступно только в приложении');
-            _setDebugEl('dbgAppVersion',        'v1.8.2');
+            _setDebugEl('dbgAppVersion',        'v2.0.0 dev');
             _setDebugEl('dbgConfigPath',        'Доступно только в приложении');
             _setDebugEl('dbgDocsPath',          'Доступно только в приложении');
             _setDebugEl('dbgGamePath',          'Доступно только в приложении');
@@ -11602,7 +11464,7 @@
             try {
                 if (window.pywebview && window.pywebview.api.open_data_folder) {
                     const r = await window.pywebview.api.open_data_folder();
-                    if (!r.success) showNotification('Ошибка: ' + r.message, 'error');
+                    if (!r.success) showNotification('Ошибка: ' + apiMsg(r.message), 'error');
                 } else {
                     showNotification('Доступно только в приложении', 'error');
                 }
@@ -11613,7 +11475,7 @@
             try {
                 if (window.pywebview && window.pywebview.api.open_log_file) {
                     const r = await window.pywebview.api.open_log_file();
-                    if (!r.success) showNotification('Ошибка: ' + r.message, 'error');
+                    if (!r.success) showNotification('Ошибка: ' + apiMsg(r.message), 'error');
                 } else {
                     showNotification('Доступно только в приложении', 'error');
                 }
@@ -11744,7 +11606,7 @@
                     <div class="fl-welcome-ver">
                         Arizona RP Launcher · 
                         <div class="version-stable">
-                            <span class="version-stable-text">v1.8.2</span>
+                            <span class="version-stable-text">v2.0.0 dev</span>
                         </div>
                     </div>
                     <div class="fl-welcome-desc">Неофициальный лаунчер с расширенными возможностями: профили, темы, моды и многое другое. Давай быстро настроим всё для тебя.</div>
@@ -12218,99 +12080,6 @@
                 panel.style.visibility = origVisibility;
             });
         }
-
-        // ── Пасхалка на бейдже версии: 5 кликов → ASCII-консоль ──
-        const _verBadgeState = new WeakMap();
-        function onVersionBadgeClick(ev, badgeEl) {
-            ev.stopPropagation();
-            let state = _verBadgeState.get(badgeEl);
-            if (!state) {
-                state = { count: 0, fired: false, outputEl: badgeEl.querySelector('.ver-easter-output') };
-                _verBadgeState.set(badgeEl, state);
-            }
-            if (state.fired) return;
-            state.count++;
-            if (state.count < 5) {
-                const filled = '█'.repeat(state.count);
-                const empty  = '░'.repeat(5 - state.count);
-                state.outputEl.textContent = `[${filled}${empty}] ${state.count}/5`;
-                state.outputEl.classList.add('visible');
-                return;
-            }
-            state.fired = true;
-            triggerVersionEasterEgg(state.outputEl, badgeEl);
-        }
-        function triggerVersionEasterEgg(outputEl, badgeEl) {
-            const messages = [
-                '> ArizonaLauncher v1.8.2',
-                '> by halfik (worteng) · 2026',
-                '> open source: github.com/worteng/ArizonaLauncher',
-                '> # передаю привет Эиру',
-                '> если что я делал на 10 винде так что совместимость обеспечена',
-                '> print("Hello, Arizona!")',
-                '> боги любят яблоки, л',
-                '> тут разве был текст?',
-                '> echo "Спасибо что пользуешься лаунчером!"',
-                '> старлайт не ела детей',
-                '> exit 0',
-                '> ▮'
-            ];
-            outputEl.textContent = '';
-            outputEl.classList.add('visible');
-            let i = 0;
-            const interval = setInterval(() => {
-                if (i >= messages.length) {
-                    clearInterval(interval);
-                    setTimeout(() => {
-                        outputEl.classList.remove('visible');
-                        setTimeout(() => {
-                            _verBadgeState.delete(badgeEl);
-                        }, 300);
-                    }, 1500);
-                    return;
-                }
-                outputEl.textContent += (i === 0 ? '' : '\n') + messages[i];
-                i++;
-            }, 600);
-        }
-
-        document.querySelectorAll('[data-ver-badge]').forEach(badge => {
-            badge.addEventListener('mouseleave', () => {
-                const state = _verBadgeState.get(badge);
-                if (!state || state.fired) return;
-                state.count = 0;
-                state.outputEl.classList.remove('visible');
-                setTimeout(() => {
-                    const s = _verBadgeState.get(badge);
-                    if (s && !s.fired && s.outputEl.textContent.startsWith('[')) {
-                        s.outputEl.textContent = '';
-                    }
-                }, 300);
-            });
-        });
-
-        document.querySelectorAll('.version-stable').forEach(badge => {
-            const tt = badge.querySelector('.version-tooltip');
-            if (!tt) return;
-            document.body.appendChild(tt);
-            if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
-            badge.addEventListener('mouseenter', () => {
-                const rect = badge.getBoundingClientRect();
-                const ttW = tt.offsetWidth || 380;
-                const ttH = tt.offsetHeight || 200;
-                let left = rect.left + rect.width / 2 - ttW / 2;
-                let top = rect.bottom + 10;
-                if (left < 10) left = 10;
-                if (left + ttW > window.innerWidth - 10) left = window.innerWidth - ttW - 10;
-                if (top + ttH > window.innerHeight - 10) top = rect.top - ttH - 10;
-                tt.style.left = left + 'px';
-                tt.style.top = top + 'px';
-                tt.classList.add('visible');
-            });
-            badge.addEventListener('mouseleave', () => {
-                tt.classList.remove('visible');
-            });
-        });
 
         /* ── Layout editor (inline mode) ── */
         let _layoutPosition = 'center';

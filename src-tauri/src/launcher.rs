@@ -909,7 +909,7 @@ pub fn get_debug_info(state: State<'_, AppState>) -> Result<serde_json::Value, S
             "docs_path": state.documents_path.to_string_lossy(),
             "game_path": cfg.game_path,
             "launcher_path": cfg.launcher_path,
-            "app_version": "v2.0.0",
+            "app_version": "v2.0.0 dev",
             "launcher_version": "v8",
             "last_nickname": cfg.last_nickname,
             "last_server": cfg.last_server,
@@ -972,6 +972,18 @@ pub fn open_data_folder(state: State<'_, AppState>) -> Result<serde_json::Value,
 pub fn open_log_file() -> Result<serde_json::Value, String> {
     // TODO: find log path
     Ok(serde_json::json!({"success": false, "message": "Not implemented"}))
+}
+
+/// Открыть ссылку во внешнем браузере (новости, релизы, Telegram).
+/// WebView2 не даёт фронту `window.open`, поэтому это делает бэкенд.
+#[tauri::command]
+pub fn open_url(url: String) -> Result<serde_json::Value, String> {
+    let url = url.trim();
+    if !(url.starts_with("https://") || url.starts_with("http://")) {
+        return Ok(serde_json::json!({"success": false, "message": "Недопустимый адрес"}));
+    }
+    open::that(url).map_err(|e| e.to_string())?;
+    util::ok_true()
 }
 
 // ==================== Settings ====================

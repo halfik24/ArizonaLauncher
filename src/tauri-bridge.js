@@ -53,8 +53,98 @@
   "uninstall_library": ["name"],
   "install_other_file": ["url", "filename", "destination"],
   "remove_other_file": ["filename", "destination"],
-  "check_other_installed": ["filename", "destination"]
+  "check_other_installed": ["filename", "destination"],
+  "open_url": ["url"]
   };
+
+  // Имена реальных #[tauri::command] из src-tauri/src/launcher.rs.
+  // Всё, чего здесь нет, прокси НЕ выдаёт: фронт пишет
+  // if (window.pywebview.api.select_game_path) {...} и должен попадать
+  // в свою запасную ветку «доступно только в приложении».
+  var KNOWN = [
+    "get_config",
+    "get_saved_data",
+    "get_init_data",
+    "update_nickname",
+    "update_server",
+    "update_launch_params",
+    "read_launch_params",
+    "auto_detect_paths",
+    "set_game_paths",
+    "select_game_path",
+    "start_game",
+    "is_gta_running",
+    "get_servers",
+    "get_servers_and_news",
+    "get_launcher_news",
+    "get_read_news_ids",
+    "save_read_news_ids",
+    "get_launcher_version",
+    "check_launcher_update",
+    "get_install_action",
+    "get_install_action_api",
+    "check_patches_available_api",
+    "fetch_image_as_base64",
+    "get_debug_info",
+    "minimize_window",
+    "minimize_to_tray",
+    "restore_window",
+    "open_game_folder",
+    "open_data_folder",
+    "open_log_file",
+    "open_url",
+    "get_launcher_settings",
+    "save_launcher_settings",
+    "get_window_title",
+    "set_window_title",
+    "get_window_size",
+    "save_layout_order",
+    "get_layout_order",
+    "get_profiles",
+    "save_profiles",
+    "check_patches_status",
+    "check_patches_files",
+    "read_patches",
+    "write_patches",
+    "list_patches_backups",
+    "restore_patches_backup",
+    "delete_patches_backup",
+    "preview_patches_backup",
+    "download_and_install_patches",
+    "get_patches_latest_version",
+    "check_patches_available",
+    "check_patches_update_status",
+    "export_patches",
+    "import_patches",
+    "install_patches_file",
+    "fetch_patch_presets",
+    "install_patch_preset",
+    "fetch_patches_schema",
+    "check_update_api",
+    "download_update_api",
+    "start_launcher_install",
+    "get_moonloader_scripts",
+    "toggle_moonloader_script",
+    "delete_moonloader_script",
+    "open_moonloader_folder",
+    "fetch_moonloader_catalog",
+    "install_moonloader_script",
+    "install_lua_file",
+    "fetch_libraries_catalog",
+    "list_installed_libraries",
+    "install_library",
+    "uninstall_library",
+    "fetch_others_catalog",
+    "install_other_file",
+    "remove_other_file",
+    "check_other_installed",
+    "check_tray_support",
+    "open_telegram_share",
+    "get_wallpapers",
+    "get_wallpaper_thumb",
+    "get_wallpaper_full",
+    "select_bg_image"
+  ];
 
   function toCamel(s) {
     return s.replace(/_([a-z0-9])/g, function (_, c) { return c.toUpperCase(); });
@@ -90,6 +180,9 @@
   }
 
   function call(cmd, args) {
+    if (KNOWN.indexOf(cmd) < 0) {
+      return Promise.reject(new Error('[tauri-bridge] команда "' + cmd + '" не существует'));
+    }
     var invoke = resolveInvoke();
     if (!invoke) {
       return Promise.reject(new Error('[tauri-bridge] window.__TAURI__ недоступен'));
@@ -97,13 +190,17 @@
     return invoke(cmd, buildPayload(cmd, args));
   }
 
-  // Прокси: возвращает функцию для ЛЮБОГО имени — проверки вида
-  // if (window.pywebview.api.some_method) всегда истинны (как в pywebview)
+  // Прокси: для известной команды — функция, для неизвестной — undefined.
+  // Тогда проверки вида if (window.pywebview.api.some_method) ведут себя
+  // как в браузере: фронт уходит в свою запасную ветку, а не получает
+  // reject от Tauri «command not found».
   var api = new Proxy({}, {
     get: function (_, method) {
       if (typeof method === 'symbol') return undefined;
+      var name = String(method);
+      if (KNOWN.indexOf(name) < 0) return undefined;
       return function () {
-        return call(String(method), Array.prototype.slice.call(arguments));
+        return call(name, Array.prototype.slice.call(arguments));
       };
     }
   });

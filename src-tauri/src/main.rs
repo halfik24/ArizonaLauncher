@@ -100,6 +100,7 @@ fn main() {
             launcher::remove_other_file,
             launcher::check_other_installed,
             launcher::open_telegram_share,
+            launcher::open_url,
             launcher::check_tray_support,
         ])
         .run(tauri::generate_context!())
