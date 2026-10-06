@@ -1,4 +1,5 @@
 use crate::config::{AppState, LauncherConfig};
+use crate::util;
 use std::path::PathBuf;
 use tauri::{Manager, State};
 
@@ -6,7 +7,7 @@ use tauri::{Manager, State};
 
 #[tauri::command]
 pub fn get_config(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
-    let cfg = state.config.lock().map_err(|e| e.to_string())?;
+    let cfg = util::lock_config(&state)?;
     let paths_ok = !cfg.game_path.is_empty()
         && !cfg.launcher_path.is_empty()
         && std::path::Path::new(&cfg.game_path).exists()
@@ -24,7 +25,7 @@ pub fn get_config(state: State<'_, AppState>) -> Result<serde_json::Value, Strin
 
 #[tauri::command]
 pub fn get_saved_data(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
-    let cfg = state.config.lock().map_err(|e| e.to_string())?;
+    let cfg = util::lock_config(&state)?;
     let paths_ok = !cfg.game_path.is_empty() && !cfg.launcher_path.is_empty();
     Ok(serde_json::json!({
         "success": true,
@@ -37,7 +38,7 @@ pub fn get_saved_data(state: State<'_, AppState>) -> Result<serde_json::Value, S
 
 #[tauri::command]
 pub fn get_init_data(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
-    let cfg = state.config.lock().map_err(|e| e.to_string())?;
+    let cfg = util::lock_config(&state)?;
     let paths_ok = !cfg.game_path.is_empty() && !cfg.launcher_path.is_empty();
     Ok(serde_json::json!({
         "success": true,
@@ -53,37 +54,31 @@ pub fn get_init_data(state: State<'_, AppState>) -> Result<serde_json::Value, St
 
 #[tauri::command]
 pub fn update_nickname(state: State<'_, AppState>, nickname: String) -> Result<serde_json::Value, String> {
-    {
-        let mut cfg = state.config.lock().map_err(|e| e.to_string())?;
+    util::update_config(&state, |cfg| {
         cfg.last_nickname = nickname;
-    }
-    state.save_config()?;
-    Ok(serde_json::json!({"success": true}))
+        Ok(())
+    })
 }
 
 #[tauri::command]
 pub fn update_server(state: State<'_, AppState>, server_number: u32) -> Result<serde_json::Value, String> {
-    {
-        let mut cfg = state.config.lock().map_err(|e| e.to_string())?;
+    util::update_config(&state, |cfg| {
         cfg.last_server = server_number;
-    }
-    state.save_config()?;
-    Ok(serde_json::json!({"success": true}))
+        Ok(())
+    })
 }
 
 #[tauri::command]
 pub fn update_launch_params(state: State<'_, AppState>, params: serde_json::Value) -> Result<serde_json::Value, String> {
-    {
-        let mut cfg = state.config.lock().map_err(|e| e.to_string())?;
+    util::update_config(&state, |cfg| {
         cfg.launch_params = serde_json::from_value(params).map_err(|e| e.to_string())?;
-    }
-    state.save_config()?;
-    Ok(serde_json::json!({"success": true}))
+        Ok(())
+    })
 }
 
 #[tauri::command]
 pub fn read_launch_params(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
-    let cfg = state.config.lock().map_err(|e| e.to_string())?;
+    let cfg = util::lock_config(&state)?;
     Ok(serde_json::to_value(&cfg.launch_params).map_err(|e| e.to_string())?)
 }
 
@@ -123,13 +118,13 @@ fn auto_detect_game_paths_inner(cfg: &mut LauncherConfig) -> bool {
 #[tauri::command]
 pub fn auto_detect_paths(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
     let found = {
-        let mut cfg = state.config.lock().map_err(|e| e.to_string())?;
+        let mut cfg = util::lock_config(&state)?;
         auto_detect_game_paths_inner(&mut cfg)
     };
     if found {
         state.save_config()?;
     }
-    let cfg = state.config.lock().map_err(|e| e.to_string())?;
+    let cfg = util::lock_config(&state)?;
     Ok(serde_json::json!({
         "success": found,
         "message": if found { "Found" } else { "Not found" },
@@ -140,12 +135,11 @@ pub fn auto_detect_paths(state: State<'_, AppState>) -> Result<serde_json::Value
 
 #[tauri::command]
 pub fn set_game_paths(state: State<'_, AppState>, game: String, launcher: String) -> Result<serde_json::Value, String> {
-    {
-        let mut cfg = state.config.lock().map_err(|e| e.to_string())?;
+    util::update_config(&state, |cfg| {
         cfg.game_path = game;
         cfg.launcher_path = launcher;
-    }
-    state.save_config()?;
+        Ok(())
+    })?;
     Ok(serde_json::json!({"success": true, "message": "Paths set"}))
 }
 
@@ -159,18 +153,9 @@ pub fn select_game_path() -> Result<serde_json::Value, String> {
 
 /// Python `get_launcher_version`: v8 > v7 > v6 по файлам в папке игры, иначе v8.
 fn detect_launcher_version(state: &AppState) -> String {
-    let game_path = state
-        .config
-        .lock()
-        .map(|c| c.game_path.clone())
-        .unwrap_or_default();
-    if game_path.is_empty() {
+    let Some(game_dir) = util::game_dir(state) else {
         return "v8".to_string();
-    }
-    let game_dir = std::path::Path::new(&game_path)
-        .parent()
-        .map(|p| p.to_path_buf())
-        .unwrap_or_default();
+    };
     let plugins_dir = game_dir.join("preloading_plugins");
     let has_plugins = std::fs::read_dir(&plugins_dir)
         .map(|mut rd| rd.next().is_some())
@@ -258,7 +243,7 @@ pub async fn start_game(
 ) -> Result<serde_json::Value, String> {
     // Валидации (порядок как в Python)
     let (launcher_path, game_path) = {
-        let cfg = state.config.lock().map_err(|e| e.to_string())?;
+        let cfg = util::lock_config(&state)?;
         (cfg.launcher_path.clone(), cfg.game_path.clone())
     };
     if launcher_path.is_empty() || !std::path::Path::new(&launcher_path).exists() {
@@ -295,12 +280,7 @@ pub async fn start_game(
     };
     let params = match params {
         Some(p) => p,
-        None => state
-            .config
-            .lock()
-            .map_err(|e| e.to_string())?
-            .launch_params
-            .clone(),
+        None => util::lock_config(&state)?.launch_params.clone(),
     };
 
     let launcher_ver = detect_launcher_version(&state);
@@ -405,8 +385,7 @@ pub async fn start_game(
 
     if rc_now.is_none() || rc_now == Some(0) {
         // Сохраняем ник/сервер/параметры
-        {
-            let mut cfg = state.config.lock().map_err(|e| e.to_string())?;
+        util::update_config(&state, |cfg| {
             cfg.last_nickname = nickname.clone();
             if let Some(ref sd) = server_data {
                 if let Some(num) = sd.get("number").and_then(|v| v.as_u64()) {
@@ -414,8 +393,8 @@ pub async fn start_game(
                 }
             }
             cfg.launch_params = params.clone();
-        }
-        state.save_config()?;
+            Ok(())
+        })?;
         let pid = proc.id();
         // Detach: не держим handle
         std::mem::forget(proc);
@@ -675,17 +654,13 @@ async fn fetch_servers(state: &AppState) -> serde_json::Value {
         }
     }
 
-    let client = match reqwest::Client::builder().build() {
-        Ok(c) => c,
-        Err(_) => return cached_data.map(serde_json::Value::Array).unwrap_or(serde_json::Value::Null),
-    };
-
-    let resp = match client
-        .get("https://arizona-ping.react.group/desktop/ping/Arizona/ping.json")
-        .headers(headers)
-        .timeout(std::time::Duration::from_secs(10))
-        .send()
-        .await
+    let resp = match util::http_request(
+        reqwest::Method::GET,
+        "https://arizona-ping.react.group/desktop/ping/Arizona/ping.json",
+        headers,
+        std::time::Duration::from_secs(10),
+    )
+    .await
     {
         Ok(r) => r,
         Err(e) => {
@@ -791,18 +766,26 @@ async fn fetch_launcher_news() -> serde_json::Value {
 
     for url in urls {
         log::info!("Пробуем загрузить новости: {url}");
-        let client = match reqwest::Client::builder().build() {
-            Ok(c) => c,
-            Err(_) => continue,
-        };
-        let resp = match client
-            .get(url)
-            .timeout(std::time::Duration::from_secs(20))
-            .header(reqwest::header::CACHE_CONTROL, "no-cache")
-            .header(reqwest::header::PRAGMA, "no-cache")
-            .header(reqwest::header::USER_AGENT, "Mozilla/5.0")
-            .send()
-            .await
+        let mut headers = reqwest::header::HeaderMap::new();
+        headers.insert(
+            reqwest::header::CACHE_CONTROL,
+            reqwest::header::HeaderValue::from_static("no-cache"),
+        );
+        headers.insert(
+            reqwest::header::PRAGMA,
+            reqwest::header::HeaderValue::from_static("no-cache"),
+        );
+        headers.insert(
+            reqwest::header::USER_AGENT,
+            reqwest::header::HeaderValue::from_static("Mozilla/5.0"),
+        );
+        let resp = match util::http_request(
+            reqwest::Method::GET,
+            url,
+            headers,
+            std::time::Duration::from_secs(20),
+        )
+        .await
         {
             Ok(r) => r,
             Err(e) => {
@@ -820,13 +803,7 @@ async fn fetch_launcher_news() -> serde_json::Value {
             }
         };
         // utf-8, иначе windows-1251 (с заменой невалидных байтов, как errors='replace')
-        let text = match std::str::from_utf8(&bytes) {
-            Ok(s) => s.to_string(),
-            Err(_) => {
-                let (cow, _, _) = encoding_rs::WINDOWS_1251.decode(&bytes);
-                cow.into_owned()
-            }
-        };
+        let text = util::decode_text_bytes(&bytes);
         if status == reqwest::StatusCode::OK && !text.trim().is_empty() {
             return serde_json::json!({"success": true, "text": text});
         }
@@ -845,18 +822,18 @@ pub async fn get_launcher_news() -> Result<serde_json::Value, String> {
 
 #[tauri::command]
 pub fn get_read_news_ids(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
-    let cfg = state.config.lock().map_err(|e| e.to_string())?;
+    let cfg = util::lock_config(&state)?;
     Ok(serde_json::json!({"success": true, "ids": cfg.read_news_ids}))
 }
 
 #[tauri::command]
 pub fn save_read_news_ids(state: State<'_, AppState>, ids: Vec<String>) -> Result<serde_json::Value, String> {
     {
-        let mut cfg = state.config.lock().map_err(|e| e.to_string())?;
+        let mut cfg = util::lock_config(&state)?;
         cfg.read_news_ids = ids;
     }
     state.save_config()?;
-    Ok(serde_json::json!({"success": true}))
+    util::ok_true()
 }
 
 // ==================== Launcher Version ====================
@@ -924,7 +901,7 @@ pub async fn fetch_image_as_base64(url: String) -> Result<serde_json::Value, Str
 
 #[tauri::command]
 pub fn get_debug_info(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
-    let cfg = state.config.lock().map_err(|e| e.to_string())?;
+    let cfg = util::lock_config(&state)?;
     Ok(serde_json::json!({
         "success": true,
         "data": {
@@ -951,7 +928,7 @@ pub fn minimize_window(app: tauri::AppHandle) -> Result<serde_json::Value, Strin
     if let Some(window) = app.get_webview_window("main") {
         window.minimize().map_err(|e| e.to_string())?;
     }
-    Ok(serde_json::json!({"success": true}))
+    util::ok_true()
 }
 
 #[tauri::command]
@@ -959,7 +936,7 @@ pub fn minimize_to_tray(app: tauri::AppHandle) -> Result<serde_json::Value, Stri
     if let Some(window) = app.get_webview_window("main") {
         window.hide().map_err(|e| e.to_string())?;
     }
-    Ok(serde_json::json!({"success": true}))
+    util::ok_true()
 }
 
 #[tauri::command]
@@ -968,12 +945,12 @@ pub fn restore_window(app: tauri::AppHandle) -> Result<serde_json::Value, String
         window.show().map_err(|e| e.to_string())?;
         window.set_focus().map_err(|e| e.to_string())?;
     }
-    Ok(serde_json::json!({"success": true}))
+    util::ok_true()
 }
 
 #[tauri::command]
 pub fn open_game_folder(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
-    let cfg = state.config.lock().map_err(|e| e.to_string())?;
+    let cfg = util::lock_config(&state)?;
     if cfg.game_path.is_empty() {
         return Ok(serde_json::json!({"success": false, "message": "Path not set"}));
     }
@@ -981,14 +958,14 @@ pub fn open_game_folder(state: State<'_, AppState>) -> Result<serde_json::Value,
         .parent()
         .ok_or("Invalid game path")?;
     open::that(game_dir).map_err(|e| e.to_string())?;
-    Ok(serde_json::json!({"success": true}))
+    util::ok_true()
 }
 
 #[tauri::command]
 pub fn open_data_folder(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
     std::fs::create_dir_all(&state.documents_path).ok();
     open::that(&state.documents_path).map_err(|e| e.to_string())?;
-    Ok(serde_json::json!({"success": true}))
+    util::ok_true()
 }
 
 #[tauri::command]
@@ -1001,23 +978,23 @@ pub fn open_log_file() -> Result<serde_json::Value, String> {
 
 #[tauri::command]
 pub fn get_launcher_settings(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
-    let cfg = state.config.lock().map_err(|e| e.to_string())?;
+    let cfg = util::lock_config(&state)?;
     Ok(serde_json::json!({"success": true, "data": cfg.launcher_settings}))
 }
 
 #[tauri::command]
 pub fn save_launcher_settings(state: State<'_, AppState>, settings: serde_json::Value) -> Result<serde_json::Value, String> {
     {
-        let mut cfg = state.config.lock().map_err(|e| e.to_string())?;
+        let mut cfg = util::lock_config(&state)?;
         cfg.launcher_settings = serde_json::from_value(settings).map_err(|e| e.to_string())?;
     }
     state.save_config()?;
-    Ok(serde_json::json!({"success": true}))
+    util::ok_true()
 }
 
 #[tauri::command]
 pub fn get_window_title(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
-    let cfg = state.config.lock().map_err(|e| e.to_string())?;
+    let cfg = util::lock_config(&state)?;
     let title = cfg.launcher_settings.window_title.clone().unwrap_or_else(|| "Arizona RP Launcher".to_string());
     Ok(serde_json::json!({"success": true, "title": title}))
 }
@@ -1025,16 +1002,16 @@ pub fn get_window_title(state: State<'_, AppState>) -> Result<serde_json::Value,
 #[tauri::command]
 pub fn set_window_title(state: State<'_, AppState>, title: String) -> Result<serde_json::Value, String> {
     {
-        let mut cfg = state.config.lock().map_err(|e| e.to_string())?;
+        let mut cfg = util::lock_config(&state)?;
         cfg.launcher_settings.window_title = Some(title);
     }
     state.save_config()?;
-    Ok(serde_json::json!({"success": true}))
+    util::ok_true()
 }
 
 #[tauri::command]
 pub fn get_window_size(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
-    let cfg = state.config.lock().map_err(|e| e.to_string())?;
+    let cfg = util::lock_config(&state)?;
     let size = cfg.launcher_settings.window_size.clone().unwrap_or_else(|| vec![1285, 732]);
     Ok(serde_json::json!(size))
 }
@@ -1042,16 +1019,16 @@ pub fn get_window_size(state: State<'_, AppState>) -> Result<serde_json::Value, 
 #[tauri::command]
 pub fn save_layout_order(state: State<'_, AppState>, order: Vec<String>) -> Result<serde_json::Value, String> {
     {
-        let mut cfg = state.config.lock().map_err(|e| e.to_string())?;
+        let mut cfg = util::lock_config(&state)?;
         cfg.launcher_settings.layout_order = Some(order);
     }
     state.save_config()?;
-    Ok(serde_json::json!({"success": true}))
+    util::ok_true()
 }
 
 #[tauri::command]
 pub fn get_layout_order(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
-    let cfg = state.config.lock().map_err(|e| e.to_string())?;
+    let cfg = util::lock_config(&state)?;
     let order = cfg.launcher_settings.layout_order.clone().unwrap_or_default();
     Ok(serde_json::json!(order))
 }
@@ -1060,7 +1037,7 @@ pub fn get_layout_order(state: State<'_, AppState>) -> Result<serde_json::Value,
 
 #[tauri::command]
 pub fn get_profiles(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
-    let cfg = state.config.lock().map_err(|e| e.to_string())?;
+    let cfg = util::lock_config(&state)?;
     Ok(serde_json::json!({
         "success": true,
         "profiles": cfg.profiles,
@@ -1071,31 +1048,21 @@ pub fn get_profiles(state: State<'_, AppState>) -> Result<serde_json::Value, Str
 #[tauri::command]
 pub fn save_profiles(state: State<'_, AppState>, profiles: Vec<serde_json::Value>, active_id: String) -> Result<serde_json::Value, String> {
     {
-        let mut cfg = state.config.lock().map_err(|e| e.to_string())?;
+        let mut cfg = util::lock_config(&state)?;
         cfg.profiles = Some(profiles);
         cfg.active_profile_id = Some(active_id);
     }
     state.save_config()?;
-    Ok(serde_json::json!({"success": true}))
+    util::ok_true()
 }
 
 // ==================== Patches ====================
 
 /// Папка preloading_plugins рядом с игрой (пустой путь, если game_path не задан).
 fn plugins_dir(state: &AppState) -> PathBuf {
-    let game_path = state
-        .config
-        .lock()
-        .map(|c| c.game_path.clone())
-        .unwrap_or_default();
-    if game_path.is_empty() {
-        return PathBuf::new();
-    }
-    PathBuf::from(&game_path)
-        .parent()
-        .map(|p| p.to_path_buf())
+    util::game_dir(state)
+        .map(|d| d.join("preloading_plugins"))
         .unwrap_or_default()
-        .join("preloading_plugins")
 }
 
 fn patches_json_path(state: &AppState) -> PathBuf {
@@ -1165,17 +1132,6 @@ fn get_dll_version(_path: &std::path::Path) -> Option<String> {
     None
 }
 
-/// Python: чтение #ArizonaPatches.json со срезанием строк-комментариев `//`.
-fn clean_patches_text(raw: &str) -> Result<String, String> {
-    let re = regex::Regex::new(r"(?m)^\s*//.*").map_err(|e| e.to_string())?;
-    let no_comments = re.replace_all(raw, "");
-    Ok(no_comments
-        .split('\n')
-        .filter(|l| !l.trim().is_empty())
-        .collect::<Vec<_>>()
-        .join("\n"))
-}
-
 /// Python: _create_patches_backup — бэкап перед записью, максимум 15 штук.
 fn create_patches_backup(state: &AppState, label: &str) -> Option<PathBuf> {
     let src = patches_json_path(state);
@@ -1217,25 +1173,6 @@ fn create_patches_backup(state: &AppState, label: &str) -> Option<PathBuf> {
         backups.remove(0);
     }
     Some(dst)
-}
-
-/// Проверка path traversal для имени файла бэкапа.
-fn safe_backup_path(state: &AppState, filename: &str) -> Result<PathBuf, String> {
-    if filename.is_empty()
-        || filename.contains('/')
-        || filename.contains('\\')
-        || filename == "."
-        || filename == ".."
-    {
-        return Err("Недопустимое имя файла".to_string());
-    }
-    let dir = state.documents_path.join("backups");
-    let path = dir.join(filename);
-    // Имя файла обязано совпадать (защита от "..", путей и т.п.)
-    if path.file_name().map(|n| n.to_string_lossy().to_string()).as_deref() != Some(filename) {
-        return Err("Недопустимое имя файла".to_string());
-    }
-    Ok(path)
 }
 
 #[tauri::command]
@@ -1373,12 +1310,7 @@ fn patches_download_url(version: &str) -> String {
 }
 
 fn check_patches_files_inner(state: &AppState) -> serde_json::Value {
-    let game_path = state
-        .config
-        .lock()
-        .map(|c| c.game_path.clone())
-        .unwrap_or_default();
-    if game_path.is_empty() {
+    if util::game_path(state).is_empty() {
         return serde_json::json!({
             "json_exists": false, "dll_exists": false, "dll_version": serde_json::Value::Null,
             "message": "game_path не установлен", "both_exist": false
@@ -1448,20 +1380,12 @@ pub fn read_patches(state: State<'_, AppState>) -> Result<serde_json::Value, Str
     if !path.exists() {
         return Ok(serde_json::json!({"success": false, "message": format!("Файл не найден: {}", path_str), "path": path_str}));
     }
-    let raw = match std::fs::read_to_string(&path) {
-        Ok(r) => r,
-        Err(e) => return Ok(serde_json::json!({"success": false, "message": e.to_string(), "path": path_str})),
-    };
-    let cleaned = match clean_patches_text(&raw) {
-        Ok(c) => c,
-        Err(e) => return Ok(serde_json::json!({"success": false, "message": e, "path": path_str})),
-    };
-    match serde_json::from_str::<serde_json::Value>(&cleaned) {
+    match util::read_patches_file(&path) {
         Ok(data) => {
             let keys_count = data.as_object().map(|o| o.len()).unwrap_or(0);
             Ok(serde_json::json!({"success": true, "data": data, "path": path_str, "keys_count": keys_count}))
         }
-        Err(e) => Ok(serde_json::json!({"success": false, "message": e.to_string(), "path": path_str})),
+        Err(e) => Ok(serde_json::json!({"success": false, "message": e, "path": path_str})),
     }
 }
 
@@ -1506,24 +1430,16 @@ pub fn list_patches_backups(state: State<'_, AppState>) -> Result<serde_json::Va
 
 #[tauri::command]
 pub fn restore_patches_backup(state: State<'_, AppState>, filename: String) -> Result<serde_json::Value, String> {
-    let backup_path = match safe_backup_path(&state, &filename) {
+    let backup_path = match util::safe_backup_path(&state, &filename) {
         Ok(p) => p,
-        Err(m) => return Ok(serde_json::json!({"success": false, "message": m})),
+        Err(m) => return util::fail_message(m),
     };
     if !backup_path.exists() {
         return Ok(serde_json::json!({"success": false, "message": format!("Бэкап не найден: {}", filename)}));
     }
-    let raw = match std::fs::read_to_string(&backup_path) {
-        Ok(r) => r,
-        Err(e) => return Ok(serde_json::json!({"success": false, "message": e.to_string()})),
-    };
-    let cleaned = match clean_patches_text(&raw) {
-        Ok(c) => c,
-        Err(e) => return Ok(serde_json::json!({"success": false, "message": e})),
-    };
-    let data: serde_json::Value = match serde_json::from_str(&cleaned) {
+    let data = match util::read_patches_file(&backup_path) {
         Ok(d) => d,
-        Err(e) => return Ok(serde_json::json!({"success": false, "message": e.to_string()})),
+        Err(e) => return util::fail_message(e),
     };
 
     // Бэкап текущего перед восстановлением
@@ -1570,38 +1486,30 @@ fn write_patches_inner(state: &AppState, data: &serde_json::Value) -> serde_json
 
 #[tauri::command]
 pub fn delete_patches_backup(state: State<'_, AppState>, filename: String) -> Result<serde_json::Value, String> {
-    let backup_path = match safe_backup_path(&state, &filename) {
+    let backup_path = match util::safe_backup_path(&state, &filename) {
         Ok(p) => p,
-        Err(m) => return Ok(serde_json::json!({"success": false, "message": m})),
+        Err(m) => return util::fail_message(m),
     };
     if !backup_path.exists() {
         return Ok(serde_json::json!({"success": false, "message": "Файл не найден"}));
     }
     match std::fs::remove_file(&backup_path) {
-        Ok(_) => Ok(serde_json::json!({"success": true})),
+        Ok(_) => util::ok_true(),
         Err(e) => Ok(serde_json::json!({"success": false, "message": e.to_string()})),
     }
 }
 
 #[tauri::command]
 pub fn preview_patches_backup(state: State<'_, AppState>, filename: String) -> Result<serde_json::Value, String> {
-    let backup_path = match safe_backup_path(&state, &filename) {
+    let backup_path = match util::safe_backup_path(&state, &filename) {
         Ok(p) => p,
-        Err(m) => return Ok(serde_json::json!({"success": false, "message": m})),
+        Err(m) => return util::fail_message(m),
     };
     if !backup_path.exists() {
         return Ok(serde_json::json!({"success": false, "message": "Файл не найден"}));
     }
     let size = std::fs::metadata(&backup_path).map(|m| m.len()).unwrap_or(0);
-    let raw = match std::fs::read_to_string(&backup_path) {
-        Ok(r) => r,
-        Err(e) => return Ok(serde_json::json!({"success": false, "message": e.to_string()})),
-    };
-    let cleaned = match clean_patches_text(&raw) {
-        Ok(c) => c,
-        Err(e) => return Ok(serde_json::json!({"success": false, "message": e})),
-    };
-    let data: serde_json::Value = match serde_json::from_str(&cleaned) {
+    let data = match util::read_patches_file(&backup_path) {
         Ok(d) => d,
         Err(_) => return Ok(serde_json::json!({"success": false, "message": "Файл повреждён (не JSON)"})),
     };
@@ -1662,16 +1570,18 @@ pub async fn download_and_install_patches(version: Option<String>) -> Result<ser
 pub async fn get_patches_latest_version() -> Result<serde_json::Value, String> {
     // Python: чтение patches/version.txt с GitHub
     let url = "https://raw.githubusercontent.com/worteng/ArizonaLauncher/main/patches/version.txt";
-    let client = match reqwest::Client::builder().build() {
-        Ok(c) => c,
-        Err(e) => return Ok(serde_json::json!({"success": false, "message": e.to_string()})),
-    };
-    let resp = match client
-        .get(url)
-        .timeout(std::time::Duration::from_secs(15))
-        .header(reqwest::header::USER_AGENT, "Mozilla/5.0")
-        .send()
-        .await
+    let mut headers = reqwest::header::HeaderMap::new();
+    headers.insert(
+        reqwest::header::USER_AGENT,
+        reqwest::header::HeaderValue::from_static("Mozilla/5.0"),
+    );
+    let resp = match util::http_request(
+        reqwest::Method::GET,
+        url,
+        headers,
+        std::time::Duration::from_secs(15),
+    )
+    .await
     {
         Ok(r) => r,
         Err(e) => return Ok(serde_json::json!({"success": false, "message": e.to_string()})),
@@ -1681,13 +1591,7 @@ pub async fn get_patches_latest_version() -> Result<serde_json::Value, String> {
         Ok(b) => b,
         Err(e) => return Ok(serde_json::json!({"success": false, "message": e.to_string()})),
     };
-    let version = match std::str::from_utf8(&bytes) {
-        Ok(s) => s.trim().to_string(),
-        Err(_) => {
-            let (cow, _, _) = encoding_rs::WINDOWS_1251.decode(&bytes);
-            cow.trim().to_string()
-        }
-    };
+    let version = util::decode_text_bytes(&bytes).trim().to_string();
     if status == reqwest::StatusCode::OK && !version.is_empty() && version.starts_with('v') {
         return Ok(serde_json::json!({
             "success": true,
@@ -1702,18 +1606,18 @@ pub async fn get_patches_latest_version() -> Result<serde_json::Value, String> {
 pub async fn check_patches_available(version: Option<String>) -> Result<serde_json::Value, String> {
     let version = version.unwrap_or_else(|| "v2".to_string());
     let url = patches_download_url(&version);
-    let client = match reqwest::Client::builder().build() {
-        Ok(c) => c,
-        Err(e) => {
-            return Ok(serde_json::json!({"success": true, "available": false, "message": e.to_string()}))
-        }
-    };
-    match client
-        .head(&url)
-        .timeout(std::time::Duration::from_secs(10))
-        .header(reqwest::header::USER_AGENT, "Mozilla/5.0")
-        .send()
-        .await
+    let mut headers = reqwest::header::HeaderMap::new();
+    headers.insert(
+        reqwest::header::USER_AGENT,
+        reqwest::header::HeaderValue::from_static("Mozilla/5.0"),
+    );
+    match util::http_request(
+        reqwest::Method::HEAD,
+        &url,
+        headers,
+        std::time::Duration::from_secs(10),
+    )
+    .await
     {
         Ok(resp) => {
             if resp.status() == reqwest::StatusCode::OK {
@@ -1735,15 +1639,13 @@ pub async fn check_patches_available(version: Option<String>) -> Result<serde_js
 pub async fn check_patches_update_status() -> Result<serde_json::Value, String> {
     // Python: манифест updates/patches.json на GitHub
     let url = "https://raw.githubusercontent.com/worteng/ArizonaLauncher/main/updates/patches.json";
-    let client = match reqwest::Client::builder().build() {
-        Ok(c) => c,
-        Err(e) => return Ok(serde_json::json!({"success": false, "message": e.to_string()})),
-    };
-    let resp = match client
-        .get(url)
-        .timeout(std::time::Duration::from_secs(15))
-        .send()
-        .await
+    let resp = match util::http_request(
+        reqwest::Method::GET,
+        url,
+        reqwest::header::HeaderMap::new(),
+        std::time::Duration::from_secs(15),
+    )
+    .await
     {
         Ok(r) => r,
         Err(e) => return Ok(serde_json::json!({"success": false, "message": e.to_string()})),
@@ -1908,7 +1810,7 @@ pub fn check_tray_support() -> Result<serde_json::Value, String> {
 #[tauri::command]
 pub fn open_telegram_share() -> Result<serde_json::Value, String> {
     open::that("https://t.me/halfik24").map_err(|e| e.to_string())?;
-    Ok(serde_json::json!({"success": true}))
+    util::ok_true()
 }
 
 #[tauri::command]

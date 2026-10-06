@@ -2,6 +2,7 @@
 
 mod config;
 mod launcher;
+mod util;
 
 use config::AppState;
 use tauri::Manager;
