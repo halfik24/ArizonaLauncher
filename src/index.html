@@ -1218,13 +1218,17 @@
             100% { opacity: 1; transform: translate(-50%, -50%) scale(1);    filter: blur(0); }
         }
 
-        @keyframes modsIn {
-            0%   { opacity: 0; transform: scale(0.97); }
-            100% { opacity: 1; transform: scale(1); }
+        /* Открытие меню «Моды» — зеркало modsSink (тот же iOS-стиль, что и
+           настройки/папка, только без translate: модалка fullscreen и без
+           позиционирования): приходит из глубины увеличенной и размытой. */
+        @keyframes modsRise {
+            0%   { opacity: 0; transform: scale(1.03); filter: blur(12px); }
+            100% { opacity: 1; transform: scale(1);    filter: blur(0); }
         }
-        @keyframes modsOut {
-            0%   { opacity: 1; transform: scale(1); }
-            100% { opacity: 0; transform: scale(0.97); }
+        /* Закрытие: рост + блюр + затухание на одной кривой. */
+        @keyframes modsSink {
+            0%   { opacity: 1; transform: scale(1);    filter: blur(0); }
+            100% { opacity: 0; transform: scale(1.03); filter: blur(12px); }
         }
 
         @keyframes overlayFadeIn {
@@ -1274,7 +1278,8 @@
 
         .folder-modal.closing { animation: settingsSink 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards; }
 
-        .mods-modal.closing { animation: modsOut 0.25s cubic-bezier(0.4, 0, 1, 1) forwards; }
+        /* Закрытие «Модов» — та же длительность/кривая, что у настроек и папки */
+        .mods-modal.closing { animation: modsSink 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards; }
 
         .cre-header {
             display: flex;
@@ -2838,12 +2843,14 @@
             inset: 0;
             width: 100%;
             height: 100%;
-            background: rgba(var(--surface-rgb), 0.97);
-            backdrop-filter: blur(18px);
+            /* Стекло: сквозь фон видно главный экран, но читаемость высокая */
+            background: rgba(var(--surface-rgb), 0.9);
+            -webkit-backdrop-filter: blur(24px) saturate(1.2);
+            backdrop-filter: blur(24px) saturate(1.2);
             z-index: 500;
             flex-direction: column;
             overflow: hidden;
-            animation: modsIn 0.35s cubic-bezier(0.34, 1.3, 0.64, 1);
+            animation: modsRise 0.4s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
         @keyframes modsFadeIn {
@@ -2867,36 +2874,47 @@
             letter-spacing: 0.5px;
         }
 
+        /* Главные вкладки — тот же сегментированный контроль, что и подвкладки
+           (.ml-sub-tab группа), только крупнее: контейнер-«рельс» + пилюли. */
         .mods-modal-tabs {
             display: flex;
+            align-self: flex-start;
             gap: 4px;
-            padding: 16px 32px 0;
-            border-bottom: 1px solid rgba(255,255,255,0.06);
+            margin: 18px 32px 0;
+            padding: 4px;
+            background: rgba(255,255,255,0.045);
+            border: 1px solid rgba(255,255,255,0.07);
+            border-radius: 12px;
             flex-shrink: 0;
         }
 
         .mods-tab {
             font-family: 'Montserrat Alternates', sans-serif;
             font-size: 13px;
-            padding: 9px 20px;
-            border-radius: 10px 10px 0 0;
+            padding: 8px 18px;
+            border-radius: 9px;
             border: none;
-            background: rgba(255,255,255,0.04);
-            color: rgba(255,255,255,0.45);
+            background: transparent;
+            color: rgba(255,255,255,0.55);
             cursor: pointer;
-            transition: all 0.2s;
+            transition: background 0.2s, color 0.2s, box-shadow 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 7px;
         }
+        .mods-tab svg { width: 14px !important; height: 14px !important; flex-shrink: 0; opacity: 0.8; }
 
         .mods-tab:hover {
-            background: rgba(255,255,255,0.08);
-            color: rgba(255,255,255,0.8);
+            background: rgba(255,255,255,0.06);
+            color: rgba(255,255,255,0.85);
         }
 
         .mods-tab.active {
-            background: rgba(255,255,255,0.10);
-            color: white;
-            border-bottom: 2px solid rgba(255,255,255,0.3);
+            background: rgba(255,255,255,0.1);
+            color: #fff;
+            box-shadow: 0 1px 6px rgba(0,0,0,0.25);
         }
+        .mods-tab.active svg { opacity: 1; }
 
         .mods-tab-content {
             display: none;
@@ -2922,20 +2940,25 @@
             gap: 14px;
         }
 
+        /* Единый «материал» карточек меню «Моды»: одинаковые фон/бордер/радиус
+           у сеточных (.mods-card, .ml-catalog-card) и строчных
+           (.mods-item, .lib-card, .ml-installed-card) карточек. */
         .mods-card {
-            background: rgba(255,255,255,0.04);
+            background: rgba(255,255,255,0.045);
             border: 1px solid rgba(255,255,255,0.08);
             border-radius: 12px;
             padding: 16px 18px;
             display: flex;
             flex-direction: column;
             gap: 8px;
-            transition: border-color 0.2s, background 0.2s;
+            transition: border-color 0.2s, background 0.2s, transform 0.25s cubic-bezier(0.4,0,0.2,1), box-shadow 0.25s;
         }
 
         .mods-card:hover {
-            background: rgba(255,255,255,0.06);
-            border-color: rgba(255,255,255,0.14);
+            background: rgba(255,255,255,0.07);
+            border-color: rgba(var(--accent2-rgb), 0.3);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.2);
         }
 
         .mods-card-header {
@@ -2970,14 +2993,14 @@
         .mods-card-author {
             font-family: 'Montserrat Alternates', sans-serif;
             font-size: 11px;
-            color: rgba(255,255,255,0.35);
+            color: rgba(255,255,255,0.55);
             margin-top: 2px;
         }
 
         .mods-card-desc {
             font-family: 'Montserrat Alternates', sans-serif;
             font-size: 12px;
-            color: rgba(255,255,255,0.5);
+            color: rgba(255,255,255,0.62);
             line-height: 1.6;
         }
 
@@ -2991,7 +3014,7 @@
         .mods-card-tag {
             font-family: 'Montserrat Alternates', sans-serif;
             font-size: 10px;
-            color: rgba(255,255,255,0.3);
+            color: rgba(255,255,255,0.5);
             background: rgba(255,255,255,0.06);
             border-radius: 5px;
             padding: 3px 8px;
@@ -3000,28 +3023,40 @@
         .mods-install-btn {
             height: 32px;
             padding: 0 16px;
-            background: rgba(var(--accent-rgb), 0.22);
-            border: 1px solid rgba(var(--accent2-rgb), 0.36);
+            background: rgba(var(--accent-rgb), 0.78);
+            border: 1px solid rgba(var(--accent2-rgb), 0.5);
             border-radius: 7px;
-            color: rgba(255, 255, 255, 0.92);
+            color: #fff;
             font-family: 'Montserrat Alternates', sans-serif;
             font-size: 12px;
+            font-weight: 600;
             cursor: pointer;
             transition: all 0.2s;
             white-space: nowrap;
         }
-        .mods-install-btn svg { width: 13px !important; height: 13px !important; flex-shrink: 0; opacity: 0.7; }
+        .mods-install-btn svg { width: 13px !important; height: 13px !important; flex-shrink: 0; opacity: 0.95; }
 
         .mods-install-btn:hover:not(:disabled) {
-            background: rgba(var(--accent2-rgb), 0.32);
-            border-color: rgba(var(--accent2-rgb), 0.66);
+            background: rgba(var(--accent-rgb), 1);
+            border-color: rgba(var(--accent2-rgb), 0.9);
             transform: translateY(-1px);
+            box-shadow: 0 4px 14px rgba(var(--accent-rgb), 0.35);
         }
 
         .mods-install-btn:disabled {
             cursor: default;
             opacity: 0.75;
         }
+
+        /* Светлый динамический акцент (обои) — текст кнопок становится тёмным */
+        html.accent-light .mods-install-btn,
+        html.accent-light .ml-card-install-btn,
+        html.accent-light .lib-card-btn.primary {
+            color: rgba(12, 14, 18, 0.92);
+        }
+        html.accent-light .mods-install-btn svg,
+        html.accent-light .ml-card-install-btn svg,
+        html.accent-light .lib-card-btn.primary svg { opacity: 0.8; }
 
         .mods-install-btn.downloading {
             background: rgba(255, 160, 0, 0.2);
@@ -3058,17 +3093,32 @@
         .mods-section-desc {
             font-family: 'Montserrat Alternates', sans-serif;
             font-size: 11px;
-            color: rgba(255,255,255,0.35);
+            color: rgba(255,255,255,0.55);
             margin-bottom: 12px;
             line-height: 1.5;
         }
 
+        /* Пустые состояния / загрузка / ошибки — оформленный блок, а не
+           серая строчка посреди пустоты */
         .mods-empty {
             font-family: 'Montserrat Alternates', sans-serif;
-            font-size: 12px;
-            color: rgba(255,255,255,0.25);
+            font-size: 13px;
+            color: rgba(255,255,255,0.55);
             text-align: center;
-            padding: 40px 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+            padding: 44px 24px;
+            background: rgba(255,255,255,0.03);
+            border: 1px dashed rgba(255,255,255,0.12);
+            border-radius: 12px;
+        }
+        .mods-empty svg { width: 26px !important; height: 26px !important; opacity: 0.55; }
+        .mods-empty:has([data-lucide="x-circle"]) {
+            color: rgba(255,150,150,0.85);
+            border-color: rgba(255,80,80,0.28);
+            background: rgba(255,80,80,0.06);
         }
 
         .mods-item {
@@ -3076,12 +3126,17 @@
             align-items: center;
             gap: 10px;
             padding: 9px 12px;
-            background: rgba(255,255,255,0.03);
-            border: 1px solid rgba(255,255,255,0.06);
-            border-radius: 7px;
+            background: rgba(255,255,255,0.045);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 10px;
             font-family: 'Montserrat Alternates', sans-serif;
             font-size: 12px;
-            color: rgba(255,255,255,0.7);
+            color: rgba(255,255,255,0.8);
+            transition: border-color 0.2s, background 0.2s;
+        }
+        .mods-item:hover {
+            background: rgba(255,255,255,0.07);
+            border-color: rgba(255,255,255,0.14);
         }
 
         .mods-item-icon {
@@ -3098,7 +3153,7 @@
         .mods-item-icon svg { width: 15px !important; height: 15px !important; }
         .mods-item-info { flex: 1; min-width: 0; }
         .mods-item-name { color: rgba(255,255,255,0.9); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .mods-item-sub { color: rgba(255,255,255,0.35); font-size: 10px; margin-top: 2px; }
+        .mods-item-sub { color: rgba(255,255,255,0.55); font-size: 10px; margin-top: 2px; }
 
         .mods-item-toggle {
             width: 34px; height: 18px;
@@ -3157,7 +3212,7 @@
             border-radius: 6px;
             border: none;
             background: transparent;
-            color: rgba(255,255,255,0.4);
+            color: rgba(255,255,255,0.55);
             cursor: pointer;
             transition: all 0.18s;
             display: flex;
@@ -3258,8 +3313,8 @@
 
         /* === MOONLOADER REDESIGN === */
         .ml-catalog-card {
-            background: rgba(255,255,255,0.035);
-            border: 1px solid rgba(255,255,255,0.07);
+            background: rgba(255,255,255,0.045);
+            border: 1px solid rgba(255,255,255,0.08);
             border-radius: 12px;
             overflow: hidden;
             cursor: pointer;
@@ -3328,12 +3383,12 @@
         .ml-card-meta {
             font-family: 'Montserrat Alternates';
             font-size: 10px;
-            color: rgba(255,255,255,0.35);
+            color: rgba(255,255,255,0.55);
         }
         .ml-card-desc {
             font-family: 'Montserrat Alternates';
             font-size: 11px;
-            color: rgba(255,255,255,0.5);
+            color: rgba(255,255,255,0.62);
             line-height: 1.45;
             display: -webkit-box;
             -webkit-line-clamp: 2;
@@ -3347,7 +3402,7 @@
             border-radius: 4px;
             font-family: 'Montserrat Alternates';
             font-size: 9px;
-            color: rgba(255,255,255,0.4);
+            color: rgba(255,255,255,0.55);
             width: fit-content;
         }
         .ml-card-footer {
@@ -3360,12 +3415,13 @@
         .ml-card-install-btn {
             height: 30px;
             padding: 0 14px;
-            background: rgba(var(--accent-rgb), 0.22);
-            border: 1px solid rgba(var(--accent2-rgb), 0.36);
+            background: rgba(var(--accent-rgb), 0.78);
+            border: 1px solid rgba(var(--accent2-rgb), 0.5);
             border-radius: 7px;
-            color: rgba(255,255,255,0.92);
+            color: #fff;
             font-family: 'Montserrat Alternates';
             font-size: 11px;
+            font-weight: 600;
             cursor: pointer;
             transition: all 0.2s;
             white-space: nowrap;
@@ -3373,11 +3429,12 @@
             align-items: center;
             gap: 5px;
         }
-        .ml-card-install-btn svg { width: 12px !important; height: 12px !important; flex-shrink: 0; opacity: 0.7; }
+        .ml-card-install-btn svg { width: 12px !important; height: 12px !important; flex-shrink: 0; opacity: 0.95; }
         .ml-card-install-btn:hover:not(:disabled) {
-            background: rgba(var(--accent2-rgb), 0.32);
-            border-color: rgba(var(--accent2-rgb), 0.66);
+            background: rgba(var(--accent-rgb), 1);
+            border-color: rgba(var(--accent2-rgb), 0.9);
             transform: translateY(-1px);
+            box-shadow: 0 4px 14px rgba(var(--accent-rgb), 0.35);
         }
         .ml-card-install-btn:disabled { cursor: default; opacity: 0.65; }
         .ml-card-install-btn.done {
@@ -3393,7 +3450,7 @@
         .ml-card-hint {
             font-family: 'Montserrat Alternates';
             font-size: 9px;
-            color: rgba(255,255,255,0.2);
+            color: rgba(255,255,255,0.45);
         }
 
         /* === БИБЛИОТЕКИ (MOONLOADER SUB-TAB) === */
@@ -3403,9 +3460,9 @@
             gap: 6px;
         }
         .lib-card {
-            background: rgba(255,255,255,0.02);
-            border: 1px solid rgba(255,255,255,0.05);
-            border-radius: 8px;
+            background: rgba(255,255,255,0.045);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 10px;
             padding: 8px 14px;
             display: flex;
             flex-direction: row;
@@ -3415,11 +3472,11 @@
             transition: all 0.2s ease;
         }
         .lib-card:hover {
-            border-color: rgba(var(--accent2-rgb), 0.3);
-            background: rgba(255,255,255,0.05);
+            border-color: rgba(255,255,255,0.14);
+            background: rgba(255,255,255,0.07);
         }
         .lib-card.is-installed { opacity: 0.92; }
-        .lib-card.is-catalog { border-color: rgba(var(--accent2-rgb), 0.2); }
+        .lib-card.is-catalog { border-color: rgba(var(--accent2-rgb), 0.25); }
         .lib-card-info {
             flex: 1;
             min-width: 0;
@@ -3454,7 +3511,7 @@
         .lib-card-desc {
             font-size: 11px;
             line-height: 1.3;
-            color: rgba(255,255,255,0.45);
+            color: rgba(255,255,255,0.6);
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
@@ -3487,10 +3544,16 @@
         }
         .lib-card-btn svg { width: 12px !important; height: 12px !important; }
         .lib-card-btn.primary {
-            background: rgba(var(--accent-rgb), 0.6);
+            background: rgba(var(--accent-rgb), 0.78);
+            border-color: rgba(var(--accent2-rgb), 0.5);
             color: white;
+            font-weight: 600;
         }
-        .lib-card-btn.primary:hover:not(:disabled) { background: rgba(var(--accent-rgb), 0.8); }
+        .lib-card-btn.primary:hover:not(:disabled) {
+            background: rgba(var(--accent-rgb), 1);
+            border-color: rgba(var(--accent2-rgb), 0.9);
+            box-shadow: 0 4px 14px rgba(var(--accent-rgb), 0.35);
+        }
         .lib-card-btn.installed {
             background: rgba(0,180,80,0.15);
             border-color: rgba(0,180,80,0.3);
@@ -3561,14 +3624,14 @@
             align-items: center;
             gap: 12px;
             padding: 10px 14px;
-            background: rgba(255,255,255,0.035);
-            border: 1px solid rgba(255,255,255,0.07);
+            background: rgba(255,255,255,0.045);
+            border: 1px solid rgba(255,255,255,0.08);
             border-radius: 10px;
             transition: all 0.2s;
         }
         .ml-installed-card:hover {
-            background: rgba(255,255,255,0.06);
-            border-color: rgba(255,255,255,0.12);
+            background: rgba(255,255,255,0.07);
+            border-color: rgba(255,255,255,0.14);
         }
         .ml-installed-icon {
             width: 36px;
@@ -3593,7 +3656,7 @@
         .ml-installed-meta {
             font-family: 'Montserrat Alternates';
             font-size: 10px;
-            color: rgba(255,255,255,0.3);
+            color: rgba(255,255,255,0.55);
             margin-top: 1px;
             display: inline-flex;
             align-items: center;
@@ -5919,7 +5982,7 @@
                     </div>
                 </div>
 
-                <div id="moonloaderStatus" style="font-family:'Montserrat Alternates';font-size:11px;color:rgba(255,255,255,0.3);min-height:14px;"></div>
+                <div id="moonloaderStatus" style="font-family:'Montserrat Alternates';font-size:11px;color:rgba(255,255,255,0.5);min-height:14px;"></div>
 
                 <!-- Установленные скрипты -->
                 <div id="mlPaneInstalled" style="display:flex;flex-direction:column;gap:6px;">
@@ -5989,14 +6052,14 @@
                 <!-- Обычный UI пресетов -->
                 <div id="patchPresetsContainer">
                     <div style="display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
-                        <div style="font-family:'Montserrat Alternates';font-size:13px;color:rgba(255,255,255,0.5);">
+                        <div style="font-family:'Montserrat Alternates';font-size:13px;color:rgba(255,255,255,0.6);">
                             Готовые конфиги ArizonaPatches от сообщества
                         </div>
                         <button class="mods-action-btn" style="width:auto;padding:0 14px;height:32px;font-size:11px;" onclick="loadPatchPresets()">
                             <i data-lucide="refresh-cw"></i> Обновить
                         </button>
                     </div>
-                    <div id="patchPresetsStatus" style="font-family:'Montserrat Alternates';font-size:12px;color:rgba(255,255,255,0.35);min-height:16px;"></div>
+                    <div id="patchPresetsStatus" style="font-family:'Montserrat Alternates';font-size:12px;color:rgba(255,255,255,0.55);min-height:16px;"></div>
                     <div id="patchPresetsGrid" class="mods-grid">
                         <!-- Заполняется через JS -->
                     </div>
@@ -6006,14 +6069,14 @@
             <!-- Другие моды -->
             <div id="modsTabOther" class="mods-tab-content">
                 <div style="display:flex;align-items:center;justify-content:space-between;flex-shrink:0;gap:12px;">
-                    <div style="font-family:'Montserrat Alternates';font-size:13px;color:rgba(255,255,255,0.5);">
+                    <div style="font-family:'Montserrat Alternates';font-size:13px;color:rgba(255,255,255,0.6);">
                         ASI моды, CLEO скрипты и другие файлы
                     </div>
                     <button class="mods-action-btn" style="width:auto;padding:0 14px;height:32px;font-size:11px;" onclick="loadOthersCatalog()">
                         <i data-lucide="refresh-cw"></i> Обновить
                     </button>
                 </div>
-                <div id="othersStatus" style="font-family:'Montserrat Alternates';font-size:12px;color:rgba(255,255,255,0.35);min-height:16px;"></div>
+                <div id="othersStatus" style="font-family:'Montserrat Alternates';font-size:12px;color:rgba(255,255,255,0.55);min-height:16px;"></div>
                 <div id="othersGrid" style="display:flex;flex-direction:column;gap:6px;">
                     <div class="mods-empty">Загрузка...</div>
                 </div>
@@ -7502,9 +7565,10 @@
 
         function closeModsModal() {
             const modal = document.getElementById('modsModal');
+            // 440мс = анимации modsSink (0.4s) + запас на кадр
             _closeWithAnim(modal, () => {
                 modal.style.display = 'none';
-            });
+            }, 440);
         }
 
         function switchModsTab(tab) {
@@ -9910,8 +9974,19 @@
             return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
         }
 
+        // Контрастная «краска» акцентных кнопок: --accent-rgb динамический
+        // (Monet-палитра под обои) — на светлых обоях белый текст на акценте
+        // не читается. Считаем яркость и переключаем текст на тёмный.
+        function _syncAccentInk() {
+            const p = _getRootVar('--accent-rgb').split(',').map(s => parseInt(s, 10));
+            if (p.length < 3 || p.some(n => isNaN(n))) return;
+            const lum = (0.2126 * p[0] + 0.7152 * p[1] + 0.0722 * p[2]) / 255;
+            document.documentElement.classList.toggle('accent-light', lum > 0.55);
+        }
+
         function _setRootVar(name, value) {
             document.documentElement.style.setProperty(name, value);
+            if (name === '--accent-rgb') _syncAccentInk();
         }
 
         function _ensureMonetDefaults() {
