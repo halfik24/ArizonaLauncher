@@ -1825,20 +1825,136 @@ pub fn open_telegram_share() -> Result<serde_json::Value, String> {
     util::ok_true()
 }
 
+// ==================== Wallpapers ====================
+
+/// Расширения обоев — те же, что поддерживала легаси-версия на Python.
+const WALLPAPER_EXTS: [&str; 5] = ["jpg", "jpeg", "png", "webp", "bmp"];
+
+/// Папки с обоями, в порядке приоритета:
+/// 1. `wallpapers/` рядом с exe — пользовательская, создаётся автоматически;
+/// 2. `src/wallpapers/` — встроенные обои из ресурсов (видны в dev-сборке).
+fn wallpapers_dirs() -> Vec<PathBuf> {
+    let mut dirs = Vec::new();
+    if let Some(exe) = std::env::current_exe().ok() {
+        if let Some(parent) = exe.parent() {
+            dirs.push(parent.join("wallpapers"));
+        }
+    }
+    let bundled = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("src")
+        .join("wallpapers");
+    if bundled.is_dir() {
+        dirs.push(bundled);
+    }
+    dirs
+}
+
+fn wallpaper_mime(filename: &str) -> &'static str {
+    let ext = std::path::Path::new(filename)
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_ascii_lowercase());
+    match ext.as_deref() {
+        Some("png") => "image/png",
+        Some("webp") => "image/webp",
+        Some("bmp") => "image/bmp",
+        _ => "image/jpeg",
+    }
+}
+
+/// Ищет файл обоев в известных папках (запрет path traversal: только имя файла).
+fn find_wallpaper(filename: &str) -> Option<PathBuf> {
+    if filename.is_empty()
+        || filename.contains('/')
+        || filename.contains('\\')
+        || filename.contains("..")
+    {
+        return None;
+    }
+    wallpapers_dirs()
+        .into_iter()
+        .map(|dir| dir.join(filename))
+        .find(|path| path.is_file())
+}
+
+fn wallpaper_data_url(filename: &str) -> Result<serde_json::Value, String> {
+    let path = match find_wallpaper(filename) {
+        Some(p) => p,
+        None => return Ok(serde_json::json!({"success": false, "message": "File not found"})),
+    };
+    let bytes = match std::fs::read(&path) {
+        Ok(b) => b,
+        Err(e) => return Ok(serde_json::json!({"success": false, "message": e.to_string()})),
+    };
+    use base64::Engine;
+    let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+    Ok(serde_json::json!({
+        "success": true,
+        "data_url": format!("data:{};base64,{}", wallpaper_mime(filename), b64)
+    }))
+}
+
+/// Список обоев. Если пользовательской папки нет — она создаётся автоматически.
 #[tauri::command]
 pub fn get_wallpapers() -> Result<serde_json::Value, String> {
-    // TODO: scan wallpapers dir
-    Ok(serde_json::json!({"success": true, "wallpapers": []}))
+    let dirs = wallpapers_dirs();
+    // Пользовательская папка создаётся всегда — в неё можно просто положить картинки.
+    if let Some(user_dir) = dirs.first() {
+        if let Err(e) = std::fs::create_dir_all(user_dir) {
+            return Ok(serde_json::json!({"success": false, "message": e.to_string(), "wallpapers": []}));
+        }
+    }
+
+    let mut seen = std::collections::HashSet::new();
+    let mut result = Vec::new();
+    for dir in dirs {
+        let entries = match std::fs::read_dir(&dir) {
+            Ok(rd) => rd,
+            Err(_) => continue,
+        };
+        let mut paths: Vec<PathBuf> = entries.filter_map(|e| e.ok()).map(|e| e.path()).collect();
+        paths.sort();
+        for path in paths {
+            if !path.is_file() {
+                continue;
+            }
+            let ext = match path.extension().and_then(|e| e.to_str()) {
+                Some(e) => e.to_ascii_lowercase(),
+                None => continue,
+            };
+            if !WALLPAPER_EXTS.contains(&ext.as_str()) {
+                continue;
+            }
+            let filename = match path.file_name().and_then(|n| n.to_str()) {
+                Some(n) => n.to_string(),
+                None => continue,
+            };
+            // одноимённый файл пользовательской папки перекрывает встроенный
+            if !seen.insert(filename.clone()) {
+                continue;
+            }
+            let name = path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or(&filename)
+                .to_string();
+            result.push(serde_json::json!({"name": name, "filename": filename}));
+        }
+    }
+    Ok(serde_json::json!({"success": true, "wallpapers": result}))
 }
 
 #[tauri::command]
 pub fn get_wallpaper_thumb(filename: String) -> Result<serde_json::Value, String> {
-    Ok(serde_json::json!({"success": false, "message": "Not implemented"}))
+    // Легаси ресайзил превью в 500px через PIL; без crate `image` отдаём оригинал —
+    // это тот же fallback, что срабатывал в Python-версии при отсутствии PIL.
+    wallpaper_data_url(&filename)
 }
 
 #[tauri::command]
 pub fn get_wallpaper_full(filename: String) -> Result<serde_json::Value, String> {
-    Ok(serde_json::json!({"success": false, "message": "Not implemented"}))
+    wallpaper_data_url(&filename)
 }
 
 #[tauri::command]
