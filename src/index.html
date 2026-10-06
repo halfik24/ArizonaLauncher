@@ -12353,18 +12353,12 @@
         let _layoutFlipTimer = null;
 
         function startLayoutEdit() {
-            // Close settings panel
-            const sp = document.querySelector('.settings-panel');
-            if (sp) sp.style.display = 'none';
-            // Restore interface visibility (hidden by openSettings)
-            document.querySelector('.interface').style.visibility = '';
-            const rp = document.querySelector('.right-panel');
-            if (rp) {
-                rp.style.visibility = '';
-                // Настройки закрыты в обход closeSettings — язычок новостей
-                // иначе остался бы выехавшим за край (класс от openSettings)
-                rp.classList.remove('news-away');
-            }
+            // Закрываем настройки той же анимацией, что и обычный крестик
+            // («уход вглубь»: рост + размытие + затухание), а не мгновенно.
+            // closeSettings внутри сразу показывает главный экран и возвращает
+            // язычок новостей (_showMainInterface снимает news-away), а через
+            // 440мс прячет панель и сбрасывает wp-mode.
+            closeSettings();
             // Show float bar
             const bar = document.getElementById('layoutFloatBar');
             if (bar) bar.style.display = 'flex';
