@@ -12448,6 +12448,10 @@
             if (!rightPanel) return;
             const wasOpen = rightPanel.classList.contains('open');
             rightPanel.classList.remove('open', 'peek-anim');
+            // Смена стороны — прыжок без анимации: бокс (left/right) переключается
+            // мгновенно, а transform-переход 0.45s гнал бы язычок новостей через
+            // всю середину экрана. Он должен сразу оказаться сбоку.
+            rightPanel.style.transition = 'none';
             if (leftPanelPos === 'right') {
                 rightPanel.style.right = 'auto';
                 rightPanel.style.left = '0';
@@ -12476,6 +12480,10 @@
                 }
             }
             if (wasOpen) rightPanel.classList.add('open');
+            // Фиксируем новый transform без перехода и возвращаем transition
+            // на место (после reflow, чтобы браузер не «догонял» старое значение)
+            void rightPanel.offsetHeight;
+            requestAnimationFrame(() => { rightPanel.style.transition = ''; });
         }
     </script>
 </body>
