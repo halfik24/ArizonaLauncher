@@ -196,6 +196,13 @@
             justify-content: center;
             align-items: center;
             overflow: hidden;
+            /* Фейд-ин идёт по ДЕТЯМ (ниже), не по самому .interface:
+               filter/opacity на .interface создают backdrop-root и на время
+               анимации у стекляных панелей пропадал backdrop-blur,
+               а в конце он резко «попал» обратно. */
+        }
+
+        .interface > * {
             animation: interfaceFadeIn 0.5s ease-out;
         }
 
@@ -7471,30 +7478,39 @@
                 // Ставим СТАРТ-состояние interfaceFadeIn инлайн ДО первого кадра:
                 // иначе между display:none→flex и реальным стартом CSS-анимации
                 // может мелькнуть резкий кадр «готового» меню («чёткое → размытое»).
-                iface.style.opacity   = '0';
-                iface.style.filter    = 'blur(12px)';
-                iface.style.transform = 'translateY(12px)';
+                // Анимация применяется к ДЕТЯМ .interface: filter/opacity на самом
+                // .interface создавали backdrop-root — backdrop-blur стекляных
+                // панелей на время фейда пропадал, а в конце резко появлялся.
+                const kids = [...iface.children];
+                for (const k of kids) {
+                    k.style.opacity   = '0';
+                    k.style.filter    = 'blur(12px)';
+                    k.style.transform = 'translateY(12px)';
+                }
                 iface.style.display   = 'flex';
                 iface.style.visibility = '';
                 void iface.offsetWidth; // style recalc — старт-состояние коммитится до paint
-                // Гарантированный рестарт анимации (display-переключение не всегда
+                // Гарантированный рестарт анимации детей (display-переключение не всегда
                 // перезапускает её детерминированно в разных версиях движка)
-                iface.style.animation = 'none';
+                for (const k of kids) k.style.animation = 'none';
                 void iface.offsetWidth;
-                iface.style.animation = '';
+                for (const k of kids) k.style.animation = '';
                 // Снимаем инлайн-стили, когда анимация реально пошла
                 // (анимация перекрывает инлайн, но после окончания без fill
-                //  инлайн- opacity:0 оставил бы интерфейс невидимым)
+                //  инлайн- opacity:0 оставил бы элементы невидимыми)
                 const _clearStart = (e) => {
-                    if (e.target !== iface) return;
+                    const t = e.target;
+                    if (!kids.includes(t)) return;
                     if (e.animationName && e.animationName !== 'interfaceFadeIn') return;
-                    iface.style.opacity = iface.style.filter = iface.style.transform = '';
-                    iface.removeEventListener('animationstart', _clearStart);
+                    t.style.opacity = t.style.filter = t.style.transform = '';
+                    t.removeEventListener('animationstart', _clearStart);
                 };
-                iface.addEventListener('animationstart', _clearStart);
+                for (const k of kids) k.addEventListener('animationstart', _clearStart);
                 setTimeout(() => {
-                    iface.style.opacity = iface.style.filter = iface.style.transform = '';
-                    iface.removeEventListener('animationstart', _clearStart);
+                    for (const k of kids) {
+                        k.style.opacity = k.style.filter = k.style.transform = '';
+                        k.removeEventListener('animationstart', _clearStart);
+                    }
                 }, 600); // 0.5s анимация + запас, страховка если animationstart не пришёл
             }
             if (right) {
