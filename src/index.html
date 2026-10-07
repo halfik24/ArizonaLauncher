@@ -5906,15 +5906,15 @@
                                 <div class="cdn-btn-group" id="cdnBtnGroup">
                                     <div class="cdn-slot">
                                         <span class="cdn-slot-num">1</span>
-                                        <button class="cdn-btn" id="cdnBtn0" data-value="0" onclick="toggleCdnBtn(0)" aria-label="CDN слот 1"><span class="cdn-reel"><span class="cdn-reel-track"><span>0</span><span>1</span></span></span></button>
+                                        <button class="cdn-btn" id="cdnBtn0" data-value="0" onclick="toggleCdnBtn(0)" aria-label="CDN слот 1"><span class="cdn-reel"><span class="cdn-reel-track"><span>0</span><span>1</span><span>0</span><span>1</span><span>0</span><span>1</span><span>0</span><span>1</span></span></span></button>
                                     </div>
                                     <div class="cdn-slot">
                                         <span class="cdn-slot-num">2</span>
-                                        <button class="cdn-btn" id="cdnBtn1" data-value="0" onclick="toggleCdnBtn(1)" aria-label="CDN слот 2"><span class="cdn-reel"><span class="cdn-reel-track"><span>0</span><span>1</span></span></span></button>
+                                        <button class="cdn-btn" id="cdnBtn1" data-value="0" onclick="toggleCdnBtn(1)" aria-label="CDN слот 2"><span class="cdn-reel"><span class="cdn-reel-track"><span>0</span><span>1</span><span>0</span><span>1</span><span>0</span><span>1</span><span>0</span><span>1</span></span></span></button>
                                     </div>
                                     <div class="cdn-slot">
                                         <span class="cdn-slot-num">3</span>
-                                        <button class="cdn-btn" id="cdnBtn2" data-value="0" onclick="toggleCdnBtn(2)" aria-label="CDN слот 3"><span class="cdn-reel"><span class="cdn-reel-track"><span>0</span><span>1</span></span></span></button>
+                                        <button class="cdn-btn" id="cdnBtn2" data-value="0" onclick="toggleCdnBtn(2)" aria-label="CDN слот 3"><span class="cdn-reel"><span class="cdn-reel-track"><span>0</span><span>1</span><span>0</span><span>1</span><span>0</span><span>1</span><span>0</span><span>1</span></span></span></button>
                                     </div>
                                 </div>
                                 <input type="hidden" id="cdnInput" value="0,0,0">
@@ -12113,8 +12113,21 @@
             cell = cell || 30;
             btn.style.setProperty('--cdn-cell', cell + 'px');
             let pos = parseInt(btn.dataset.spinPos || '0', 10) || 0;
-            const spinning = !!btn._snapT;
             const target = value ? 1 : 0;
+
+            // Цепочка прокруток: барабан уже улетел дальше — мгновенно вернуть
+            // эквивалентную позицию (паттерн 0,1 периодичен, прыжок незаметен)
+            if (pos > 1) {
+                const base = ((pos % 2) + 2) % 2;
+                track.style.transition = 'none';
+                track.style.transform = 'translateY(' + (-base * cell) + 'px)';
+                void track.offsetHeight;
+                track.style.transition = '';
+                pos = base;
+                clearTimeout(btn._snapT);
+                btn._snapT = null;
+            }
+            const spinning = !!btn._snapT;
 
             if ((pos % 2) === target && !spinning) {
                 // Уже на нужной цифре — без анимации
@@ -12136,8 +12149,8 @@
             if (track.animate) {
                 if (btn._blur) { try { btn._blur.cancel(); } catch (e) {} }
                 btn._blur = track.animate([
-                    { filter: 'blur(1.6px)' },
-                    { filter: 'blur(1.6px)', offset: 0.55 },
+                    { filter: 'blur(1.1px)' },
+                    { filter: 'blur(1.1px)', offset: 0.55 },
                     { filter: 'blur(0px)' }
                 ], { duration: 640, easing: 'linear' });
             }
