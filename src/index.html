@@ -2404,7 +2404,9 @@
 
         #launchTab .lp-grid {
             display: grid;
-            grid-template-columns: 1fr 1fr;
+            /* minmax(0,1fr): чип-флаг на hover не должен раздувать min-content
+               колонки и менять ширины плиток (1fr = minmax(auto,1fr)) */
+            grid-template-columns: repeat(2, minmax(0, 1fr));
             gap: 8px;
         }
 
@@ -2478,6 +2480,7 @@
             align-items: center;
             gap: 7px;
             min-width: 0;
+            overflow: hidden;
         }
 
         #launchTab .launch-item-name {
@@ -2570,7 +2573,7 @@
 
         .launch-inputs {
             display: grid;
-            grid-template-columns: 1fr 1fr;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
             gap: 8px;
             margin-top: 2px;
         }
