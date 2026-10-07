@@ -2532,31 +2532,6 @@
             text-overflow: ellipsis;
         }
 
-        .launch-item-flag {
-            font-family: 'Courier New', monospace;
-            font-size: 9.5px;
-            color: rgba(120, 190, 255, 0.85);
-            background: rgba(100, 180, 255, 0.09);
-            border: 1px solid rgba(100, 180, 255, 0.24);
-            border-radius: 5px;
-            padding: 1px 6px;
-            margin-top: 0;
-            flex-shrink: 0;
-            white-space: nowrap;
-            /* флаги запуска показываются только в плитке, на hover */
-            display: none;
-        }
-
-        #launchTab .launch-item:hover .launch-item-flag {
-            display: inline-block;
-            animation: lpFlagIn 0.15s ease;
-        }
-
-        @keyframes lpFlagIn {
-            from { opacity: 0; transform: translateX(-4px); }
-            to   { opacity: 1; transform: none; }
-        }
-
         .launch-inputs {
             display: grid;
             grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2584,20 +2559,7 @@
         .launch-inputs .s-input {
             width: 120px;
             flex-shrink: 0;
-        }
-
-        /* Флаг-чип в боксах «Память» / «CDN» (всегда виден) */
-        .lp-flag {
-            font-family: 'Courier New', monospace;
-            font-size: 9.5px;
-            color: rgba(120, 190, 255, 0.8);
-            background: rgba(100, 180, 255, 0.09);
-            border: 1px solid rgba(100, 180, 255, 0.24);
-            border-radius: 5px;
-            padding: 2px 6px;
             margin-left: auto;
-            flex-shrink: 0;
-            white-space: nowrap;
         }
 
         /* CDN toggle buttons */
@@ -2605,6 +2567,7 @@
             display: flex;
             gap: 6px;
             flex-shrink: 0;
+            margin-left: auto;
         }
 
         .cdn-slot {
@@ -2637,6 +2600,8 @@
             align-items: center;
             justify-content: center;
             padding: 0;
+            position: relative;
+            overflow: hidden;
         }
 
         .cdn-btn:hover {
@@ -2650,6 +2615,31 @@
             border-color: rgba(var(--accent2-rgb), 0.6);
             color: rgba(255,255,255,0.95);
             box-shadow: 0 0 8px rgba(var(--accent-rgb), 0.28);
+        }
+
+        /* CDN roulette — барабан с цифрами внутри кнопки */
+        .cdn-reel {
+            display: block;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        .cdn-reel-track {
+            display: flex;
+            flex-direction: column;
+            will-change: transform;
+            transition: transform 0.62s cubic-bezier(0.2, 0.85, 0.3, 1);
+        }
+
+        .cdn-reel-track > span {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex: 0 0 auto;
+            width: 100%;
+            height: var(--cdn-cell, 30px);
+            line-height: 1;
         }
 
         /* CDN input row — column layout */
@@ -5692,7 +5682,6 @@
                                 <span class="launch-item-text">
                                     <span class="lp-nameline">
                                         <span class="launch-item-name">Оконный режим</span>
-                                        <span class="launch-item-flag">-window</span>
                                     </span>
                                 </span>
                                 <span class="lp-check"><i data-lucide="check" stroke-width="3"></i></span>
@@ -5704,7 +5693,6 @@
                                 <span class="launch-item-text">
                                     <span class="lp-nameline">
                                         <span class="launch-item-name">Широкоэкранный</span>
-                                        <span class="launch-item-flag">-widescreen</span>
                                     </span>
                                 </span>
                                 <span class="lp-check"><i data-lucide="check" stroke-width="3"></i></span>
@@ -5716,7 +5704,6 @@
                                 <span class="launch-item-text">
                                     <span class="lp-nameline">
                                         <span class="launch-item-name">Эксклюзивный оконный</span>
-                                        <span class="launch-item-flag">-old_window</span>
                                     </span>
                                 </span>
                                 <span class="lp-check"><i data-lucide="check" stroke-width="3"></i></span>
@@ -5736,7 +5723,6 @@
                                 <span class="launch-item-text">
                                     <span class="lp-nameline">
                                         <span class="launch-item-name">HDR</span>
-                                        <span class="launch-item-flag">-allow_hdr</span>
                                     </span>
                                 </span>
                                 <span class="lp-check"><i data-lucide="check" stroke-width="3"></i></span>
@@ -5748,7 +5734,6 @@
                                 <span class="launch-item-text">
                                     <span class="lp-nameline">
                                         <span class="launch-item-name">16-бит графика</span>
-                                        <span class="launch-item-flag">-16bpp</span>
                                     </span>
                                 </span>
                                 <span class="lp-check"><i data-lucide="check" stroke-width="3"></i></span>
@@ -5760,7 +5745,6 @@
                                 <span class="launch-item-text">
                                     <span class="lp-nameline">
                                         <span class="launch-item-name">Старая трава</span>
-                                        <span class="launch-item-flag">-enable_grass</span>
                                     </span>
                                 </span>
                                 <span class="lp-check"><i data-lucide="check" stroke-width="3"></i></span>
@@ -5772,7 +5756,6 @@
                                 <span class="launch-item-text">
                                     <span class="lp-nameline">
                                         <span class="launch-item-name">Новая растительность</span>
-                                        <span class="launch-item-flag">-enable_new_grass</span>
                                     </span>
                                 </span>
                                 <span class="lp-check"><i data-lucide="check" stroke-width="3"></i></span>
@@ -5784,7 +5767,6 @@
                                 <span class="launch-item-text">
                                     <span class="lp-nameline">
                                         <span class="launch-item-name">Аризона Фьючер</span>
-                                        <span class="launch-item-flag">-trees_new</span>
                                     </span>
                                     <span class="launch-vulkan-warn" id="treesNewWarn">
                                         <i data-lucide="alert-triangle"></i> Несовместимо с VKDX модом. Удалите данный мод!
@@ -5799,7 +5781,6 @@
                                 <span class="launch-item-text">
                                     <span class="lp-nameline">
                                         <span class="launch-item-name">Modern Scale (аналог DLSS)</span>
-                                        <span class="launch-item-flag">-modern_scale</span>
                                     </span>
                                     <span class="launch-vulkan-warn" id="modernScaleWarn">
                                         <i data-lucide="alert-triangle"></i> Несовместимо с VKDX модом. Удалите данный мод!
@@ -5814,7 +5795,6 @@
                                 <span class="launch-item-text">
                                     <span class="lp-nameline">
                                         <span class="launch-item-name">Новый D3DX9</span>
-                                        <span class="launch-item-flag">-use_d3dx9_43</span>
                                     </span>
                                     <span class="launch-vulkan-warn" id="useD3dx9Warn">
                                         <i data-lucide="alert-triangle"></i> Несовместимо с VKDX модом. Удалите данный мод!
@@ -5837,7 +5817,6 @@
                                 <span class="launch-item-text">
                                     <span class="lp-nameline">
                                         <span class="launch-item-name">Режим Low PC</span>
-                                        <span class="launch-item-flag">-t</span>
                                     </span>
                                 </span>
                                 <span class="lp-check"><i data-lucide="check" stroke-width="3"></i></span>
@@ -5849,7 +5828,6 @@
                                 <span class="launch-item-text">
                                     <span class="lp-nameline">
                                         <span class="launch-item-name">Предзагрузка всего в ОЗУ</span>
-                                        <span class="launch-item-flag">-ldo</span>
                                     </span>
                                 </span>
                                 <span class="lp-check"><i data-lucide="check" stroke-width="3"></i></span>
@@ -5869,7 +5847,6 @@
                                 <span class="launch-item-text">
                                     <span class="lp-nameline">
                                         <span class="launch-item-name">Авторизация CEF</span>
-                                        <span class="launch-item-flag">-auth_cef_enable</span>
                                     </span>
                                 </span>
                                 <span class="lp-check"><i data-lucide="check" stroke-width="3"></i></span>
@@ -5881,7 +5858,6 @@
                                 <span class="launch-item-text">
                                     <span class="lp-nameline">
                                         <span class="launch-item-name">Отключить CEF</span>
-                                        <span class="launch-item-flag">-offcef</span>
                                     </span>
                                 </span>
                                 <span class="lp-check"><i data-lucide="check" stroke-width="3"></i></span>
@@ -5893,7 +5869,6 @@
                                 <span class="launch-item-text">
                                     <span class="lp-nameline">
                                         <span class="launch-item-name">Автологин</span>
-                                        <span class="launch-item-flag">-x</span>
                                     </span>
                                 </span>
                                 <span class="lp-check"><i data-lucide="check" stroke-width="3"></i></span>
@@ -5905,7 +5880,6 @@
                                 <span class="launch-item-text">
                                     <span class="lp-nameline">
                                         <span class="launch-item-name">Показывать ID диалогов</span>
-                                        <span class="launch-item-flag">-show_dialog_ids</span>
                                     </span>
                                 </span>
                                 <span class="lp-check"><i data-lucide="check" stroke-width="3"></i></span>
@@ -5918,7 +5892,6 @@
                     <div class="launch-inputs">
                         <div class="launch-input-row">
                             <span class="launch-input-label">Память (МБ)</span>
-                            <span class="lp-flag">-mem</span>
                             <select id="memoryInput" class="s-input">
                                 <option value="1024">1024</option>
                                 <option value="2048">2048</option>
@@ -5930,27 +5903,24 @@
                         <div class="launch-input-row cdn-input-row">
                             <div class="cdn-row-top">
                                 <span class="launch-input-label">CDN</span>
-                                <span class="lp-flag">-cdn</span>
                                 <div class="cdn-btn-group" id="cdnBtnGroup">
                                     <div class="cdn-slot">
                                         <span class="cdn-slot-num">1</span>
-                                        <button class="cdn-btn" id="cdnBtn0" data-value="0" onclick="toggleCdnBtn(0)" aria-label="CDN слот 1 (резервный)">0</button>
+                                        <button class="cdn-btn" id="cdnBtn0" data-value="0" onclick="toggleCdnBtn(0)" aria-label="CDN слот 1"><span class="cdn-reel"><span class="cdn-reel-track"><span>0</span><span>1</span></span></span></button>
                                     </div>
                                     <div class="cdn-slot">
                                         <span class="cdn-slot-num">2</span>
-                                        <button class="cdn-btn" id="cdnBtn1" data-value="0" onclick="toggleCdnBtn(1)" aria-label="CDN слот 2 (резервный)">0</button>
+                                        <button class="cdn-btn" id="cdnBtn1" data-value="0" onclick="toggleCdnBtn(1)" aria-label="CDN слот 2"><span class="cdn-reel"><span class="cdn-reel-track"><span>0</span><span>1</span></span></span></button>
                                     </div>
                                     <div class="cdn-slot">
                                         <span class="cdn-slot-num">3</span>
-                                        <button class="cdn-btn" id="cdnBtn2" data-value="0" onclick="toggleCdnBtn(2)" aria-label="CDN слот 3 (резервный)">0</button>
+                                        <button class="cdn-btn" id="cdnBtn2" data-value="0" onclick="toggleCdnBtn(2)" aria-label="CDN слот 3"><span class="cdn-reel"><span class="cdn-reel-track"><span>0</span><span>1</span></span></span></button>
                                     </div>
                                 </div>
                                 <input type="hidden" id="cdnInput" value="0,0,0">
                             </div>
                             <div class="cdn-hint">
-                                <b>1</b> — резервный CDN (медленнее, стабильнее),
-                                <b>0</b> — основной (быстрее, может быть недоступен).
-                                Если иконки/модели не загружаются — переключи слот.
+                                <b>0</b> основная, <b>1</b> резерв и вообще не ищите тут смысл.
                             </div>
                         </div>
                     </div>
@@ -7031,6 +7001,7 @@
             folderBtn.addEventListener('click', openFolderModal);
             nicknameInput.addEventListener('input', debounce(saveNickname, 500));
             setCdnBtns(document.getElementById('cdnInput')?.value || '0,0,0');
+            cdnInitReels();
             perfMark('events bound');
 
             await initLauncherSettings();
@@ -12109,18 +12080,98 @@
         }
 
         // ══════════════════════════════════════════════
-        //  CDN TOGGLE BUTTONS
+        //  CDN TOGGLE BUTTONS (барабан-рулетка)
         // ══════════════════════════════════════════════
         function toggleCdnBtn(idx) {
             const btn = document.getElementById('cdnBtn' + idx);
             if (!btn) return;
             const nowActive = !btn.classList.contains('active');
             btn.classList.toggle('active', nowActive);
-            // Текст кнопки = значение (0/1), не перетираем номер слота
-            btn.textContent = nowActive ? '1' : '0';
             btn.dataset.value = nowActive ? '1' : '0';
+            cdnSpinTo(btn, nowActive ? 1 : 0);
             const hidden = document.getElementById('cdnInput');
             if (hidden) hidden.value = getCdnValue();
+            // Пульс нажатия
+            if (btn.animate) btn.animate(
+                [{ transform: 'scale(1)' }, { transform: 'scale(0.9)' }, { transform: 'scale(1)' }],
+                { duration: 220, easing: 'ease-out' }
+            );
+        }
+
+        // Крутит барабан кнопки к целевой цифре (0/1), как рулетка:
+        // +4..5 шагов (~2 оборота), размытие на разгоне, доводка и снап-бэк.
+        function cdnSpinTo(btn, value) {
+            const track = btn.querySelector('.cdn-reel-track');
+            if (!track) return;
+            // Высота окна барабана: clientHeight когда кнопка видна,
+            // иначе (display:none) — из computed styles, чтобы value не прыгал 28/30
+            let cell = btn.clientHeight;
+            if (!cell) {
+                const cs = getComputedStyle(btn);
+                cell = (parseFloat(cs.height) || 30) - (parseFloat(cs.borderTopWidth) || 0) - (parseFloat(cs.borderBottomWidth) || 0);
+            }
+            cell = cell || 30;
+            btn.style.setProperty('--cdn-cell', cell + 'px');
+            let pos = parseInt(btn.dataset.spinPos || '0', 10) || 0;
+            const spinning = !!btn._snapT;
+            const target = value ? 1 : 0;
+
+            if ((pos % 2) === target && !spinning) {
+                // Уже на нужной цифре — без анимации
+                track.style.transition = 'none';
+                track.style.transform = 'translateY(' + (-target * cell) + 'px)';
+                void track.offsetHeight;
+                track.style.transition = '';
+                btn.dataset.spinPos = String(target);
+                return;
+            }
+
+            // Докручиваем до цели: +4 или +5 шагов (чётность под target)
+            const delta = ((((target - (pos % 2)) % 2) + 2) % 2) + 4;
+            pos += delta;
+            btn.dataset.spinPos = String(pos);
+            track.style.transition = '';
+            track.style.transform = 'translateY(' + (-pos * cell) + 'px)';
+
+            if (track.animate) {
+                if (btn._blur) { try { btn._blur.cancel(); } catch (e) {} }
+                btn._blur = track.animate([
+                    { filter: 'blur(1.6px)' },
+                    { filter: 'blur(1.6px)', offset: 0.55 },
+                    { filter: 'blur(0px)' }
+                ], { duration: 640, easing: 'linear' });
+            }
+
+            // Через долю секунды — снап-бэк к 0/1 без анимации (строка короткая)
+            clearTimeout(btn._snapT);
+            btn._snapT = setTimeout(() => {
+                const snapped = pos % 2;
+                track.style.transition = 'none';
+                track.style.transform = 'translateY(' + (-snapped * cell) + 'px)';
+                btn.dataset.spinPos = String(snapped);
+                void track.offsetHeight;
+                track.style.transition = '';
+                btn._snapT = null;
+            }, 660);
+        }
+
+        // Колесо мыши над слотом — прокрутка барабана
+        function cdnInitReels() {
+            [0, 1, 2].forEach(i => {
+                const slot = document.getElementById('cdnBtn' + i)?.closest('.cdn-slot');
+                if (!slot) return;
+                let acc = 0, lockUntil = 0;
+                slot.addEventListener('wheel', (e) => {
+                    e.preventDefault();
+                    const now = Date.now();
+                    if (now < lockUntil) return;
+                    acc += e.deltaY;
+                    if (Math.abs(acc) < 24) return;
+                    acc = 0;
+                    lockUntil = now + 180;
+                    toggleCdnBtn(i);
+                }, { passive: false });
+            });
         }
 
         function getCdnValue() {
@@ -12137,8 +12188,8 @@
                 if (!btn) return;
                 const isActive = (parts[i] || '0') === '1';
                 btn.classList.toggle('active', isActive);
-                btn.textContent = isActive ? '1' : '0';
                 btn.dataset.value = isActive ? '1' : '0';
+                cdnSpinTo(btn, isActive ? 1 : 0);
             });
             const hidden = document.getElementById('cdnInput');
             if (hidden) hidden.value = val || '0,0,0';
