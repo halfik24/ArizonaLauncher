@@ -7494,46 +7494,57 @@
             const iface = document.querySelector('.interface');
             const right = document.querySelector('.right-panel');
             if (iface) {
-                // Ставим СТАРТ-состояние interfaceFadeIn инлайн ДО первого кадра:
-                // иначе между display:none→flex и реальным стартом CSS-анимации
-                // может мелькнуть резкий кадр «готового» меню («чёткое → размытое»).
-                // Анимация применяется к ДЕТЯМ .interface: filter/opacity на самом
-                // .interface создавали backdrop-root — backdrop-blur стекляных
-                // панелей на время фейда пропадал, а в конце резко появлялся.
-                // #launchScreen не трогаем (у него своя система видимости
-                // через .visible/opacity:0), у .right-panel не трогаем
-                // transform (он паркует панель translateX за краем окна).
-                const kids = [...iface.children].filter(k => k.id !== 'launchScreen');
-                for (const k of kids) {
-                    k.style.opacity = '0';
-                    k.style.filter  = 'blur(12px)';
-                    if (k.classList.contains('left-panel')) k.style.transform = 'translateY(12px)';
-                }
-                iface.style.display   = 'flex';
-                iface.style.visibility = '';
-                void iface.offsetWidth; // style recalc — старт-состояние коммитится до paint
-                // Гарантированный рестарт анимации детей (display-переключение не всегда
-                // перезапускает её детерминированно в разных версиях движка)
-                for (const k of kids) k.style.animation = 'none';
-                void iface.offsetWidth;
-                for (const k of kids) k.style.animation = '';
-                // Снимаем инлайн-стили, когда анимация реально пошла
-                // (анимация перекрывает инлайн, но после окончания без fill
-                //  инлайн- opacity:0 оставил бы элементы невидимыми)
-                const _clearStart = (e) => {
-                    const t = e.target;
-                    if (!kids.includes(t)) return;
-                    if (e.animationName && e.animationName !== 'interfaceFadeIn' && e.animationName !== 'interfaceFadeSoft') return;
-                    t.style.opacity = t.style.filter = t.style.transform = '';
-                    t.removeEventListener('animationstart', _clearStart);
-                };
-                for (const k of kids) k.addEventListener('animationstart', _clearStart);
-                setTimeout(() => {
+                // Фейд-перезапуск нужен ТОЛЬКО если меню было скрыто (mods).
+                // Папка/настройки/профили идут через _closeWithAnim, но меню под
+                // ними видно всё время — сбрасывать его в blur(12px) и показывать
+                // заново нельзя, иначе выглядит как «перезагрузка» главного меню.
+                const wasHidden = getComputedStyle(iface).display === 'none';
+                if (wasHidden) {
+                    // Ставим СТАРТ-состояние interfaceFadeIn инлайн ДО первого кадра:
+                    // иначе между display:none→flex и реальным стартом CSS-анимации
+                    // может мелькнуть резкий кадр «готового» меню («чёткое → размытое»).
+                    // Анимация применяется к ДЕТЯМ .interface: filter/opacity на самом
+                    // .interface создавали backdrop-root — backdrop-blur стекляных
+                    // панелей на время фейда пропадал, а в конце резко появлялся.
+                    // #launchScreen не трогаем (у него своя система видимости
+                    // через .visible/opacity:0), у .right-panel не трогаем
+                    // transform (он паркует панель translateX за краем окна).
+                    const kids = [...iface.children].filter(k => k.id !== 'launchScreen');
                     for (const k of kids) {
-                        k.style.opacity = k.style.filter = k.style.transform = '';
-                        k.removeEventListener('animationstart', _clearStart);
+                        k.style.opacity = '0';
+                        k.style.filter  = 'blur(12px)';
+                        if (k.classList.contains('left-panel')) k.style.transform = 'translateY(12px)';
                     }
-                }, 600); // 0.5s анимация + запас, страховка если animationstart не пришёл
+                    iface.style.display   = 'flex';
+                    iface.style.visibility = '';
+                    void iface.offsetWidth; // style recalc — старт-состояние коммитится до paint
+                    // Гарантированный рестарт анимации детей (display-переключение не всегда
+                    // перезапускает её детерминированно в разных версиях движка)
+                    for (const k of kids) k.style.animation = 'none';
+                    void iface.offsetWidth;
+                    for (const k of kids) k.style.animation = '';
+                    // Снимаем инлайн-стили, когда анимация реально пошла
+                    // (анимация перекрывает инлайн, но после окончания без fill
+                    //  инлайн- opacity:0 оставил бы элементы невидимыми)
+                    const _clearStart = (e) => {
+                        const t = e.target;
+                        if (!kids.includes(t)) return;
+                        if (e.animationName && e.animationName !== 'interfaceFadeIn' && e.animationName !== 'interfaceFadeSoft') return;
+                        t.style.opacity = t.style.filter = t.style.transform = '';
+                        t.removeEventListener('animationstart', _clearStart);
+                    };
+                    for (const k of kids) k.addEventListener('animationstart', _clearStart);
+                    setTimeout(() => {
+                        for (const k of kids) {
+                            k.style.opacity = k.style.filter = k.style.transform = '';
+                            k.removeEventListener('animationstart', _clearStart);
+                        }
+                    }, 600); // 0.5s анимация + запас, страховка если animationstart не пришёл
+                } else {
+                    // Меню уже видно — просто гарантируем показ (без перезапуска фейда)
+                    iface.style.display = 'flex';
+                    iface.style.visibility = '';
+                }
             }
             if (right) {
                 right.style.display = 'flex'; right.style.visibility = '';
