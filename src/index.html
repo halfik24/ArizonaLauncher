@@ -2370,10 +2370,42 @@
         }
 
         /* ── Launch tab grid ── */
-        .launch-grid {
+        /* ── Параметры запуска: секции + стеклянные плитки (variant C) ── */
+        #launchTab { gap: 14px; }
+
+        /* Нулевой маркер версии лаунчера: id читает saveSettings() */
+        .v7-marker { display: contents; }
+
+        #launchTab .lp-sec {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        #launchTab .lp-cap {
+            font-family: 'Montserrat Alternates', sans-serif;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            color: rgba(255, 255, 255, 0.45);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding-left: 2px;
+        }
+
+        #launchTab .lp-cap::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: rgba(255, 255, 255, 0.06);
+        }
+
+        #launchTab .lp-grid {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 6px;
+            gap: 8px;
         }
 
         .launch-item {
@@ -2393,6 +2425,108 @@
             border-color: rgba(255,255,255,0.09);
         }
 
+        /* Плитка параметров запуска (scoped: Лаунчер и пикер обоев
+           используют .launch-item со старым видом) */
+        #launchTab .launch-item {
+            position: relative;
+            gap: 11px;
+            padding: 11px 13px;
+            background: rgba(255, 255, 255, 0.045);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 13px;
+            transition: background 0.18s, border-color 0.18s,
+                        transform 0.18s, box-shadow 0.18s;
+        }
+
+        #launchTab .launch-item:hover {
+            background: rgba(255, 255, 255, 0.075);
+            border-color: rgba(255, 255, 255, 0.14);
+            transform: translateY(-1px);
+        }
+
+        /* Иконка-бокс слева */
+        #launchTab .lp-ico {
+            width: 36px;
+            height: 36px;
+            flex-shrink: 0;
+            display: grid;
+            place-items: center;
+            border-radius: 11px;
+            background: rgba(var(--accent-rgb), 0.12);
+            border: 1px solid rgba(var(--accent-rgb), 0.22);
+            color: rgba(160, 205, 255, 0.95);
+            transition: background 0.18s, border-color 0.18s, box-shadow 0.18s;
+        }
+
+        #launchTab .lp-ico svg { width: 17px; height: 17px; }
+
+        #launchTab .launch-item input:checked ~ .lp-ico {
+            background: rgba(var(--accent-rgb), 0.3);
+            border-color: rgba(var(--accent-rgb), 0.55);
+            box-shadow: 0 0 14px rgba(var(--accent-rgb), 0.25);
+        }
+
+        /* Текст: строка имени (название + бейдж v7 + флаг на hover) и warn */
+        #launchTab .launch-item-text {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        #launchTab .lp-nameline {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            min-width: 0;
+        }
+
+        #launchTab .launch-item-name {
+            font-size: 12.5px;
+            min-width: 0;
+        }
+
+        /* Бейдж «только для v7» */
+        .lp-badge {
+            flex-shrink: 0;
+            font-family: 'Montserrat Alternates', sans-serif;
+            font-size: 8.5px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            color: rgba(80, 220, 140, 0.85);
+            background: rgba(80, 220, 140, 0.12);
+            border: 1px solid rgba(80, 220, 140, 0.28);
+            border-radius: 5px;
+            padding: 1px 5px;
+        }
+
+        /* Чекбокс-индикатор справа */
+        #launchTab .lp-check {
+            width: 21px;
+            height: 21px;
+            flex-shrink: 0;
+            display: grid;
+            place-items: center;
+            border-radius: 6px;
+            border: 1.5px solid rgba(255, 255, 255, 0.25);
+            transition: background 0.18s, border-color 0.18s, box-shadow 0.18s;
+        }
+
+        #launchTab .lp-check svg {
+            width: 13px;
+            height: 13px;
+            opacity: 0;
+            color: #0b1220;
+            transition: opacity 0.15s;
+        }
+
+        #launchTab .launch-item input:checked ~ .lp-check {
+            background: rgba(var(--accent-rgb), 0.95);
+            border-color: rgba(var(--accent-rgb), 0.95);
+            box-shadow: 0 0 12px rgba(var(--accent-rgb), 0.35);
+        }
+
+        #launchTab .launch-item input:checked ~ .lp-check svg { opacity: 1; }
+
         .launch-item input[type="checkbox"] {
             position: absolute; opacity: 0; width: 0; height: 0; pointer-events: none;
         }
@@ -2411,16 +2545,33 @@
 
         .launch-item-flag {
             font-family: 'Courier New', monospace;
-            font-size: 10px;
-            color: rgba(100,180,255,0.5);
-            display: block;
-            margin-top: 1px;
+            font-size: 9.5px;
+            color: rgba(120, 190, 255, 0.85);
+            background: rgba(100, 180, 255, 0.09);
+            border: 1px solid rgba(100, 180, 255, 0.24);
+            border-radius: 5px;
+            padding: 1px 6px;
+            margin-top: 0;
+            flex-shrink: 0;
+            white-space: nowrap;
+            /* флаги запуска показываются только в плитке, на hover */
+            display: none;
+        }
+
+        #launchTab .launch-item:hover .launch-item-flag {
+            display: inline-block;
+            animation: lpFlagIn 0.15s ease;
+        }
+
+        @keyframes lpFlagIn {
+            from { opacity: 0; transform: translateX(-4px); }
+            to   { opacity: 1; transform: none; }
         }
 
         .launch-inputs {
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
             margin-top: 2px;
         }
 
@@ -2428,10 +2579,10 @@
             display: flex;
             align-items: center;
             gap: 10px;
-            padding: 10px 14px;
-            background: rgba(255,255,255,0.03);
-            border: 1px solid rgba(255,255,255,0.05);
-            border-radius: 9px;
+            padding: 12px 14px;
+            background: rgba(255, 255, 255, 0.045);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 13px;
         }
 
         .launch-input-label {
@@ -2444,6 +2595,20 @@
         .launch-inputs .s-input {
             width: 120px;
             flex-shrink: 0;
+        }
+
+        /* Флаг-чип в боксах «Память» / «CDN» (всегда виден) */
+        .lp-flag {
+            font-family: 'Courier New', monospace;
+            font-size: 9.5px;
+            color: rgba(120, 190, 255, 0.8);
+            background: rgba(100, 180, 255, 0.09);
+            border: 1px solid rgba(100, 180, 255, 0.24);
+            border-radius: 5px;
+            padding: 2px 6px;
+            margin-left: auto;
+            flex-shrink: 0;
+            white-space: nowrap;
         }
 
         /* CDN toggle buttons */
@@ -2524,31 +2689,7 @@
             font-weight: 600;
         }
 
-        /* v7 section divider */
-        .launch-section-divider {
-            font-family: 'Montserrat Alternates', sans-serif;
-            font-size: 10px;
-            color: rgba(255,255,255,0.3);
-            text-transform: uppercase;
-            letter-spacing: 0.8px;
-            padding: 10px 4px 4px;
-            border-top: 1px solid rgba(255,255,255,0.05);
-            margin-top: 4px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .launch-section-divider span {
-            background: rgba(80,220,140,0.15);
-            border: 1px solid rgba(80,220,140,0.3);
-            color: rgba(80,220,140,0.85);
-            font-size: 9px;
-            padding: 1px 7px;
-            border-radius: 20px;
-        }
-
-        /* Vulkan incompatibility warning under toggle */
+        /* Vulkan incompatibility warning под чекбоксом плитки */
         .launch-vulkan-warn {
             display: none;
             font-family: 'Montserrat Alternates', sans-serif;
@@ -2557,8 +2698,8 @@
             background: rgba(255,185,60,0.07);
             border: 1px solid rgba(255,185,60,0.2);
             border-radius: 6px;
-            padding: 5px 9px;
-            margin: 2px 0 4px 42px;
+            padding: 4px 8px;
+            margin: 0;
             line-height: 1.5;
         }
 
@@ -2582,13 +2723,6 @@
         .window-mode-group .launch-item:last-child {
             border-radius: 0 0 9px 9px;
             border-top: 1px solid rgba(255,255,255,0.04);
-        }
-
-        /* v7 Vulkan pair container */
-        #v7_vulkanPair {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 6px;
         }
 
         /* #checkboxGroup теперь содержит тулбар + категории патчей V2
@@ -5555,173 +5689,254 @@
                 <!-- Запуск -->
                 <div id="launchTab" class="settings-tab-content">
 
-                    <div class="launch-grid" id="launchGrid">
-                        <!-- Оконный режим -->
-                        <label class="launch-item">
-                            <input type="checkbox" id="windowModeCheck">
-                            <div class="s-toggle"></div>
-                            <div class="launch-item-text">
-                                <span class="launch-item-name">Оконный режим</span>
-                                <span class="launch-item-flag">-window</span>
-                            </div>
-                        </label>
+                    <!-- Нулевой маркер версии лаунчера: id читает saveSettings() -->
+                    <div class="v7-marker" id="v7SectionDivider" style="display:none;"></div>
 
-                        <label class="launch-item">
-                            <input type="checkbox" id="widescreenCheck">
-                            <div class="s-toggle"></div>
-                            <div class="launch-item-text">
-                                <span class="launch-item-name">Широкоэкранный</span>
-                                <span class="launch-item-flag">-widescreen</span>
-                            </div>
-                        </label>
-                        <label class="launch-item">
-                            <input type="checkbox" id="authCefCheck">
-                            <div class="s-toggle"></div>
-                            <div class="launch-item-text">
-                                <span class="launch-item-name">Авторизация CEF</span>
-                                <span class="launch-item-flag">-auth_cef_enable</span>
-                            </div>
-                        </label>
-                        <label class="launch-item">
-                            <input type="checkbox" id="autologinCheck">
-                            <div class="s-toggle"></div>
-                            <div class="launch-item-text">
-                                <span class="launch-item-name">Автологин</span>
-                                <span class="launch-item-flag">-x</span>
-                            </div>
-                        </label>
-                        <label class="launch-item">
-                            <input type="checkbox" id="textureModeCheck">
-                            <div class="s-toggle"></div>
-                            <div class="launch-item-text">
-                                <span class="launch-item-name">Режим Low PC</span>
-                                <span class="launch-item-flag">-t</span>
-                            </div>
-                        </label>
-                        <label class="launch-item">
-                            <input type="checkbox" id="colorDepth16Check">
-                            <div class="s-toggle"></div>
-                            <div class="launch-item-text">
-                                <span class="launch-item-name">16-бит графика</span>
-                                <span class="launch-item-flag">-16bpp</span>
-                            </div>
-                        </label>
-                        <label class="launch-item">
-                            <input type="checkbox" id="allowHdrCheck">
-                            <div class="s-toggle"></div>
-                            <div class="launch-item-text">
-                                <span class="launch-item-name">HDR</span>
-                                <span class="launch-item-flag">-allow_hdr</span>
-                            </div>
-                        </label>
-                        <label class="launch-item">
-                            <input type="checkbox" id="enableGrassCheck">
-                            <div class="s-toggle"></div>
-                            <div class="launch-item-text">
-                                <span class="launch-item-name">Старая трава</span>
-                                <span class="launch-item-flag">-enable_grass</span>
-                            </div>
-                        </label>
-                        <label class="launch-item">
-                            <input type="checkbox" id="ldoCheck">
-                            <div class="s-toggle"></div>
-                            <div class="launch-item-text">
-                                <span class="launch-item-name">Предзагрузка всего в ОЗУ</span>
-                                <span class="launch-item-flag">-ldo</span>
-                            </div>
-                        </label>
+                    <!-- Окно -->
+                    <section class="lp-sec">
+                        <div class="lp-cap">Окно</div>
+                        <div class="lp-grid">
 
-                        <!-- ── Дополнительные параметры (скрыты до определения версии) ── -->
-                        <div class="launch-section-divider" id="v7SectionDivider" style="display:none;grid-column:1/-1;">
-                            Дополнительные параметры
+                            <label class="launch-item">
+                                <input type="checkbox" id="windowModeCheck">
+                                <span class="lp-ico"><i data-lucide="app-window"></i></span>
+                                <span class="launch-item-text">
+                                    <span class="lp-nameline">
+                                        <span class="launch-item-name">Оконный режим</span>
+                                        <span class="launch-item-flag">-window</span>
+                                    </span>
+                                </span>
+                                <span class="lp-check"><i data-lucide="check" stroke-width="3"></i></span>
+                            </label>
+
+                            <label class="launch-item">
+                                <input type="checkbox" id="widescreenCheck">
+                                <span class="lp-ico"><i data-lucide="rectangle-horizontal"></i></span>
+                                <span class="launch-item-text">
+                                    <span class="lp-nameline">
+                                        <span class="launch-item-name">Широкоэкранный</span>
+                                        <span class="launch-item-flag">-widescreen</span>
+                                    </span>
+                                </span>
+                                <span class="lp-check"><i data-lucide="check" stroke-width="3"></i></span>
+                            </label>
+
+                            <label class="launch-item" id="v7_oldWindow" style="display:none;">
+                                <input type="checkbox" id="oldWindowCheck">
+                                <span class="lp-ico"><i data-lucide="square"></i></span>
+                                <span class="launch-item-text">
+                                    <span class="lp-nameline">
+                                        <span class="launch-item-name">Эксклюзивный оконный</span>
+                                        <span class="lp-badge">v7</span>
+                                        <span class="launch-item-flag">-old_window</span>
+                                    </span>
+                                </span>
+                                <span class="lp-check"><i data-lucide="check" stroke-width="3"></i></span>
+                            </label>
+
                         </div>
+                    </section>
 
-                        <label class="launch-item" id="v7_enableNewGrass" style="display:none;">
-                            <input type="checkbox" id="enableNewGrassCheck">
-                            <div class="s-toggle"></div>
-                            <div class="launch-item-text">
-                                <span class="launch-item-name">Новая растительность</span>
-                                <span class="launch-item-flag">-enable_new_grass</span>
-                            </div>
-                        </label>
+                    <!-- Графика -->
+                    <section class="lp-sec">
+                        <div class="lp-cap">Графика</div>
+                        <div class="lp-grid">
 
-                        <label class="launch-item" id="v7_offcef" style="display:none;">
-                            <input type="checkbox" id="offcefCheck">
-                            <div class="s-toggle"></div>
-                            <div class="launch-item-text">
-                                <span class="launch-item-name">Отключить CEF</span>
-                                <span class="launch-item-flag">-offcef</span>
-                            </div>
-                        </label>
+                            <label class="launch-item">
+                                <input type="checkbox" id="allowHdrCheck">
+                                <span class="lp-ico"><i data-lucide="sun"></i></span>
+                                <span class="launch-item-text">
+                                    <span class="lp-nameline">
+                                        <span class="launch-item-name">HDR</span>
+                                        <span class="launch-item-flag">-allow_hdr</span>
+                                    </span>
+                                </span>
+                                <span class="lp-check"><i data-lucide="check" stroke-width="3"></i></span>
+                            </label>
 
-                        <label class="launch-item" id="v7_oldWindow" style="display:none;">
-                            <input type="checkbox" id="oldWindowCheck">
-                            <div class="s-toggle"></div>
-                            <div class="launch-item-text">
-                                <span class="launch-item-name">Эксклюзивный оконный</span>
-                                <span class="launch-item-flag">-old_window</span>
-                            </div>
-                        </label>
+                            <label class="launch-item">
+                                <input type="checkbox" id="colorDepth16Check">
+                                <span class="lp-ico"><i data-lucide="palette"></i></span>
+                                <span class="launch-item-text">
+                                    <span class="lp-nameline">
+                                        <span class="launch-item-name">16-бит графика</span>
+                                        <span class="launch-item-flag">-16bpp</span>
+                                    </span>
+                                </span>
+                                <span class="lp-check"><i data-lucide="check" stroke-width="3"></i></span>
+                            </label>
 
-                        <label class="launch-item" id="v7_showDialogIds" style="display:none;">
-                            <input type="checkbox" id="showDialogIdsCheck">
-                            <div class="s-toggle"></div>
-                            <div class="launch-item-text">
-                                <span class="launch-item-name">Показывать ID диалогов</span>
-                                <span class="launch-item-flag">-show_dialog_ids</span>
-                            </div>
-                        </label>
+                            <label class="launch-item">
+                                <input type="checkbox" id="enableGrassCheck">
+                                <span class="lp-ico"><i data-lucide="leaf"></i></span>
+                                <span class="launch-item-text">
+                                    <span class="lp-nameline">
+                                        <span class="launch-item-name">Старая трава</span>
+                                        <span class="launch-item-flag">-enable_grass</span>
+                                    </span>
+                                </span>
+                                <span class="lp-check"><i data-lucide="check" stroke-width="3"></i></span>
+                            </label>
 
-                        <!-- modern_scale — несовместим с Vulkan -->
-                        <div id="v7_vulkanPair" style="display:none;grid-column:1/-1;">
-                            <div id="v7_modernScale">
-                                <label class="launch-item">
-                                    <input type="checkbox" id="modernScaleCheck" onchange="onVulkanIncompatChange('modernScaleWarn', this.checked)">
-                                    <div class="s-toggle"></div>
-                                    <div class="launch-item-text">
-                                        <span class="launch-item-name">Modern Scale (аналог DLSS)</span>
-                                        <span class="launch-item-flag">-modern_scale</span>
-                                    </div>
-                                </label>
-                                <div class="launch-vulkan-warn" id="modernScaleWarn">
-                                    <i data-lucide="alert-triangle"></i> Несовместимо с VKDX модом. Удалите данный мод!
-                                </div>
-                            </div>
+                            <label class="launch-item" id="v7_enableNewGrass" style="display:none;">
+                                <input type="checkbox" id="enableNewGrassCheck">
+                                <span class="lp-ico"><i data-lucide="sprout"></i></span>
+                                <span class="launch-item-text">
+                                    <span class="lp-nameline">
+                                        <span class="launch-item-name">Новая растительность</span>
+                                        <span class="lp-badge">v7</span>
+                                        <span class="launch-item-flag">-enable_new_grass</span>
+                                    </span>
+                                </span>
+                                <span class="lp-check"><i data-lucide="check" stroke-width="3"></i></span>
+                            </label>
 
                             <label class="launch-item" id="v7_treesNew" style="display:none;">
                                 <input type="checkbox" id="treesNewCheck" onchange="onVulkanIncompatChange('treesNewWarn', this.checked)">
-                                <div class="s-toggle"></div>
-                                <div class="launch-item-text">
-                                    <span class="launch-item-name">Аризона Фьючер</span>
-                                    <span class="launch-item-flag">-trees_new</span>
-                                </div>
+                                <span class="lp-ico"><i data-lucide="tree-pine"></i></span>
+                                <span class="launch-item-text">
+                                    <span class="lp-nameline">
+                                        <span class="launch-item-name">Аризона Фьючер</span>
+                                        <span class="lp-badge">v7</span>
+                                        <span class="launch-item-flag">-trees_new</span>
+                                    </span>
+                                    <span class="launch-vulkan-warn" id="treesNewWarn">
+                                        <i data-lucide="alert-triangle"></i> Несовместимо с VKDX модом. Удалите данный мод!
+                                    </span>
+                                </span>
+                                <span class="lp-check"><i data-lucide="check" stroke-width="3"></i></span>
                             </label>
-                            <div class="launch-vulkan-warn" id="treesNewWarn" style="display:none;">
-                                <i data-lucide="alert-triangle"></i> Несовместимо с VKDX модом. Удалите данный мод!
-                            </div>
 
-                            <!-- use_d3dx9_43 — несовместим с Vulkan -->
-                            <div id="v7_useD3dx9">
-                                <label class="launch-item">
-                                    <input type="checkbox" id="useD3dx9Check" onchange="onVulkanIncompatChange('useD3dx9Warn', this.checked)">
-                                    <div class="s-toggle"></div>
-                                    <div class="launch-item-text">
+                            <label class="launch-item" id="v7_modernScale" style="display:none;">
+                                <input type="checkbox" id="modernScaleCheck" onchange="onVulkanIncompatChange('modernScaleWarn', this.checked)">
+                                <span class="lp-ico"><i data-lucide="scan"></i></span>
+                                <span class="launch-item-text">
+                                    <span class="lp-nameline">
+                                        <span class="launch-item-name">Modern Scale (аналог DLSS)</span>
+                                        <span class="lp-badge">v7</span>
+                                        <span class="launch-item-flag">-modern_scale</span>
+                                    </span>
+                                    <span class="launch-vulkan-warn" id="modernScaleWarn">
+                                        <i data-lucide="alert-triangle"></i> Несовместимо с VKDX модом. Удалите данный мод!
+                                    </span>
+                                </span>
+                                <span class="lp-check"><i data-lucide="check" stroke-width="3"></i></span>
+                            </label>
+
+                            <label class="launch-item" id="v7_useD3dx9" style="display:none;">
+                                <input type="checkbox" id="useD3dx9Check" onchange="onVulkanIncompatChange('useD3dx9Warn', this.checked)">
+                                <span class="lp-ico"><i data-lucide="box"></i></span>
+                                <span class="launch-item-text">
+                                    <span class="lp-nameline">
                                         <span class="launch-item-name">Новый D3DX9</span>
+                                        <span class="lp-badge">v7</span>
                                         <span class="launch-item-flag">-use_d3dx9_43</span>
-                                    </div>
-                                </label>
-                                <div class="launch-vulkan-warn" id="useD3dx9Warn">
-                                    <i data-lucide="alert-triangle"></i> Несовместимо с VKDX модом. Удалите данный мод!
-                                </div>
-                            </div>
+                                    </span>
+                                    <span class="launch-vulkan-warn" id="useD3dx9Warn">
+                                        <i data-lucide="alert-triangle"></i> Несовместимо с VKDX модом. Удалите данный мод!
+                                    </span>
+                                </span>
+                                <span class="lp-check"><i data-lucide="check" stroke-width="3"></i></span>
+                            </label>
+
                         </div>
+                    </section>
 
-                    </div>
+                    <!-- Производительность -->
+                    <section class="lp-sec">
+                        <div class="lp-cap">Производительность</div>
+                        <div class="lp-grid">
 
+                            <label class="launch-item">
+                                <input type="checkbox" id="textureModeCheck">
+                                <span class="lp-ico"><i data-lucide="zap"></i></span>
+                                <span class="launch-item-text">
+                                    <span class="lp-nameline">
+                                        <span class="launch-item-name">Режим Low PC</span>
+                                        <span class="launch-item-flag">-t</span>
+                                    </span>
+                                </span>
+                                <span class="lp-check"><i data-lucide="check" stroke-width="3"></i></span>
+                            </label>
+
+                            <label class="launch-item">
+                                <input type="checkbox" id="ldoCheck">
+                                <span class="lp-ico"><i data-lucide="memory-stick"></i></span>
+                                <span class="launch-item-text">
+                                    <span class="lp-nameline">
+                                        <span class="launch-item-name">Предзагрузка всего в ОЗУ</span>
+                                        <span class="launch-item-flag">-ldo</span>
+                                    </span>
+                                </span>
+                                <span class="lp-check"><i data-lucide="check" stroke-width="3"></i></span>
+                            </label>
+
+                        </div>
+                    </section>
+
+                    <!-- Клиент и сеть -->
+                    <section class="lp-sec">
+                        <div class="lp-cap">Клиент и сеть</div>
+                        <div class="lp-grid">
+
+                            <label class="launch-item">
+                                <input type="checkbox" id="authCefCheck">
+                                <span class="lp-ico"><i data-lucide="globe"></i></span>
+                                <span class="launch-item-text">
+                                    <span class="lp-nameline">
+                                        <span class="launch-item-name">Авторизация CEF</span>
+                                        <span class="launch-item-flag">-auth_cef_enable</span>
+                                    </span>
+                                </span>
+                                <span class="lp-check"><i data-lucide="check" stroke-width="3"></i></span>
+                            </label>
+
+                            <label class="launch-item" id="v7_offcef" style="display:none;">
+                                <input type="checkbox" id="offcefCheck">
+                                <span class="lp-ico"><i data-lucide="ban"></i></span>
+                                <span class="launch-item-text">
+                                    <span class="lp-nameline">
+                                        <span class="launch-item-name">Отключить CEF</span>
+                                        <span class="lp-badge">v7</span>
+                                        <span class="launch-item-flag">-offcef</span>
+                                    </span>
+                                </span>
+                                <span class="lp-check"><i data-lucide="check" stroke-width="3"></i></span>
+                            </label>
+
+                            <label class="launch-item">
+                                <input type="checkbox" id="autologinCheck">
+                                <span class="lp-ico"><i data-lucide="log-in"></i></span>
+                                <span class="launch-item-text">
+                                    <span class="lp-nameline">
+                                        <span class="launch-item-name">Автологин</span>
+                                        <span class="launch-item-flag">-x</span>
+                                    </span>
+                                </span>
+                                <span class="lp-check"><i data-lucide="check" stroke-width="3"></i></span>
+                            </label>
+
+                            <label class="launch-item" id="v7_showDialogIds" style="display:none;">
+                                <input type="checkbox" id="showDialogIdsCheck">
+                                <span class="lp-ico"><i data-lucide="message-square"></i></span>
+                                <span class="launch-item-text">
+                                    <span class="lp-nameline">
+                                        <span class="launch-item-name">Показывать ID диалогов</span>
+                                        <span class="lp-badge">v7</span>
+                                        <span class="launch-item-flag">-show_dialog_ids</span>
+                                    </span>
+                                </span>
+                                <span class="lp-check"><i data-lucide="check" stroke-width="3"></i></span>
+                            </label>
+
+                        </div>
+                    </section>
+
+                    <!-- Память и CDN -->
                     <div class="launch-inputs">
                         <div class="launch-input-row">
                             <span class="launch-input-label">Память (МБ)</span>
-                            <span class="launch-item-flag" style="flex:1">-mem</span>
+                            <span class="lp-flag">-mem</span>
                             <select id="memoryInput" class="s-input">
                                 <option value="1024">1024</option>
                                 <option value="2048">2048</option>
@@ -5733,7 +5948,7 @@
                         <div class="launch-input-row cdn-input-row">
                             <div class="cdn-row-top">
                                 <span class="launch-input-label">CDN</span>
-                                <span class="launch-item-flag" style="flex:1">-cdn</span>
+                                <span class="lp-flag">-cdn</span>
                                 <div class="cdn-btn-group" id="cdnBtnGroup">
                                     <div class="cdn-slot">
                                         <span class="cdn-slot-num">1</span>
@@ -11130,7 +11345,7 @@
         function _applyLauncherVersionUI(version) {
             const isModern = version === 'v7' || version === 'v8';
             // v7+ секция
-            const v7Els = ['v7SectionDivider','v7_enableNewGrass','v7_offcef','v7_oldWindow','v7_showDialogIds','v7_treesNew'];
+            const v7Els = ['v7SectionDivider','v7_enableNewGrass','v7_offcef','v7_oldWindow','v7_showDialogIds','v7_treesNew','v7_modernScale','v7_useD3dx9'];
             v7Els.forEach(id => {
                 const el = document.getElementById(id);
                 if (el) el.style.display = isModern ? '' : 'none';
