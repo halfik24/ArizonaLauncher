@@ -203,12 +203,31 @@
         }
 
         .interface > * {
+            animation: interfaceFadeSoft 0.5s ease-out;
+        }
+
+        /* У .left-panel свой keyframes со сдвигом — у карточки нет позиционного
+           transform, который можно затереть. */
+        .interface > .left-panel {
             animation: interfaceFadeIn 0.5s ease-out;
+        }
+
+        /* launch-screen исключён: он невидим (opacity:0) пока не получит
+           .visible, а общий фейд затирал бы это и показывал «Загрузка игры». */
+        #launchScreen {
+            animation: none;
         }
 
         @keyframes interfaceFadeIn {
             from { opacity: 0; transform: translateY(12px); filter: blur(12px); }
             to   { opacity: 1; transform: translateY(0);   filter: blur(0); }
+        }
+
+        /* Фейд без transform — для панелей с позиционным transform
+           (.right-panel паркуется translateX за краем окна). */
+        @keyframes interfaceFadeSoft {
+            from { opacity: 0; filter: blur(12px); }
+            to   { opacity: 1; filter: blur(0); }
         }
 
         .left-panel {
@@ -7481,11 +7500,14 @@
                 // Анимация применяется к ДЕТЯМ .interface: filter/opacity на самом
                 // .interface создавали backdrop-root — backdrop-blur стекляных
                 // панелей на время фейда пропадал, а в конце резко появлялся.
-                const kids = [...iface.children];
+                // #launchScreen не трогаем (у него своя система видимости
+                // через .visible/opacity:0), у .right-panel не трогаем
+                // transform (он паркует панель translateX за краем окна).
+                const kids = [...iface.children].filter(k => k.id !== 'launchScreen');
                 for (const k of kids) {
-                    k.style.opacity   = '0';
-                    k.style.filter    = 'blur(12px)';
-                    k.style.transform = 'translateY(12px)';
+                    k.style.opacity = '0';
+                    k.style.filter  = 'blur(12px)';
+                    if (k.classList.contains('left-panel')) k.style.transform = 'translateY(12px)';
                 }
                 iface.style.display   = 'flex';
                 iface.style.visibility = '';
@@ -7501,7 +7523,7 @@
                 const _clearStart = (e) => {
                     const t = e.target;
                     if (!kids.includes(t)) return;
-                    if (e.animationName && e.animationName !== 'interfaceFadeIn') return;
+                    if (e.animationName && e.animationName !== 'interfaceFadeIn' && e.animationName !== 'interfaceFadeSoft') return;
                     t.style.opacity = t.style.filter = t.style.transform = '';
                     t.removeEventListener('animationstart', _clearStart);
                 };
