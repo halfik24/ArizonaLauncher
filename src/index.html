@@ -446,6 +446,9 @@
             width: 48px;
             height: 155px;
             background: rgba(var(--accent-rgb), 0.42);
+            /* Свой блюр: у свёрнутой панели backdrop-filter выключен,
+               язычок стеклянный и без неё */
+            backdrop-filter: blur(10px);
             border-radius: 10px 0 0 10px;
             display: flex;
             flex-direction: column;
@@ -501,6 +504,7 @@
             width: 48px;
             height: 120px;
             background: rgba(255, 165, 0, 0.42);
+            backdrop-filter: blur(10px);
             border-radius: 10px 0 0 10px;
             display: flex;
             flex-direction: column;
