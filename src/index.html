@@ -10125,7 +10125,13 @@
                 const content = document.getElementById(t.content);
                 if (content) content.classList.add('active');
                 const titleEl = document.getElementById('settingsPanelTitle');
-                if (titleEl) titleEl.innerHTML = t.title;
+                if (titleEl) {
+                    titleEl.innerHTML = t.title;
+                    // lucide конвертирует <i data-lucide> в <svg> —
+                    // без этого вызова иконка в заголовке вкладки не рисуется
+                    if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
+                    else if (window.lucide) lucide.createIcons();
+                }
                 if (tabName === 'import') loadBackupsList();
                 if (tabName === 'debug')  loadDebugInfo();
                 if (tabName === 'patches') checkPatchesStatus();
