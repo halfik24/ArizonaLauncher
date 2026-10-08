@@ -2,3 +2,6 @@ node_modules/
 src-tauri/target/
 src-tauri/gen/
 *.log
+
+# рабочая папка агента (скрипты проверок, скриншоты)
+.agent/
