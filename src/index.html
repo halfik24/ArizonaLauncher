@@ -2612,7 +2612,10 @@
         .s-select-pop {
             position: absolute;
             right: 0;
-            top: calc(100% + 6px);
+            /* Всегда вверх: вниз от кнопки закрытый попап расширял бы
+               скролл-область вкладки (+91px невидимого пустого пространства
+               снизу), которое «пропадало» при открытии списка (флип вверх) */
+            bottom: calc(100% + 6px);
             min-width: 100%;
             width: max-content;
             display: flex;
@@ -2624,18 +2627,11 @@
             border-radius: 11px;
             box-shadow: 0 14px 34px rgba(0, 0, 0, 0.45), 0 2px 8px rgba(0, 0, 0, 0.3);
             opacity: 0;
-            transform: translateY(-5px) scale(0.96);
-            transform-origin: top right;
+            transform: translateY(5px) scale(0.96);
+            transform-origin: bottom right;
             pointer-events: none;
             transition: opacity 0.16s ease, transform 0.16s ease;
             z-index: 45;
-        }
-
-        .s-select-pop.up {
-            top: auto;
-            bottom: calc(100% + 6px);
-            transform-origin: bottom right;
-            transform: translateY(5px) scale(0.96);
         }
 
         .s-select.open .s-select-pop {
@@ -12246,12 +12242,8 @@
             btn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 if (wrap.classList.contains('open')) { memClose(); return; }
-                // Если внизу не хватает места в скролл-контейнере — открывать вверх
-                const container = wrap.closest('.settings-tab-content');
-                const br = btn.getBoundingClientRect();
-                const cr = container ? container.getBoundingClientRect() : { bottom: Infinity };
-                const need = pop.offsetHeight || 150;
-                pop.classList.toggle('up', br.bottom + 8 + need > cr.bottom - 4);
+                // Попап всегда вверх (см. CSS): вниз он расширял бы
+                // скролл-область вкладки и создавал пустое пространство снизу
                 wrap.classList.add('open');
                 btn.setAttribute('aria-expanded', 'true');
             });
