@@ -735,34 +735,69 @@
             to { transform: rotate(360deg); }
         }
 
-        /* Вкладки новостей */
+        /* Заголовок панели новостей.
+           .header/.title общие с левой панелью — всё scope под .right-panel. */
+        .right-panel .header {
+            display: flex;
+            align-items: center;
+            text-align: left;
+            padding-bottom: 0;
+            margin-bottom: 14px;
+            border-bottom: none;
+        }
+
+        .right-panel .header .title {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 19px;
+            font-weight: 600;
+            letter-spacing: 0.4px;
+            color: rgba(255, 255, 255, 0.92);
+            text-shadow: none;
+            margin-bottom: 0;
+        }
+
+        .right-panel .header .title svg {
+            width: 18px;
+            height: 18px;
+            color: rgba(var(--accent-rgb), 0.95);
+        }
+
+        /* Вкладки новостей — сегментед-контроль (как в iOS-стиле настроек) */
         .news-tabs {
             display: flex;
-            gap: 10px;
-            margin-bottom: 15px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            gap: 4px;
+            margin-bottom: 14px;
+            padding: 4px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 12px;
         }
 
         .news-tab {
-            padding: 10px 20px;
+            flex: 1;
+            padding: 8px 14px;
             background: transparent;
             border: none;
-            color: rgba(255, 255, 255, 0.7);
+            color: rgba(255, 255, 255, 0.55);
             font-family: 'Montserrat Alternates', sans-serif;
-            font-size: 14px;
+            font-size: 13px;
             font-weight: 500;
             cursor: pointer;
-            transition: all var(--transition-speed);
-            border-bottom: 2px solid transparent;
+            border-radius: 9px;
+            transition: background 0.18s, color 0.18s, box-shadow 0.18s;
         }
 
         .news-tab.active {
-            color: #4fc3f7;
-            border-bottom-color: #4fc3f7;
+            background: rgba(var(--accent-rgb), 0.16);
+            color: rgba(255, 255, 255, 0.95);
+            box-shadow: inset 0 0 0 1px rgba(var(--accent-rgb), 0.35);
         }
 
-        .news-tab:hover {
-            color: rgba(255, 255, 255, 0.9);
+        .news-tab:hover:not(.active) {
+            color: rgba(255, 255, 255, 0.85);
+            background: rgba(255, 255, 255, 0.05);
         }
 
         /* Секция новостей */
@@ -799,94 +834,122 @@
         }
 
         .news-item {
-            background: rgba(255, 255, 255, 0.05);
-            border-radius: 8px;
-            padding: 15px;
-            margin-bottom: 15px;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            transition: all var(--transition-speed);
+            background: rgba(255, 255, 255, 0.045);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 14px;
+            padding: 14px 16px;
+            margin-bottom: 12px;
+            transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
             position: relative;
         }
 
         .news-item.unread {
-            border-left: 3px solid rgba(0, 140, 255, 0.7);
-            background: rgba(0, 100, 200, 0.08);
+            background: rgba(var(--accent-rgb), 0.07);
+            border-color: rgba(var(--accent-rgb), 0.4);
+            box-shadow: inset 3px 0 0 rgba(var(--accent2-rgb), 0.85);
         }
 
         .news-item.unread::after {
             content: 'NEW';
             position: absolute;
-            top: 10px;
-            right: 10px;
+            top: 13px;
+            right: 14px;
             font-family: 'Montserrat Alternates', sans-serif;
             font-size: 9px;
-            color: rgba(100, 200, 255, 0.8);
-            background: rgba(0, 120, 212, 0.2);
-            padding: 2px 6px;
-            border-radius: 4px;
-            border: 1px solid rgba(0, 140, 255, 0.3);
+            font-weight: 700;
+            color: #241f18;
+            background: rgba(var(--accent-rgb), 0.92);
+            padding: 3px 7px;
+            border-radius: 6px;
             letter-spacing: 1px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
         }
 
         .news-item:hover {
-            background: rgba(255, 255, 255, 0.08);
-            transform: translateX(5px);
+            background: rgba(255, 255, 255, 0.075);
         }
 
         .news-item-clickable {
             cursor: pointer;
-            transition: all var(--transition-speed), border-color 0.2s;
+            transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
         }
 
         .news-item-clickable:hover {
-            border-color: rgba(0, 140, 255, 0.4);
-            box-shadow: 0 2px 12px rgba(0, 120, 212, 0.15);
+            border-color: rgba(var(--accent-rgb), 0.45);
+            box-shadow: 0 6px 18px rgba(0, 0, 0, 0.22);
         }
 
+        /* Футер-подсказка — виден всегда (при наведении подсвечивается акцентом),
+           раньше появлялся по ховеру и сдвигал соседей */
         .news-item-link-hint {
-            display: none;
+            display: flex;
+            align-items: center;
+            gap: 7px;
             font-family: 'Montserrat Alternates', sans-serif;
-            font-size: 10px;
-            color: rgba(100, 180, 255, 0.7);
-            margin-top: 8px;
-            padding-top: 6px;
+            font-size: 11px;
+            color: rgba(255, 255, 255, 0.35);
+            margin-top: 12px;
+            padding-top: 10px;
             border-top: 1px solid rgba(255, 255, 255, 0.06);
+            transition: color 0.2s ease;
+        }
+
+        .news-item-link-hint svg {
+            width: 13px;
+            height: 13px;
         }
 
         .news-item-clickable:hover .news-item-link-hint {
-            display: block;
+            color: rgba(var(--accent-rgb), 0.95);
         }
 
         .news-item-title {
             font-family: 'Montserrat Alternates', sans-serif;
-            font-size: 15px;
-            color: #ffffff;
-            margin-bottom: 8px;
-            padding: 2px 0 2px 12px;
-            border-left: 2px solid var(--primary-color);
+            font-size: 14.5px;
+            color: rgba(255, 255, 255, 0.95);
+            margin-bottom: 7px;
             font-weight: 600;
-            text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
             letter-spacing: 0.2px;
             line-height: 1.35;
+            padding-right: 48px; /* место под NEW-бейдж у непрочитанных */
+        }
+
+        .news-item-title::before {
+            content: '';
+            display: inline-block;
+            width: 7px;
+            height: 7px;
+            border-radius: 2px;
+            background: rgba(var(--accent2-rgb), 0.85);
+            margin-right: 9px;
+            vertical-align: 1.5px;
         }
 
         .news-item-content {
-            font-size: 14px;
-            color: rgba(255, 255, 255, 0.8);
-            line-height: 1.5;
+            font-size: 13.5px;
+            color: rgba(255, 255, 255, 0.72);
+            line-height: 1.55;
             white-space: pre-wrap;
         }
 
         .news-item-date {
-            font-size: 12px;
-            color: rgba(255, 255, 255, 0.5);
-            margin-top: 8px;
+            display: inline-flex;
+            align-items: center;
+            font-size: 11px;
+            color: rgba(255, 255, 255, 0.42);
+            margin-top: 11px;
+            padding: 3px 9px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            border-radius: 7px;
+            letter-spacing: 0.3px;
         }
 
         .news-loading {
             text-align: center;
-            padding: 20px;
-            color: rgba(255, 255, 255, 0.5);
+            padding: 30px 16px;
+            color: rgba(255, 255, 255, 0.45);
+            font-size: 12.5px;
         }
 
         /* Нижняя панель с кнопками */
@@ -5671,7 +5734,7 @@
                 </div>
 
                 <div class="header">
-                    <div class="title">Новости</div>
+                    <div class="title"><i data-lucide="newspaper"></i> Новости</div>
                 </div>
                 
                 <div class="news-tabs">
@@ -7242,7 +7305,7 @@
                                     const newsId = 'news_' + idx + '_' + (news.title || '').replace(/\W/g, '').substring(0, 20);
                                     newsItem.dataset.newsId = newsId;
                                     newsItem.innerHTML = `
-                                        <div class="news-item-title">${escapeHtml(news.title)}</div>
+                                        <div class="news-item-title">${escapeHtml((news.title || '').replace(/^#+\s*/, ''))}</div>
                                         <div class="news-item-content">${escapeHtml(news.content)}</div>
                                         ${news.date ? `<div class="news-item-date">${escapeHtml(news.date)}</div>` : ''}
                                         <div class="news-item-link-hint"><i data-lucide="link"></i> Открыть релиз на GitHub</div>`;
@@ -7456,7 +7519,7 @@
                         const newsId = 'news_' + idx + '_' + (news.title || '').replace(/\W/g, '').substring(0, 20);
                         newsItem.dataset.newsId = newsId;
                         newsItem.innerHTML = `
-                            <div class="news-item-title">${escapeHtml(news.title)}</div>
+                            <div class="news-item-title">${escapeHtml((news.title || '').replace(/^#+\s*/, ''))}</div>
                             <div class="news-item-content">${escapeHtml(news.content)}</div>
                             ${news.date ? `<div class="news-item-date">${escapeHtml(news.date)}</div>` : ''}
                             <div class="news-item-link-hint"><i data-lucide="link"></i> Открыть релиз на GitHub</div>
