@@ -62,6 +62,11 @@ pub struct LauncherSettings {
     pub window_size: Option<Vec<i32>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub layout_order: Option<Vec<String>>,
+    /// Поля, не описанные структурой (hide_profiles, status_bar,
+    /// status_bar_pos, bg_data, …), — как в легаси: словарь целиком,
+    /// иначе save_launcher_settings молча их отбрасывал.
+    #[serde(flatten)]
+    pub extra: serde_json::Map<String, serde_json::Value>,
 }
 
 impl Default for LauncherSettings {
@@ -71,6 +76,7 @@ impl Default for LauncherSettings {
             window_title: None,
             window_size: None,
             layout_order: None,
+            extra: serde_json::Map::new(),
         }
     }
 }

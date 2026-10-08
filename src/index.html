@@ -230,25 +230,109 @@
             to   { opacity: 1; filter: blur(0); }
         }
 
-        /* ── Статус-строка главного экрана ── */
+        /* ── Статус-строка главного экрана (положение: sb-pos-*) ── */
         .status-bar {
             position: absolute;
-            left: 0; right: 0; bottom: 0;
-            height: 34px;
-            display: flex;
-            align-items: center;
-            gap: 18px;
-            padding: 0 16px;
             background: rgba(10, 12, 18, 0.45);
             backdrop-filter: blur(14px) saturate(1.2);
             -webkit-backdrop-filter: blur(14px) saturate(1.2);
-            border-top: 1px solid rgba(255,255,255,0.07);
             font-family: 'Montserrat Alternates', sans-serif;
             font-size: 11px;
             color: rgba(255,255,255,0.55);
             z-index: 5;
             user-select: none;
+            display: flex;
+            gap: 18px;
         }
+        /* Низ (по умолчанию) */
+        .status-bar.sb-pos-bottom,
+        .status-bar:not([class*="sb-pos-"]) {
+            left: 0; right: 0; bottom: 0;
+            height: 34px;
+            align-items: center;
+            padding: 0 16px;
+            border-top: 1px solid rgba(255,255,255,0.07);
+        }
+        /* Верх */
+        .status-bar.sb-pos-top {
+            left: 0; right: 0; top: 0;
+            height: 34px;
+            align-items: center;
+            padding: 0 16px;
+            border-bottom: 1px solid rgba(255,255,255,0.07);
+        }
+        /* Лево */
+        .status-bar.sb-pos-left {
+            top: 0; bottom: 0; left: 0;
+            width: 40px;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start;
+            gap: 14px;
+            padding: 12px 0;
+            border-right: 1px solid rgba(255,255,255,0.07);
+        }
+        /* Право */
+        .status-bar.sb-pos-right {
+            top: 0; bottom: 0; right: 0;
+            width: 40px;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start;
+            gap: 14px;
+            padding: 12px 0;
+            border-left: 1px solid rgba(255,255,255,0.07);
+        }
+        /* Боковые положения: чипы столбиком, подпись в title */
+        .sb-pos-left .sb-chip,
+        .sb-pos-right .sb-chip {
+            flex-direction: column;
+            gap: 3px;
+            width: 100%;
+            align-items: center;
+            text-align: center;
+        }
+        .sb-pos-left .sb-key,
+        .sb-pos-right .sb-key { display: none; }
+        .sb-pos-left .sb-val,
+        .sb-pos-right .sb-val {
+            font-size: 9px;
+            line-height: 1.15;
+            max-width: 38px;
+            white-space: normal;
+        }
+        /* Место под боковые полосы и под виджет «Профили» при верхней */
+        body.sb-left .interface { padding-left: 48px; }
+        body.sb-right .interface { padding-right: 48px; }
+        body.sb-top #profilesHoverWidget { top: 44px; }
+
+        /* Сегмент положения строки в настройках */
+        .sb-pos-wrap { margin: 4px 16px 12px; }
+        .sb-pos-label {
+            font-family: 'Montserrat Alternates', sans-serif;
+            font-size: 11px;
+            color: rgba(255,255,255,0.45);
+            margin-bottom: 7px;
+        }
+        .sb-pos-row { display: flex; gap: 6px; }
+        .sb-pos-btn {
+            flex: 1; height: 30px;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.09);
+            border-radius: 8px;
+            color: rgba(255,255,255,0.55);
+            font-family: 'Montserrat Alternates', sans-serif;
+            font-size: 11px;
+            cursor: pointer;
+            transition: background 0.15s, border-color 0.15s, color 0.15s;
+        }
+        .sb-pos-btn:hover { background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.8); }
+        .sb-pos-btn.active {
+            background: rgba(var(--accent-rgb), 0.16);
+            border-color: rgba(var(--accent-rgb), 0.45);
+            color: rgba(255,255,255,0.92);
+        }
+
         .sb-chip { display: flex; align-items: center; gap: 6px; }
         .sb-chip svg { width: 13px; height: 13px; opacity: 0.7; }
         .sb-key { color: rgba(255,255,255,0.4); letter-spacing: 0.3px; }
@@ -307,6 +391,22 @@
 
         .right-panel.open {
             transform: translateX(0) !important;
+        }
+
+        /* Свёрнутая панель новостей не занимает место: полоса у края
+           прозрачна и клики проходят сквозь неё. Язычок и патч-язычок
+           кликабельны сами. .peek-anim исключён — во время показа
+           панели ей нужен фон. */
+        .right-panel:not(.open):not(.peek-anim) {
+            background: transparent;
+            border-color: transparent;
+            box-shadow: none;
+            backdrop-filter: none;
+            pointer-events: none;
+        }
+        .right-panel:not(.open):not(.peek-anim) > .news-handle,
+        .right-panel:not(.open):not(.peek-anim) > .patch-handle {
+            pointer-events: auto;
         }
 
         .right-panel.peek-anim {
@@ -6348,6 +6448,15 @@
                                     <span class="launch-item-name">Показывать статус-строку</span>
                                 </div>
                             </label>
+                            <div class="sb-pos-wrap">
+                                <div class="sb-pos-label">Положение строки</div>
+                                <div class="sb-pos-row" id="sbPosRow">
+                                    <button class="sb-pos-btn" data-pos="bottom" onclick="setStatusBarPos('bottom')">Внизу</button>
+                                    <button class="sb-pos-btn" data-pos="top" onclick="setStatusBarPos('top')">Вверху</button>
+                                    <button class="sb-pos-btn" data-pos="left" onclick="setStatusBarPos('left')">Слево</button>
+                                    <button class="sb-pos-btn" data-pos="right" onclick="setStatusBarPos('right')">Справо</button>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
@@ -10550,7 +10659,7 @@
         }
 
         // ---- НАСТРОЙКИ ЛАУНЧЕРА ----
-        let launcherSettings = { bg_image: null, hide_profiles: false, status_bar: true };
+        let launcherSettings = { bg_image: null, hide_profiles: false, status_bar: true, status_bar_pos: 'bottom' };
 
         // ---- Monet-like dynamic theme from wallpaper ----
         const _monetTheme = {
@@ -11188,9 +11297,33 @@
 
         function applyStatusBar() {
             if (typeof launcherSettings.status_bar !== 'boolean') launcherSettings.status_bar = true;
+            if (['bottom','top','left','right'].indexOf(launcherSettings.status_bar_pos) < 0) launcherSettings.status_bar_pos = 'bottom';
+            const bar = document.getElementById('statusBar');
+            if (bar) {
+                bar.classList.remove('sb-pos-bottom', 'sb-pos-top', 'sb-pos-left', 'sb-pos-right');
+                bar.classList.add('sb-pos-' + launcherSettings.status_bar_pos);
+            }
+            // Отступы интерфейса/виджета — только пока строка видима
+            document.body.classList.remove('sb-top', 'sb-left', 'sb-right');
+            if (launcherSettings.status_bar && launcherSettings.status_bar_pos !== 'bottom') {
+                document.body.classList.add('sb-' + launcherSettings.status_bar_pos);
+            }
             if (launcherSettings.status_bar) startStatusBar(); else stopStatusBar();
             const cb = document.getElementById('statusBarCheck');
             if (cb) cb.checked = launcherSettings.status_bar;
+            const btns = document.querySelectorAll('.sb-pos-btn');
+            for (let i = 0; i < btns.length; i++) {
+                btns[i].classList.toggle('active', btns[i].dataset.pos === launcherSettings.status_bar_pos);
+            }
+        }
+
+        function setStatusBarPos(pos) {
+            if (['bottom', 'top', 'left', 'right'].indexOf(pos) < 0) return;
+            launcherSettings.status_bar_pos = pos;
+            applyStatusBar();
+            if (window.pywebview && window.pywebview.api.save_launcher_settings) {
+                window.pywebview.api.save_launcher_settings(launcherSettings);
+            }
         }
 
         function toggleStatusBar() {
