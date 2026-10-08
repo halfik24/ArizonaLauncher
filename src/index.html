@@ -230,6 +230,41 @@
             to   { opacity: 1; filter: blur(0); }
         }
 
+        /* ── Статус-строка главного экрана ── */
+        .status-bar {
+            position: absolute;
+            left: 0; right: 0; bottom: 0;
+            height: 34px;
+            display: flex;
+            align-items: center;
+            gap: 18px;
+            padding: 0 16px;
+            background: rgba(10, 12, 18, 0.45);
+            backdrop-filter: blur(14px) saturate(1.2);
+            -webkit-backdrop-filter: blur(14px) saturate(1.2);
+            border-top: 1px solid rgba(255,255,255,0.07);
+            font-family: 'Montserrat Alternates', sans-serif;
+            font-size: 11px;
+            color: rgba(255,255,255,0.55);
+            z-index: 5;
+            user-select: none;
+        }
+        .sb-chip { display: flex; align-items: center; gap: 6px; }
+        .sb-chip svg { width: 13px; height: 13px; opacity: 0.7; }
+        .sb-key { color: rgba(255,255,255,0.4); letter-spacing: 0.3px; }
+        .sb-val { color: rgba(255,255,255,0.78); font-weight: 600; }
+        .sb-dot {
+            width: 7px; height: 7px;
+            border-radius: 50%;
+            background: rgba(120, 230, 160, 0.95);
+            box-shadow: 0 0 8px rgba(120, 230, 160, 0.55);
+            animation: sbPulse 1.6s ease infinite;
+        }
+        @keyframes sbPulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+
         .left-panel {
             flex: 0 0 350px;
             min-width: 0;
@@ -5785,6 +5820,24 @@
                 </div>
             </div>
 
+            <!-- Статус-строка главного экрана (вкл/выкл: Настройки → Лаунчер) -->
+            <div class="status-bar" id="statusBar" style="display:none;">
+                <div class="sb-chip" title="Общее время в игре">
+                    <i data-lucide="clock"></i>
+                    <span class="sb-key">Наиграно</span>
+                    <span class="sb-val" id="sbPlaytimeVal">0 м</span>
+                </div>
+                <div class="sb-chip" id="sbScripts" style="display:none;" title="Lua-скрипты в папке игры и включённые в активном профиле">
+                    <i data-lucide="file-code"></i>
+                    <span class="sb-key">Скрипты</span>
+                    <span class="sb-val" id="sbScriptsVal"></span>
+                </div>
+                <div class="sb-chip" id="sbInGame" style="display:none;">
+                    <span class="sb-dot"></span>
+                    <span class="sb-key">В игре</span>
+                </div>
+            </div>
+
             <!-- Экран запуска игры -->
             <div class="launch-screen" id="launchScreen">
                 <div class="launch-screen-title">
@@ -6277,6 +6330,22 @@
                                 <div class="s-toggle"></div>
                                 <div class="launch-item-text">
                                     <span class="launch-item-name">Скрыть кнопку «Профили»</span>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="s-section">
+                        <div class="s-section-head">
+                            <span class="s-section-head-icon"><i data-lucide="activity"></i></span>
+                            <span class="s-section-title">Статус-строка</span>
+                        </div>
+                        <div class="s-section-body">
+                            <label class="launch-item" style="margin:8px 16px;" onclick="event.preventDefault(); toggleStatusBar()">
+                                <input type="checkbox" id="statusBarCheck">
+                                <div class="s-toggle"></div>
+                                <div class="launch-item-text">
+                                    <span class="launch-item-name">Показывать статус-строку</span>
                                 </div>
                             </label>
                         </div>
@@ -10481,7 +10550,7 @@
         }
 
         // ---- НАСТРОЙКИ ЛАУНЧЕРА ----
-        let launcherSettings = { bg_image: null, hide_profiles: false };
+        let launcherSettings = { bg_image: null, hide_profiles: false, status_bar: true };
 
         // ---- Monet-like dynamic theme from wallpaper ----
         const _monetTheme = {
@@ -10991,6 +11060,9 @@
             const hideCb = document.getElementById('hideProfilesCheck');
             if (hideCb) hideCb.checked = !!launcherSettings.hide_profiles;
 
+            // Статус-строка главного экрана
+            applyStatusBar();
+
             // «Старый стиль» обоев (сетка под кнопкой вместо пикера слева)
             let wpOldStyle = false;
             try { wpOldStyle = localStorage.getItem('arp_wp_old_style') === '1'; } catch (e) {}
@@ -11026,6 +11098,108 @@
         function applyHideProfiles() {
             const widget = document.getElementById('profilesHoverWidget');
             if (widget) widget.style.display = launcherSettings.hide_profiles ? 'none' : '';
+        }
+
+        // ══════════════════════════════════════════════
+        //  СТАТУС-СТРОКА — наиграно, скрипты, «в игре»
+        // ══════════════════════════════════════════════
+        const _PT_KEY = 'arp_playtime_total';
+        let _sbInterval = null;
+        let _ptTotal = 0;        // секунд суммарно (localStorage)
+        let _ptWasRunning = false;
+        let _ptLastTs = 0;
+        let _sbTickNo = 0;
+        try { _ptTotal = parseInt(localStorage.getItem(_PT_KEY) || '0', 10) || 0; } catch (e) {}
+
+        function _sbFormatTime(sec) {
+            const h = Math.floor(sec / 3600);
+            const m = Math.floor((sec % 3600) / 60);
+            return h > 0 ? (h + ' ч ' + m + ' м') : (m + ' м');
+        }
+
+        function _sbRenderPlaytime() {
+            const el = document.getElementById('sbPlaytimeVal');
+            if (el) el.textContent = _sbFormatTime(_ptTotal);
+        }
+
+        async function _sbRefreshScripts() {
+            const chip = document.getElementById('sbScripts');
+            const val = document.getElementById('sbScriptsVal');
+            if (!chip || !val) return;
+            try {
+                if (!(window.pywebview && window.pywebview.api.get_moonloader_scripts)) return;
+                const r = await window.pywebview.api.get_moonloader_scripts();
+                const installed = (r && r.success && Array.isArray(r.scripts)) ? r.scripts.length : 0;
+                let enabled = 0;
+                const prof = _profiles.find(x => x.id === _activeProfileId);
+                if (prof && Array.isArray(prof.lua_enabled)) enabled = prof.lua_enabled.length;
+                if (installed === 0 && enabled === 0) { chip.style.display = 'none'; return; }
+                val.textContent = installed + ' в игре · ' + enabled + ' вкл.';
+                chip.style.display = '';
+            } catch (e) { chip.style.display = 'none'; }
+        }
+
+        async function _sbTick() {
+            const now = Date.now();
+            let running = false;
+            try {
+                if (window.pywebview && window.pywebview.api.is_gta_running) {
+                    const res = await window.pywebview.api.is_gta_running();
+                    running = !!(res && res.running);
+                }
+            } catch (e) {}
+            if (running) {
+                if (!_ptWasRunning) { _ptLastTs = now; _ptWasRunning = true; }
+                _ptTotal += Math.max(0, Math.round((now - _ptLastTs) / 1000));
+                _ptLastTs = now;
+                try { localStorage.setItem(_PT_KEY, String(_ptTotal)); } catch (e) {}
+                _sbRenderPlaytime();
+            } else if (_ptWasRunning) {
+                _ptWasRunning = false;
+                try { localStorage.setItem(_PT_KEY, String(_ptTotal)); } catch (e) {}
+            }
+            const ig = document.getElementById('sbInGame');
+            if (ig) ig.style.display = running ? '' : 'none';
+            // Счётчики скриптов — раз в 12 тиков (~60 с)
+            if (++_sbTickNo >= 12) { _sbTickNo = 0; _sbRefreshScripts(); }
+        }
+
+        function startStatusBar() {
+            const bar = document.getElementById('statusBar');
+            if (!bar) return;
+            bar.style.display = '';
+            _ptWasRunning = false;
+            _sbRenderPlaytime();
+            _sbRefreshScripts();
+            if (_sbInterval) return;
+            _ptLastTs = Date.now();
+            _sbTick();
+            _sbInterval = setInterval(_sbTick, 5000);
+            if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
+        }
+
+        function stopStatusBar() {
+            const bar = document.getElementById('statusBar');
+            if (bar) bar.style.display = 'none';
+            if (_sbInterval) { clearInterval(_sbInterval); _sbInterval = null; }
+            _ptWasRunning = false;
+            try { localStorage.setItem(_PT_KEY, String(_ptTotal)); } catch (e) {}
+        }
+
+        function applyStatusBar() {
+            if (typeof launcherSettings.status_bar !== 'boolean') launcherSettings.status_bar = true;
+            if (launcherSettings.status_bar) startStatusBar(); else stopStatusBar();
+            const cb = document.getElementById('statusBarCheck');
+            if (cb) cb.checked = launcherSettings.status_bar;
+        }
+
+        function toggleStatusBar() {
+            if (typeof launcherSettings.status_bar !== 'boolean') launcherSettings.status_bar = true;
+            launcherSettings.status_bar = !launcherSettings.status_bar;
+            applyStatusBar();
+            if (window.pywebview && window.pywebview.api.save_launcher_settings) {
+                window.pywebview.api.save_launcher_settings(launcherSettings);
+            }
         }
 
         // Отрисовка чекбоксов патчей
