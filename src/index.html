@@ -2562,6 +2562,128 @@
             margin-left: auto;
         }
 
+        /* Кастомный дропдаун «Память» — нативный попап не стилизуется */
+        .s-select-native { display: none; }
+
+        .s-select {
+            position: relative;
+            flex-shrink: 0;
+            margin-left: auto;
+        }
+
+        .s-select-btn {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            width: 120px;
+            height: 34px;
+            background: rgba(255, 255, 255, 0.07);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 9px;
+            color: #fff;
+            font-family: 'Montserrat Alternates', sans-serif;
+            font-size: 13px;
+            font-weight: 600;
+            padding: 0 9px 0 12px;
+            cursor: pointer;
+            transition: border-color 0.18s, background 0.18s;
+        }
+
+        .s-select-btn:hover,
+        .s-select.open .s-select-btn {
+            border-color: rgba(var(--accent2-rgb), 0.5);
+            background: rgba(255, 255, 255, 0.09);
+        }
+
+        .s-select-chev {
+            width: 14px;
+            height: 14px;
+            flex-shrink: 0;
+            color: rgba(255, 255, 255, 0.5);
+            transition: transform 0.2s, color 0.18s;
+        }
+
+        .s-select.open .s-select-chev {
+            transform: rotate(180deg);
+            color: rgba(255, 255, 255, 0.8);
+        }
+
+        .s-select-pop {
+            position: absolute;
+            right: 0;
+            top: calc(100% + 6px);
+            min-width: 100%;
+            width: max-content;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            padding: 5px;
+            background: rgba(22, 24, 32, 0.97);
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            border-radius: 11px;
+            box-shadow: 0 14px 34px rgba(0, 0, 0, 0.45), 0 2px 8px rgba(0, 0, 0, 0.3);
+            opacity: 0;
+            transform: translateY(-5px) scale(0.96);
+            transform-origin: top right;
+            pointer-events: none;
+            transition: opacity 0.16s ease, transform 0.16s ease;
+            z-index: 45;
+        }
+
+        .s-select-pop.up {
+            top: auto;
+            bottom: calc(100% + 6px);
+            transform-origin: bottom right;
+            transform: translateY(5px) scale(0.96);
+        }
+
+        .s-select.open .s-select-pop {
+            opacity: 1;
+            transform: none;
+            pointer-events: auto;
+        }
+
+        .s-select-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            width: 100%;
+            height: 32px;
+            padding: 0 11px;
+            background: transparent;
+            border: 0;
+            border-radius: 7px;
+            color: rgba(255, 255, 255, 0.72);
+            font-family: 'Montserrat Alternates', sans-serif;
+            font-size: 13px;
+            font-weight: 600;
+            letter-spacing: 0.3px;
+            cursor: pointer;
+            transition: background 0.14s, color 0.14s;
+        }
+
+        .s-select-item:hover {
+            background: rgba(255, 255, 255, 0.08);
+            color: #fff;
+        }
+
+        .s-select-item.sel {
+            background: rgba(var(--accent-rgb), 0.2);
+            color: #fff;
+        }
+
+        .s-select-check {
+            width: 13px;
+            height: 13px;
+            opacity: 0;
+            color: rgba(var(--accent-rgb), 0.95);
+            transition: opacity 0.14s;
+        }
+
+        .s-select-item.sel .s-select-check { opacity: 1; }
+
         /* CDN toggle buttons */
         .cdn-btn-group {
             display: flex;
@@ -5892,12 +6014,18 @@
                     <div class="launch-inputs">
                         <div class="launch-input-row">
                             <span class="launch-input-label">Память (МБ)</span>
-                            <select id="memoryInput" class="s-input">
+                            <div class="s-select" id="memorySelect">
+                                <button class="s-select-btn" id="memorySelectBtn" type="button" aria-haspopup="listbox" aria-expanded="false">
+                                    <span class="s-select-val" id="memorySelectVal">4096</span>
+                                    <svg class="s-select-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+                                </button>
+                                <div class="s-select-pop" id="memorySelectPop" role="listbox"></div>
+                            </div>
+                            <select id="memoryInput" class="s-select-native">
                                 <option value="1024">1024</option>
                                 <option value="2048">2048</option>
                                 <option value="3072">3072</option>
                                 <option value="4096" selected>4096</option>
-                                <option value="5120">5120</option>
                             </select>
                         </div>
                         <div class="launch-input-row cdn-input-row">
@@ -6474,7 +6602,6 @@
                                         <option value="2048">2048</option>
                                         <option value="3072">3072</option>
                                         <option value="4096">4096</option>
-                                        <option value="5120">5120</option>
                                     </select>
                                 </div>
                                 <div style="display:flex;align-items:center;gap:6px;">
@@ -7002,6 +7129,7 @@
             nicknameInput.addEventListener('input', debounce(saveNickname, 500));
             setCdnBtns(document.getElementById('cdnInput')?.value || '0,0,0');
             cdnInitReels();
+            memInit();
             perfMark('events bound');
 
             await initLauncherSettings();
@@ -11273,6 +11401,7 @@
                 document.getElementById('enableGrassCheck').checked  = !!params.enable_grass;
                 document.getElementById('ldoCheck').checked          = !!params.ldo;
                 document.getElementById('memoryInput').value         = params.memory || 4096;
+                memSync();
                 setCdnBtns(params.cdn || '0,0,0');
 
                 document.getElementById('oldWindowCheck').checked       = !!params.old_window;
@@ -11832,7 +11961,7 @@
                 document.getElementById('ep_allowHdr').checked    = !!lp.allow_hdr;
                 document.getElementById('ep_enableGrass').checked = !!lp.enable_grass;
                 document.getElementById('ep_ldo').checked         = !!lp.ldo;
-                document.getElementById('ep_memory').value        = String(lp.memory || 4096);
+                document.getElementById('ep_memory').value        = String(Math.min(4096, parseInt(lp.memory, 10) || 4096));
 
                 // CDN
                 const cdn = (lp.cdn || '0,0,0').split(',').map(s => s.trim() === '1' ? 1 : 0);
@@ -12077,6 +12206,68 @@
             } catch(e) {
                 showNotification('Не удалось открыть Telegram', 'error');
             }
+        }
+
+        // ══════════════════════════════════════════════
+        //  MEMORY CUSTOM SELECT (нативный попап не стилизуется)
+        // ══════════════════════════════════════════════
+        function memInit() {
+            const sel = document.getElementById('memoryInput');
+            const wrap = document.getElementById('memorySelect');
+            const btn = document.getElementById('memorySelectBtn');
+            const pop = document.getElementById('memorySelectPop');
+            if (!sel || !wrap || !btn || !pop) return;
+
+            // Пункты строим из <select> — он и есть источник допустимых значений
+            const check = '<svg class="s-select-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
+            pop.innerHTML = [...sel.options].map(o =>
+                `<button class="s-select-item" type="button" data-v="${o.value}" role="option">${o.value}${check}</button>`
+            ).join('');
+            pop.querySelectorAll('.s-select-item').forEach(item => {
+                item.addEventListener('click', () => {
+                    sel.value = item.dataset.v;
+                    memSync();
+                    memClose();
+                });
+            });
+
+            function memClose() {
+                wrap.classList.remove('open');
+                btn.setAttribute('aria-expanded', 'false');
+            }
+            window._memClose = memClose;
+
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (wrap.classList.contains('open')) { memClose(); return; }
+                // Если внизу не хватает места в скролл-контейнере — открывать вверх
+                const container = wrap.closest('.settings-tab-content');
+                const br = btn.getBoundingClientRect();
+                const cr = container ? container.getBoundingClientRect() : { bottom: Infinity };
+                const need = pop.offsetHeight || 150;
+                pop.classList.toggle('up', br.bottom + 8 + need > cr.bottom - 4);
+                wrap.classList.add('open');
+                btn.setAttribute('aria-expanded', 'true');
+            });
+            document.addEventListener('click', (e) => { if (!wrap.contains(e.target)) memClose(); });
+            document.addEventListener('keydown', (e) => { if (e.key === 'Escape') memClose(); });
+
+            memSync();
+        }
+
+        // Синхронизация отображения; заодно клампим значение к списку
+        // (старый конфиг мог сохранить 5120 — больше не существует -> 4096)
+        function memSync() {
+            const sel = document.getElementById('memoryInput');
+            const val = document.getElementById('memorySelectVal');
+            const pop = document.getElementById('memorySelectPop');
+            if (!sel || !val) return;
+            if (sel.value === '' || ![...sel.options].some(o => o.value === sel.value)) {
+                sel.value = '4096';
+            }
+            val.textContent = sel.value;
+            if (pop) pop.querySelectorAll('.s-select-item').forEach(i =>
+                i.classList.toggle('sel', i.dataset.v === sel.value));
         }
 
         // ══════════════════════════════════════════════
