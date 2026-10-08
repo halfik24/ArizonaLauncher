@@ -5352,6 +5352,23 @@
             overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
         }
 
+        /* Скроллбары визарда — как во всём приложении:
+           5px, без стрелок, полупрозрачный бегунок */
+        .fl-body::-webkit-scrollbar,
+        .fl-wp-grid::-webkit-scrollbar { width: 5px; }
+        .fl-body::-webkit-scrollbar-track,
+        .fl-wp-grid::-webkit-scrollbar-track { background: transparent; }
+        .fl-body::-webkit-scrollbar-thumb,
+        .fl-wp-grid::-webkit-scrollbar-thumb {
+            background: rgba(255,255,255,0.14);
+            border-radius: 4px;
+        }
+        .fl-body::-webkit-scrollbar-thumb:hover,
+        .fl-wp-grid::-webkit-scrollbar-thumb:hover {
+            background: rgba(255,255,255,0.26);
+        }
+        .fl-body, .fl-wp-grid { scroll-behavior: smooth; }
+
         /* Step 4: Done */
         .fl-done {
             display: flex; flex-direction: column;
