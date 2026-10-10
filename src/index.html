@@ -8229,7 +8229,7 @@
             document.body.appendChild(overlay);
             // Принудительно инициализируем Lucide-иконки внутри новой модалки
             if (window.lucide) {
-                window.lucide.createIcons({ nodes: overlay.querySelectorAll('[data-lucide]') });
+                refreshLucideIcons();
             }
             return { close, overlay };
         }
@@ -8250,7 +8250,7 @@
             document.querySelector('.right-panel').style.display = 'none';
             const modal = document.getElementById('modsModal');
             modal.style.display = 'flex';
-            if (typeof lucide !== 'undefined') lucide.createIcons();
+            if (typeof lucide !== 'undefined') refreshLucideIcons();
             if (document.getElementById('modsTabPatches').classList.contains('active')) {
                 loadPatchPresets();
             } else if (document.getElementById('modsTabMoonloader').classList.contains('active')) {
@@ -8552,7 +8552,7 @@
                 empty.className = 'mods-empty';
                 empty.innerHTML = '<i data-lucide="search-x"></i> Ничего не найдено';
                 pane.appendChild(empty);
-                if (window.lucide) window.lucide.createIcons({ nodes: [empty] });
+                if (window.lucide) refreshLucideIcons();
                 return;
             }
 
@@ -8776,14 +8776,14 @@
             const txt = window._libRequired.map(r => `${r.name} (${r.usedBy.join(', ')})`).join(' • ');
             const el = document.getElementById('libRequiredList');
             if (el) el.textContent = txt;
-            if (window.lucide) window.lucide.createIcons({ nodes: [banner] });
+            if (window.lucide) refreshLucideIcons();
         }
 
         async function installAllRequiredLibs() {
             if (!window._libRequired || window._libRequired.length === 0) return;
             const btn = document.getElementById('libInstallAllBtn');
             const orig = btn ? btn.innerHTML : '';
-            if (btn) { btn.disabled = true; btn.innerHTML = '<i data-lucide="loader"></i> Установка...'; if (window.lucide) window.lucide.createIcons({ nodes: [btn] }); }
+            if (btn) { btn.disabled = true; btn.innerHTML = '<i data-lucide="loader"></i> Установка...'; if (window.lucide) refreshLucideIcons(); }
 
             let ok = 0, skipped = 0, err = [];
             const catalog = window._libCatalog || [];
@@ -8799,7 +8799,7 @@
                     }
                 } catch (e) { err.push(`${r.name}: ${e.message || e}`); }
             }
-            if (btn) { btn.disabled = false; btn.innerHTML = orig; if (window.lucide) window.lucide.createIcons({ nodes: [btn] }); }
+            if (btn) { btn.disabled = false; btn.innerHTML = orig; if (window.lucide) refreshLucideIcons(); }
             if (err.length) showNotification(`Ошибки либ: ${err.join('; ')}`, 'error', 6000);
             else if (ok > 0 || skipped > 0) showNotification(`Библиотеки: ${ok} новых, ${skipped} уже стояли`, 'success', 2500);
             else showNotification('Готово', 'success', 1500);
@@ -8858,7 +8858,7 @@
                     empty.innerHTML = '<i data-lucide="search-x"></i> Ничего не найдено';
                 }
                 pane.appendChild(empty);
-                if (window.lucide) window.lucide.createIcons({ nodes: [empty] });
+                if (window.lucide) refreshLucideIcons();
                 return;
             }
             for (const lib of visible) {
@@ -8882,7 +8882,7 @@
                 more.onclick = () => { window._libShowAll = true; renderLibInstalled(); };
                 pane.appendChild(more);
             }
-            if (window.lucide) window.lucide.createIcons({ nodes: pane.querySelectorAll('[data-lucide]') });
+            if (window.lucide) refreshLucideIcons();
         }
 
         function renderLibCatalog() {
@@ -8904,7 +8904,7 @@
                     empty.innerHTML = '<i data-lucide="search-x"></i> Ничего не найдено';
                 }
                 pane.appendChild(empty);
-                if (window.lucide) window.lucide.createIcons({ nodes: [empty] });
+                if (window.lucide) refreshLucideIcons();
                 return;
             }
             const installedNames = new Set((window._libInstalled || []).map(l => l.name.toLowerCase()));
@@ -8920,7 +8920,7 @@
                 <div class="lib-card-foot">${btn}</div>`;
                 pane.appendChild(card);
             }
-            if (window.lucide) window.lucide.createIcons({ nodes: pane.querySelectorAll('[data-lucide]') });
+            if (window.lucide) refreshLucideIcons();
         }
 
         async function installLibFromCatalog(name, btn) {
@@ -8930,7 +8930,7 @@
             const orig = btn.innerHTML;
             btn.disabled = true;
             btn.innerHTML = '<i data-lucide="loader"></i> Скачивается...';
-            if (window.lucide) window.lucide.createIcons({ nodes: [btn] });
+            if (window.lucide) refreshLucideIcons();
             try {
                 const res = await window.pywebview.api.install_library(lib.name, lib.url);
                 if (res && res.success) {
@@ -8942,7 +8942,7 @@
                 showNotification(`Ошибка: ${e.message || e}`, 'error', 4000);
                 btn.disabled = false;
                 btn.innerHTML = orig;
-                if (window.lucide) window.lucide.createIcons({ nodes: [btn] });
+                if (window.lucide) refreshLucideIcons();
                 return;
             }
             window._libLoaded = false;
@@ -8955,7 +8955,7 @@
             const orig = btn.innerHTML;
             btn.disabled = true;
             btn.innerHTML = '<i data-lucide="loader"></i> Удаление...';
-            if (window.lucide) window.lucide.createIcons({ nodes: [btn] });
+            if (window.lucide) refreshLucideIcons();
             try {
                 const res = await window.pywebview.api.uninstall_library(name);
                 if (res && res.success) {
@@ -8967,7 +8967,7 @@
                 showNotification(`Ошибка: ${e.message || e}`, 'error', 4000);
                 btn.disabled = false;
                 btn.innerHTML = orig;
-                if (window.lucide) window.lucide.createIcons({ nodes: [btn] });
+                if (window.lucide) refreshLucideIcons();
                 return;
             }
             window._libLoaded = false;
@@ -8985,7 +8985,7 @@
                 btn.innerHTML = text;
                 if (status) { status.innerHTML = text; status.style.color = color; }
                 if (window.lucide) {
-                    window.lucide.createIcons({ nodes: [btn, status].filter(Boolean) });
+                    refreshLucideIcons();
                 }
             };
 
@@ -9043,7 +9043,7 @@
                     for (let i = 0; i < libs.length; i++) {
                         const libName = libs[i];
                         btn.innerHTML = `<i data-lucide="package"></i> ${libName} (${i+1}/${libs.length})`;
-                        if (window.lucide) window.lucide.createIcons({ nodes: [btn] });
+                        if (window.lucide) refreshLucideIcons();
                         const lib = libCatalog.find(l => l.name.toLowerCase() === libName.toLowerCase());
                         if (!lib) { libErr.push(`${libName} (нет в каталоге)`); continue; }
                         if (!lib.url) { libErr.push(`${libName} (нет url)`); continue; }
@@ -9187,7 +9187,7 @@
                         `;
                         libsList.appendChild(row);
                     });
-                    if (window.lucide) window.lucide.createIcons({ nodes: libsList.querySelectorAll('[data-lucide]') });
+                    if (window.lucide) refreshLucideIcons();
                 } else {
                     libsBlock.style.display = 'none';
                 }
@@ -9226,7 +9226,7 @@
             const sdFileEl = document.getElementById('sdFile');
             if (sdFileEl) {
                 sdFileEl.innerHTML = fileText;
-                if (window.lucide) window.lucide.createIcons({ nodes: [sdFileEl] });
+                if (window.lucide) refreshLucideIcons();
             }
 
             const usageBlock = document.getElementById('sdUsageBlock');
@@ -9293,7 +9293,7 @@
                 origText = btn.innerHTML;
                 btn.disabled = true;
                 btn.innerHTML = '<i data-lucide="loader"></i>...';
-                if (window.lucide) window.lucide.createIcons({ nodes: [btn] });
+                if (window.lucide) refreshLucideIcons();
             }
             try {
                 if (window.pywebview && window.pywebview.api.install_library) {
@@ -9314,13 +9314,13 @@
                 }
                 window._libLoaded = false;
                 await loadLibrariesTab();
-                if (btn && window.lucide) window.lucide.createIcons({ nodes: [btn] });
+                if (btn && window.lucide) refreshLucideIcons();
             } catch(e) {
                 showNotification('<i data-lucide="x-circle"></i> ' + e.message, 'error');
                 if (btn) {
                     btn.disabled = false;
                     btn.innerHTML = origText;
-                    if (window.lucide) window.lucide.createIcons({ nodes: [btn] });
+                    if (window.lucide) refreshLucideIcons();
                 }
             }
         }
@@ -9342,7 +9342,7 @@
                     for (let i = 0; i < libs.length; i++) {
                         const libName = libs[i];
                         btn.innerHTML = `<i data-lucide="package"></i> ${libName} (${i+1}/${libs.length})`;
-                        if (window.lucide) window.lucide.createIcons({ nodes: [btn] });
+                        if (window.lucide) refreshLucideIcons();
                         const lib = libCatalog.find(l => l.name.toLowerCase() === libName.toLowerCase());
                         if (!lib) { libErr.push(`${libName} (нет в каталоге)`); continue; }
                         if (!lib.url) { libErr.push(`${libName} (нет url)`); continue; }
@@ -9499,7 +9499,7 @@
                 hdr.style.cssText = 'font-family:"Montserrat Alternates";font-size:11px;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:0.7px;margin-top:10px;padding-bottom:4px;border-bottom:1px solid rgba(255,255,255,0.06);flex-shrink:0;';
                 hdr.innerHTML = label;
                 grid.appendChild(hdr);
-                if (window.lucide) window.lucide.createIcons({ nodes: [hdr] });
+                if (window.lucide) refreshLucideIcons();
 
                 groups[dest].forEach(({ item, idx }) => {
                     const installed = window._installedOtherFiles.has(_othersInstalledKey(item));
@@ -9824,7 +9824,7 @@
                 btn.innerHTML = msg;
                 if (status) { status.innerHTML = msg; status.style.color = color; }
                 if (window.lucide) {
-                    window.lucide.createIcons({ nodes: [btn, status].filter(Boolean) });
+                    refreshLucideIcons();
                 }
             };
 
@@ -10360,7 +10360,7 @@
             block.appendChild(msg);
             block.appendChild(btn);
             container.appendChild(block);
-            if (typeof lucide !== 'undefined') lucide.createIcons();
+            if (typeof lucide !== 'undefined') refreshLucideIcons();
         }
 
         // Уведомления
@@ -10451,7 +10451,7 @@
                     // lucide конвертирует <i data-lucide> в <svg> —
                     // без этого вызова иконка в заголовке вкладки не рисуется
                     if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
-                    else if (window.lucide) lucide.createIcons();
+                    else if (window.lucide) refreshLucideIcons();
                 }
                 if (tabName === 'import') loadBackupsList();
                 if (tabName === 'debug')  loadDebugInfo();
@@ -10538,7 +10538,7 @@
                 `;
                 container.appendChild(item);
             });
-            if (window.lucide) window.lucide.createIcons({ nodes: container.querySelectorAll('[data-lucide]') });
+            if (window.lucide) refreshLucideIcons();
         }
 
         async function restoreBackup(filename) {
@@ -13325,9 +13325,21 @@
     <script src="lucide.min.js"></script>
     <script>
         function refreshLucideIcons() {
-            if (typeof lucide !== 'undefined') {
-                lucide.createIcons();
-            }
+            if (typeof lucide === 'undefined') return;
+            // ВАЖНО: createIcons() без nameAttr делает querySelectorAll('[data-lucide]'),
+            // который матчит И <i data-lucide>, И уже готовые <svg data-lucide>, и k1()
+            // каждый раз replaceChild'ом пересоздаёт их все (замер: ~9.5ms на 144 SVG,
+            // даже когда новых иконок нет вообще). Отсюда вечные 8ms в switchTab
+            // и в MutationObserver.
+            //
+            // Решение: помечаем только НОВЫЕ <i> временным атрибутом и просим lucide
+            // работать только с ним (nameAttr поддерживается, nodes — нет).
+            const pending = document.querySelectorAll('i[data-lucide]');
+            if (!pending.length) return;                    // нечего конвертировать — выходим сразу
+            pending.forEach(el => el.setAttribute('data-lucide-tmp', el.getAttribute('data-lucide')));
+            lucide.createIcons({ nameAttr: 'data-lucide-tmp' });
+            document.querySelectorAll('svg[data-lucide-tmp]')
+                .forEach(s => s.removeAttribute('data-lucide-tmp'));
         }
         // Автоинициализация — вызываем сразу
         if (document.readyState === 'loading') {
