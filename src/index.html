@@ -7247,15 +7247,36 @@
             const p = _profiles.find(x => x.id === id);
             if (!p) return;
 
+            const errors = [];
             try {
                 if (window.pywebview) {
                     // Применяем патчи
                     if (p.patches && Object.keys(p.patches).length && window.pywebview.api.write_patches) {
-                        await window.pywebview.api.write_patches(p.patches);
+                        try {
+                            const pr = await window.pywebview.api.write_patches(p.patches);
+                            if (!pr || !pr.success) errors.push('патчи: ' + ((pr && pr.message) || 'не записались'));
+                        } catch (e) { errors.push('патчи: ' + e); }
                     }
-                    // Применяем параметры запуска
-                    if (p.launch_params && window.pywebview.api.update_launch_params) {
-                        await window.pywebview.api.update_launch_params(p.launch_params);
+                    // Применяем параметры запуска. Профиль может быть неполным
+                    // (старые версии) — накладываем на текущие параметры, чтобы
+                    // не сбрасывать неописанные поля и не падать на missing field.
+                    if (p.launch_params && Object.keys(p.launch_params).length) {
+                        if (!window.pywebview.api.update_launch_params) {
+                            errors.push('параметры запуска: API недоступен');
+                        } else {
+                            try {
+                                const cur = await window.pywebview.api.read_launch_params();
+                                const merged = Object.assign(
+                                    {}, (cur && typeof cur === 'object') ? cur : {}, p.launch_params);
+                                // Взаимоисключение «оконный / старое окно» — как в настройках
+                                if (merged.window_mode) merged.old_window = false;
+                                else if (merged.old_window) merged.window_mode = false;
+                                const lr = await window.pywebview.api.update_launch_params(merged);
+                                if (!lr || !lr.success) {
+                                    errors.push('параметры запуска: ' + ((lr && lr.message) || 'не записались'));
+                                }
+                            } catch (e) { errors.push('параметры запуска: ' + e); }
+                        }
                     }
                     // Применяем список lua — включаем нужные, выключаем остальные
                     if (window.pywebview.api.get_moonloader_scripts && window.pywebview.api.toggle_moonloader_script) {
@@ -7270,12 +7291,16 @@
                         }
                     }
                 }
-            } catch (e) { console.error('applyProfile error:', e); }
+            } catch (e) { console.error('applyProfile error:', e); errors.push(String(e)); }
 
             _activeProfileId = id;
             await _saveProfiles();
             _renderProfiles();
-            showNotification('<i data-lucide="check"></i> Профиль «' + p.name + '» применён', 'success');
+            if (errors.length) {
+                showNotification('Профиль «' + p.name + '» применён не полностью: ' + errors.join('; '), 'error');
+            } else {
+                showNotification('<i data-lucide="check"></i> Профиль «' + p.name + '» применён', 'success');
+            }
         }
 
         async function deleteProfile(id) {
@@ -11977,11 +12002,23 @@
 
                     // Сохраняем настройки запуска игры
                     if (window.pywebview.api.update_launch_params) {
-                        const result = await window.pywebview.api.update_launch_params(launchParams);
-                        paramsOk = result.success;
-                        if (!result.success) {
-                            showNotification('Ошибка сохранения настроек запуска', 'error');
+                        try {
+                            const result = await window.pywebview.api.update_launch_params(launchParams);
+                            paramsOk = !!(result && result.success);
+                            if (!paramsOk) {
+                                showNotification('Ошибка сохранения настроек запуска'
+                                    + (result && result.message ? ': ' + result.message : ''), 'error');
+                            }
+                        } catch (e) {
+                            paramsOk = false;
+                            console.error('update_launch_params error:', e);
+                            showNotification('Ошибка сохранения настроек запуска: ' + e, 'error');
                         }
+                    } else {
+                        // Нельзя молча пропускать: раньше метод мог отсутствовать,
+                        // а «Настройки сохранены» показывалось бы при незаписанных параметрах.
+                        paramsOk = false;
+                        showNotification('Сохранение настроек запуска недоступно (нет API)', 'error');
                     }
 
                     if (patchesOk && paramsOk) {
@@ -12408,7 +12445,8 @@
 
                 // Параметры запуска
                 const lp = p.launch_params || {};
-                document.getElementById('ep_windowMode').checked  = !!lp.window_mode;
+                // Старые профили без поля window_mode — дефолт лаунчера «включено»
+                document.getElementById('ep_windowMode').checked  = lp.window_mode !== false;
                 document.getElementById('ep_widescreen').checked   = !!lp.widescreen;
                 document.getElementById('ep_authCef').checked     = !!lp.auth_cef_enable;
                 document.getElementById('ep_autologin').checked   = !!lp.autologin;
@@ -12419,8 +12457,8 @@
                 document.getElementById('ep_ldo').checked         = !!lp.ldo;
                 document.getElementById('ep_memory').value        = String(Math.min(4096, parseInt(lp.memory, 10) || 4096));
 
-                // CDN
-                const cdn = (lp.cdn || '0,0,0').split(',').map(s => s.trim() === '1' ? 1 : 0);
+                // CDN (дефолт конфига — «1,1,1», как в настройках)
+                const cdn = (lp.cdn || '1,1,1').split(',').map(s => s.trim() === '1' ? 1 : 0);
                 for (let i = 0; i < 3; i++) {
                     const btn = document.getElementById('epCdnBtn' + i);
                     const isActive = cdn[i] === 1;
@@ -12519,8 +12557,12 @@
                 p.name = newName;
                 // Сохраняем существующие v7/v8 параметры, обновляем видимые
                 const existingLp = p.launch_params || {};
+                const epWmChecked = document.getElementById('ep_windowMode').checked;
                 p.launch_params = Object.assign({}, existingLp, {
-                    window_mode:     document.getElementById('ep_windowMode').checked,
+                    window_mode:     epWmChecked,
+                    // Взаимоисключение как в настройках: при включённом «оконном»
+                    // скрытый флаг «старого окна» не должен его перебивать при запуске
+                    old_window:      !epWmChecked && !!existingLp.old_window,
                     widescreen:      document.getElementById('ep_widescreen').checked,
                     auth_cef_enable: document.getElementById('ep_authCef').checked,
                     autologin:       document.getElementById('ep_autologin').checked,
@@ -12543,7 +12585,7 @@
                 await _saveProfiles();
                 _renderHoverProfiles();
                 closeEditProfile();
-                showNotification('<i data-lucide="check"></i> Профиль обновлён', 'success');
+                showNotification('<i data-lucide="check"></i> Профиль обновлён — нажми «Применить», чтобы вступило в силу', 'success');
             };
 
             // После createProfile обновляем точку

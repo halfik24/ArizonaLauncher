@@ -159,12 +159,15 @@ class ArizonaLauncher:
     def save_config(self):
         # Атомарная запись: пишем во временный файл и переименовываем.
         # Блокировка исключает чередующуюся запись из разных потоков.
+        # Возвращает True/False: вызывающий должен знать, дошёл ли файл до диска
+        # (раньше ошибка записи проглатывалась, а API отвечал success).
         with self._cfg_lock:
             tmp_path = self.config_path + '.tmp'
             try:
                 with open(tmp_path, 'w', encoding='utf-8') as f:
                     json.dump(self.config, f, indent=2, ensure_ascii=False)
                 os.replace(tmp_path, self.config_path)
+                return True
             except Exception as e:
                 logger.error(f"Config save error: {e}")
                 # Чистим temp-файл при ошибке
@@ -173,6 +176,7 @@ class ArizonaLauncher:
                         os.remove(tmp_path)
                 except Exception:
                     pass
+                return False
 
     def auto_detect_game_paths(self):
         """Быстрый поиск по известным путям установки Arizona Games Launcher."""
@@ -2173,8 +2177,14 @@ class WebViewApp:
         return {"success": True}
 
     def update_launch_params(self, params):
+        old = self.launcher.config.get('launch_params')
         self.launcher.config['launch_params'] = params
-        self.launcher.save_config()
+        if not self.launcher.save_config():
+            # Откатываем память: иначе «success» врал бы — до перезапуска
+            # галочки выглядят сохранёнными, а на диске старое значение.
+            self.launcher.config['launch_params'] = old
+            return {"success": False,
+                    "message": "Не удалось записать config.json (проверьте права на Documents)"}
         return {"success": True}
 
     def read_launch_params(self):
