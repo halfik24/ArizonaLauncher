@@ -138,6 +138,10 @@ pub struct AppState {
     pub config_path: PathBuf,
     pub documents_path: PathBuf,
     pub servers_cache: Mutex<Option<ServersCache>>,
+    /// Фоновое обновление серверов уже запущено (stale-while-revalidate).
+    pub servers_revalidating: std::sync::atomic::AtomicBool,
+    /// Фоновое обновление новостей уже запущено (stale-while-revalidate).
+    pub news_revalidating: std::sync::atomic::AtomicBool,
 }
 
 impl AppState {
@@ -155,6 +159,8 @@ impl AppState {
             config_path,
             documents_path,
             servers_cache: Mutex::new(None),
+            servers_revalidating: std::sync::atomic::AtomicBool::new(false),
+            news_revalidating: std::sync::atomic::AtomicBool::new(false),
         }
     }
 

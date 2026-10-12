@@ -652,6 +652,157 @@ fn normalize_servers(server_list: &[serde_json::Value]) -> Vec<serde_json::Value
     servers
 }
 
+// ==================== Disk cache (stale-while-revalidate) ====================
+// Дисковый кэш переживает перезапуск: на старте отдаём его мгновенно,
+// а свежие данные тянем фоном. Иначе каждый запуск ждёт 160-700ms сети.
+
+fn disk_cache_path(state: &AppState, name: &str) -> PathBuf {
+    state.documents_path.join("cache").join(name)
+}
+
+fn now_ms() -> u128 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0)
+}
+
+/// Атомарная запись кэш-файла: tmp → rename (паттерн save_config).
+fn write_cache_file(state: &AppState, name: &str, payload: &serde_json::Value) {
+    let dir = state.documents_path.join("cache");
+    if std::fs::create_dir_all(&dir).is_err() {
+        return;
+    }
+    let path = dir.join(name);
+    let tmp = dir.join(format!("{name}.tmp"));
+    let Ok(json) = serde_json::to_string(payload) else { return };
+    if std::fs::write(&tmp, json).is_ok() {
+        let _ = std::fs::rename(&tmp, &path);
+    }
+}
+
+fn read_cache_file(state: &AppState, name: &str) -> Option<serde_json::Value> {
+    let raw = std::fs::read_to_string(disk_cache_path(state, name)).ok()?;
+    serde_json::from_str(&raw).ok()
+}
+
+/// Дисковый кэш серверов: (servers, etag, last_modified).
+fn read_disk_servers(state: &AppState) -> Option<(Vec<serde_json::Value>, Option<String>, Option<String>)> {
+    let v = read_cache_file(state, "servers.json")?;
+    let servers = v.get("servers")?.as_array()?.clone();
+    let etag = v.get("etag").and_then(|x| x.as_str()).map(str::to_string);
+    let lm = v.get("last_modified").and_then(|x| x.as_str()).map(str::to_string);
+    Some((servers, etag, lm))
+}
+
+fn write_disk_servers(state: &AppState, servers: &[serde_json::Value], etag: Option<&str>, last_modified: Option<&str>) {
+    write_cache_file(
+        state,
+        "servers.json",
+        &serde_json::json!({
+            "ts_ms": now_ms(),
+            "etag": etag,
+            "last_modified": last_modified,
+            "servers": servers,
+        }),
+    );
+}
+
+fn read_disk_news(state: &AppState) -> Option<String> {
+    let v = read_cache_file(state, "news.json")?;
+    v.get("text").and_then(|x| x.as_str()).map(str::to_string)
+}
+
+fn write_disk_news(state: &AppState, text: &str) {
+    write_cache_file(state, "news.json", &serde_json::json!({ "ts_ms": now_ms(), "text": text }));
+}
+
+/// Обновить серверы в фоне — не более одной задачи за раз.
+fn spawn_servers_revalidate(app: &tauri::AppHandle) {
+    use std::sync::atomic::Ordering;
+    if app.state::<AppState>().servers_revalidating.swap(true, Ordering::SeqCst) {
+        return; // уже обновляется
+    }
+    let app2 = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let st = app2.state::<AppState>();
+        fetch_servers(&st).await;
+        st.servers_revalidating.store(false, Ordering::SeqCst);
+    });
+}
+
+/// Обновить новости в фоне — не более одной задачи за раз и не чаще
+/// раза в 60s (частые вызовы команды не должны сыпать запросами в GitHub).
+fn spawn_news_revalidate(app: &tauri::AppHandle) {
+    use std::sync::atomic::Ordering;
+    if app.state::<AppState>().news_revalidating.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    // Диск свежий (<60s) — обновлять нечего
+    if let Some(v) = read_cache_file(&app.state::<AppState>(), "news.json") {
+        let ts = v.get("ts_ms").and_then(|x| x.as_u64()).unwrap_or(0u64);
+        let age = now_ms().saturating_sub(ts as u128);
+        if age < 60_000 {
+            app.state::<AppState>().news_revalidating.store(false, Ordering::SeqCst);
+            return;
+        }
+    }
+    let app2 = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let st = app2.state::<AppState>();
+        let r = fetch_launcher_news().await;
+        if r.get("success").and_then(|v| v.as_bool()).unwrap_or(false) {
+            if let Some(text) = r.get("text").and_then(|v| v.as_str()) {
+                write_disk_news(&st, text);
+            }
+        }
+        st.news_revalidating.store(false, Ordering::SeqCst);
+    });
+}
+
+/// stale-while-revalidate для серверов:
+/// - память есть (TTL 60s) → обычная логика fetch_servers;
+/// - памяти нет, но есть диск → отдаём диск мгновенно, фоном fetch_servers;
+/// - ничего нет (первый запуск) → ждём сеть, как раньше.
+async fn fetch_servers_sw(app: &tauri::AppHandle, state: &AppState) -> serde_json::Value {
+    let memory_empty = {
+        let guard = match state.servers_cache.lock() {
+            Ok(g) => g,
+            Err(e) => e.into_inner(),
+        };
+        guard.is_none()
+    };
+    log::info!("fetch_servers_sw: memory_empty={memory_empty}");
+
+    if !memory_empty {
+        return fetch_servers(state).await;
+    }
+    if let Some((servers, _, _)) = read_disk_servers(state) {
+        spawn_servers_revalidate(app);
+        log::info!("servers: дисковый кэш отдан мгновенно ({} серверов)", servers.len());
+        return serde_json::Value::Array(servers);
+    }
+    log::info!("servers: ни памяти, ни диска — сетевой запрос");
+    fetch_servers(state).await
+}
+
+/// stale-while-revalidate для новостей: диск → сразу + фоновое обновление,
+/// иначе — сеть (первый запуск).
+async fn fetch_news_sw(app: &tauri::AppHandle, state: &AppState) -> serde_json::Value {
+    if let Some(text) = read_disk_news(state) {
+        spawn_news_revalidate(app);
+        log::info!("news: дисковый кэш отдан мгновенно ({} байт)", text.len());
+        return serde_json::json!({"success": true, "text": text});
+    }
+    let r = fetch_launcher_news().await;
+    if r.get("success").and_then(|v| v.as_bool()).unwrap_or(false) {
+        if let Some(text) = r.get("text").and_then(|v| v.as_str()) {
+            write_disk_news(state, text);
+        }
+    }
+    r
+}
+
 /// Тело `get_servers`: кэш 60s, ETag/If-Modified-Since, 304 → кэш, нормализация, prefetch.
 async fn fetch_servers(state: &AppState) -> serde_json::Value {
     const TTL: std::time::Duration = std::time::Duration::from_secs(60);
@@ -672,6 +823,8 @@ async fn fetch_servers(state: &AppState) -> serde_json::Value {
             None => (None, None, None, false),
         }
     };
+
+    log::info!("fetch_servers: fresh={fresh}, has_cached_data={}", cached_data.is_some());
 
     if fresh {
         // Обновляем иконки в кэшированных данных, если они теперь доступны локально
@@ -787,10 +940,12 @@ async fn fetch_servers(state: &AppState) -> serde_json::Value {
         *guard = Some(ServersCache {
             ts: now,
             data: servers.clone(),
-            etag: etag_new,
-            last_modified: lm_new,
+            etag: etag_new.clone(),
+            last_modified: lm_new.clone(),
         });
     }
+    // Дублируем на диск — переживёт перезапуск (мгновенный старт)
+    write_disk_servers(state, &servers, etag_new.as_deref(), lm_new.as_deref());
 
     // Предзагружаем иконки в фоне
     let spawn_servers = servers.clone();
@@ -802,13 +957,13 @@ async fn fetch_servers(state: &AppState) -> serde_json::Value {
 }
 
 #[tauri::command]
-pub async fn get_servers(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
-    Ok(fetch_servers(&state).await)
+pub async fn get_servers(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<serde_json::Value, String> {
+    Ok(fetch_servers_sw(&app, &state).await)
 }
 
 #[tauri::command]
-pub async fn get_servers_and_news(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
-    let (servers, news) = tokio::join!(fetch_servers(&state), fetch_launcher_news());
+pub async fn get_servers_and_news(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<serde_json::Value, String> {
+    let (servers, news) = tokio::join!(fetch_servers_sw(&app, &state), fetch_news_sw(&app, &state));
     Ok(serde_json::json!({
         "success": true,
         "servers": if servers.is_null() { serde_json::json!([]) } else { servers },
@@ -876,8 +1031,8 @@ async fn fetch_launcher_news() -> serde_json::Value {
 }
 
 #[tauri::command]
-pub async fn get_launcher_news() -> Result<serde_json::Value, String> {
-    Ok(fetch_launcher_news().await)
+pub async fn get_launcher_news(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<serde_json::Value, String> {
+    Ok(fetch_news_sw(&app, &state).await)
 }
 
 #[tauri::command]
