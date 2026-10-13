@@ -31,6 +31,8 @@ fn main() {
             launcher::update_server,
             launcher::update_launch_params,
             launcher::read_launch_params,
+            launcher::get_launch_method,
+            launcher::set_launch_method,
             launcher::get_servers,
             launcher::get_servers_and_news,
             launcher::get_launcher_news,

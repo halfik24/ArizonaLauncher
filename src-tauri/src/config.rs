@@ -98,12 +98,21 @@ pub struct LauncherConfig {
     pub patches_update_available: Option<String>,
     pub launch_params: LaunchParams,
     pub launcher_settings: LauncherSettings,
+    /// Способ запуска игры: "native" (запускаем gta_sa.exe напрямую)
+    /// или "air" (через ArizonaLauncher*.exe). Старые конфиги без
+    /// поля получают "native".
+    #[serde(default = "default_launch_method")]
+    pub launch_method: String,
     #[serde(default)]
     pub read_news_ids: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub profiles: Option<Vec<serde_json::Value>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub active_profile_id: Option<String>,
+}
+
+fn default_launch_method() -> String {
+    "native".to_string()
 }
 
 impl Default for LauncherConfig {
@@ -119,6 +128,7 @@ impl Default for LauncherConfig {
             patches_update_available: None,
             launch_params: LaunchParams::default(),
             launcher_settings: LauncherSettings::default(),
+            launch_method: default_launch_method(),
             read_news_ids: Vec::new(),
             profiles: None,
             active_profile_id: None,

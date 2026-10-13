@@ -129,3 +129,154 @@ pub fn safe_backup_path(state: &AppState, filename: &str) -> Result<PathBuf, Str
     }
     Ok(path)
 }
+
+// ==================== Ресурс версии exe (Windows) ====================
+
+/// Чтение строковых полей VS_VERSION_INFO из exe (ProductVersion, ProductName и т.п.).
+/// Возвращает строки в порядке `keys`, "" если поле отсутствует.
+/// Работает с любым именем файла — берёт данные из ресурса версии.
+pub fn exe_version_fields(path: &Path, keys: &[&str]) -> Vec<String> {
+    use std::os::windows::ffi::OsStrExt;
+    use winapi::um::winver::{GetFileVersionInfoSizeW, GetFileVersionInfoW, VerQueryValueW};
+
+    let wide: Vec<u16> = path
+        .as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+    let mut result: Vec<String> = vec![String::new(); keys.len()];
+
+    unsafe {
+        let mut handle = 0u32; // DWORD
+        let size = GetFileVersionInfoSizeW(wide.as_ptr(), &mut handle);
+        if size == 0 {
+            return result;
+        }
+        let mut buf = vec![0u8; size as usize];
+        if GetFileVersionInfoW(wide.as_ptr(), handle, size, buf.as_mut_ptr() as *mut _) == 0 {
+            return result;
+        }
+
+        // Перечень переводов строки: пары (lang, codepage)
+        let mut trans = std::ptr::null_mut();
+        let mut trans_len = 0u32;
+        let sub: Vec<u16> = "\\VarFileInfo\\Translation"
+            .encode_utf16()
+            .chain(std::iter::once(0))
+            .collect();
+        let mut pairs: Vec<(u16, u16)> = Vec::new();
+        if VerQueryValueW(buf.as_ptr() as *const _, sub.as_ptr(), &mut trans, &mut trans_len) != 0
+            && !trans.is_null()
+        {
+            let n = trans_len as usize / 4;
+            let t = trans as *const u16;
+            for i in 0..n {
+                pairs.push((*t.add(i * 2), *t.add(i * 2 + 1)));
+            }
+        }
+        if pairs.is_empty() {
+            pairs.push((0x0409, 0x04B0)); // US English — частый fallback
+        }
+
+        for (lang, cp) in pairs {
+            for (i, key) in keys.iter().enumerate() {
+                if !result[i].is_empty() {
+                    continue;
+                }
+                let subkey = format!("\\StringFileInfo\\{:04x}{:04x}\\{}", lang, cp, key);
+                let w: Vec<u16> = subkey.encode_utf16().chain(std::iter::once(0)).collect();
+                let mut val = std::ptr::null_mut();
+                let mut vlen = 0u32;
+                if VerQueryValueW(buf.as_ptr() as *const _, w.as_ptr(), &mut val, &mut vlen) == 0
+                    || val.is_null()
+                {
+                    continue;
+                }
+                let u = val as *const u16;
+                // vlen у разных Windows значит то байты, то символы — берём
+                // щедрый лимит и всё равно читаем ровно до null-терминатора,
+                // но не дальше буфера ресурса
+                let base = buf.as_ptr() as usize;
+                let off = val as usize;
+                let remain_u16 = if off >= base && off - base < buf.len() {
+                    (buf.len() - (off - base)) / 2
+                } else {
+                    0
+                };
+                let max = ((vlen as usize).max(4) * 2 + 2).min(remain_u16);
+                let mut len = 0usize;
+                while len < max && *u.add(len) != 0 {
+                    len += 1;
+                }
+                if len > 0 {
+                    result[i] = String::from_utf16_lossy(std::slice::from_raw_parts(u, len));
+                }
+            }
+        }
+    }
+    result
+}
+
+/// Это exe лаунчера Arizona? Определяется по ресурсу версии, НЕ по имени файла:
+/// ProductName/FileDescription = "Launcher for Arizona GTA:SA-MP",
+/// CompanyName = "AIR ChannelT", OriginalFilename = "ArizonaLauncher...exe"
+/// (OriginalFilename остаётся исходным даже если файл переименовали).
+pub fn is_arizona_launcher(path: &Path) -> bool {
+    let f = exe_version_fields(
+        path,
+        &[
+            "ProductName",
+            "FileDescription",
+            "CompanyName",
+            "OriginalFilename",
+        ],
+    );
+    let norm = |s: &str| s.to_lowercase();
+    let (pn, fd, cn, of) = (norm(&f[0]), norm(&f[1]), norm(&f[2]), norm(&f[3]));
+    let arizona_launcher = |s: &str| s.contains("arizona") && s.contains("launcher");
+    arizona_launcher(&pn)
+        || arizona_launcher(&fd)
+        || cn.contains("air channel")
+        || of.contains("arizonalauncher")
+}
+
+/// Мажорная версия из ProductVersion (fallback — FileVersion), 0 если нет данных.
+pub fn exe_major_version(path: &Path) -> u32 {
+    let f = exe_version_fields(path, &["ProductVersion", "FileVersion"]);
+    for s in &f {
+        if let Some(num) = s.split('.').next() {
+            if let Ok(v) = num.trim().parse::<u32>() {
+                return v;
+            }
+        }
+    }
+    0
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn detect_real_launcher_exe() {
+        // Реальный exe лаунчера с рабочего стола (если файл есть)
+        let p = Path::new(r"C:\Users\halfik\Desktop\ArizonaLauncher8.0_byAIR.exe");
+        if !p.exists() {
+            eprintln!("файл не найден — пропуск");
+            return;
+        }
+        let f = exe_version_fields(p, &["ProductName", "FileDescription", "CompanyName", "ProductVersion"]);
+        assert_eq!(f[0], "Launcher for Arizona GTA:SA-MP", "ProductName: {:?}", f);
+        assert_eq!(f[1], "Launcher for Arizona GTA:SA-MP");
+        assert_eq!(f[2], "AIR Channel™");
+        assert_eq!(f[3], "8.0.0.0");
+        assert!(is_arizona_launcher(p), "лаунчер не распознан");
+        assert_eq!(exe_major_version(p), 8);
+
+        // Не-лаунчер (обычный exe) не должен распознаваться как лаунчер
+        let not_launcher = Path::new(r"C:\Windows\System32\notepad.exe");
+        if not_launcher.exists() {
+            assert!(!is_arizona_launcher(not_launcher), "notepad распознан как лаунчер!");
+        }
+    }
+}

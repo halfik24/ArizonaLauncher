@@ -142,7 +142,57 @@ pub fn read_launch_params(state: State<'_, AppState>) -> Result<serde_json::Valu
     Ok(ipc_keys_to_snake(value))
 }
 
+/// Способ запуска: "native" (напрямую gta_sa.exe) или "air" (через Air-лаунчер).
+#[tauri::command]
+pub fn get_launch_method(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
+    let cfg = util::lock_config(&state)?;
+    Ok(serde_json::json!({"success": true, "method": cfg.launch_method}))
+}
+
+#[tauri::command]
+pub fn set_launch_method(state: State<'_, AppState>, method: String) -> Result<serde_json::Value, String> {
+    if method != "native" && method != "air" {
+        return Ok(serde_json::json!({"success": false, "message": format!("Неизвестный способ запуска: {method}")}));
+    }
+    util::update_config(&state, |cfg| {
+        cfg.launch_method = method.clone();
+        Ok(())
+    })
+}
+
 // ==================== Game Path Commands ====================
+
+/// Ищет exe лаунчера в папке по ресурсу версии (не по имени файла):
+/// подойдёт любой exe, у которого ProductName/OriginalFilename указывает
+/// на лаунчер Arizona. Если их несколько — возвращает самый новый.
+fn find_launcher_exe(folder: &std::path::Path) -> Option<(PathBuf, u32)> {
+    let entries = std::fs::read_dir(folder).ok()?;
+    let mut best: Option<(PathBuf, u32)> = None;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let is_exe = path
+            .extension()
+            .map(|e| e.to_string_lossy().eq_ignore_ascii_case("exe"))
+            .unwrap_or(false);
+        if !is_exe || !util::is_arizona_launcher(&path) {
+            continue;
+        }
+        let major = util::exe_major_version(&path);
+        if best.as_ref().map(|(_, m)| major > *m).unwrap_or(true) {
+            best = Some((path, major));
+        }
+    }
+    best
+}
+
+/// Мажорная версия лаунчера → "v6" / "v7" / "v8" (неизвестное и новее 8 → "v8").
+fn major_to_version(major: u32) -> &'static str {
+    match major {
+        6 => "v6",
+        7 => "v7",
+        _ => "v8",
+    }
+}
 
 fn auto_detect_game_paths_inner(cfg: &mut LauncherConfig) -> bool {
     let home = dirs::home_dir().unwrap_or_default();
@@ -159,15 +209,8 @@ fn auto_detect_game_paths_inner(cfg: &mut LauncherConfig) -> bool {
         let gta = game_dir.join("gta_sa.exe");
         if gta.exists() {
             cfg.game_path = gta.to_string_lossy().to_string();
-            let v8 = game_dir.join("ArizonaLauncher8.0_byAIR.exe");
-            let v7 = game_dir.join("ArizonaLauncher7.0_byAIR.exe");
-            let v6 = game_dir.join("ArizonaLauncher6_byAIR.exe");
-            if v8.exists() {
-                cfg.launcher_path = v8.to_string_lossy().to_string();
-            } else if v7.exists() {
-                cfg.launcher_path = v7.to_string_lossy().to_string();
-            } else if v6.exists() {
-                cfg.launcher_path = v6.to_string_lossy().to_string();
+            if let Some((launcher, _)) = find_launcher_exe(&game_dir) {
+                cfg.launcher_path = launcher.to_string_lossy().to_string();
             }
             return true;
         }
@@ -203,15 +246,60 @@ pub fn set_game_paths(state: State<'_, AppState>, game: String, launcher: String
     Ok(serde_json::json!({"success": true, "message": "Paths set"}))
 }
 
+/// Нативный диалог выбора папки игры: проверяем gta_sa.exe, сохраняем пути,
+/// возвращаем {success, message, folder, install_info} — как Python.
 #[tauri::command]
-pub fn select_game_path() -> Result<serde_json::Value, String> {
-    // TODO: native folder dialog via tauri::api::dialog
-    Ok(serde_json::json!({"success": false, "message": "Not implemented yet"}))
+pub async fn select_game_path(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    use tauri_plugin_dialog::DialogExt;
+
+    let picked = app
+        .dialog()
+        .file()
+        .set_title("Выберите папку с игрой (где находится gta_sa.exe)")
+        .blocking_pick_folder();
+
+    let Some(picked) = picked else {
+        return util::fail_message("Папка не выбрана");
+    };
+    let folder = match picked {
+        tauri_plugin_dialog::FilePath::Path(p) => p,
+        tauri_plugin_dialog::FilePath::Url(u) => u
+            .to_file_path()
+            .map_err(|_| "Некорректный путь".to_string())?,
+    };
+    let folder_str = folder.to_string_lossy().to_string();
+
+    let game_exe = folder.join("gta_sa.exe");
+    if !game_exe.exists() {
+        return util::fail_message("gta_sa.exe не найден в выбранной папке");
+    }
+
+    // Сохраняем пути: лаунчер ищем по ресурсу версии среди всех exe папки
+    let launcher_exe = find_launcher_exe(&folder)
+        .map(|(p, _)| p.to_string_lossy().to_string())
+        .unwrap_or_default();
+    util::update_config(&state, |cfg| {
+        cfg.game_path = game_exe.to_string_lossy().to_string();
+        cfg.launcher_path = launcher_exe;
+        Ok(())
+    })?;
+
+    let install_info = get_install_action(folder_str.clone())?;
+    Ok(serde_json::json!({
+        "success": true,
+        "message": format!("Путь установлен: {}", folder_str),
+        "folder": folder_str,
+        "install_info": install_info
+    }))
 }
 
 // ==================== Game Launch ====================
 
-/// Python `get_launcher_version`: v8 > v7 > v6 по файлам в папке игры, иначе v8.
+/// Python `get_launcher_version`: v8 > v7 > v6 среди exe в папке игры
+/// (по ресурсу версии, не по имени файла), иначе v8.
 fn detect_launcher_version(state: &AppState) -> String {
     let Some(game_dir) = util::game_dir(state) else {
         return "v8".to_string();
@@ -221,14 +309,8 @@ fn detect_launcher_version(state: &AppState) -> String {
         .map(|mut rd| rd.next().is_some())
         .unwrap_or(false);
     if has_plugins {
-        if game_dir.join("ArizonaLauncher8.0_byAIR.exe").exists() {
-            return "v8".to_string();
-        }
-        if game_dir.join("ArizonaLauncher7.0_byAIR.exe").exists() {
-            return "v7".to_string();
-        }
-        if game_dir.join("ArizonaLauncher6_byAIR.exe").exists() {
-            return "v6".to_string();
+        if let Some((_, major)) = find_launcher_exe(&game_dir) {
+            return major_to_version(major).to_string();
         }
     }
     "v8".to_string()
@@ -294,72 +376,53 @@ fn validate_cdn(raw: &str) -> String {
     }
 }
 
-#[tauri::command]
-pub async fn start_game(
-    state: State<'_, AppState>,
-    nickname: String,
-    server_data: Option<serde_json::Value>,
-    launch_params: Option<serde_json::Value>,
-) -> Result<serde_json::Value, String> {
-    // Валидации (порядок как в Python)
-    let (launcher_path, game_path) = {
-        let cfg = util::lock_config(&state)?;
-        (cfg.launcher_path.clone(), cfg.game_path.clone())
+/// Паритет с оригиналом (03 §1, 04 §1): при запуске игры пишем ник и память
+/// в HKCU\Software\SAMP — тот же ключ, который читает сам клиент SA-MP.
+/// `cdn` не пишем: его DWORD-семантика в разборе лаунчера «не проверена».
+fn write_samp_registry(nickname: &str, mem_mb: u32) {
+    use winreg::enums::HKEY_CURRENT_USER;
+    use winreg::RegKey;
+    let Ok((key, _)) = RegKey::predef(HKEY_CURRENT_USER).create_subkey("Software\\SAMP") else {
+        log::warn!("write_samp_registry: не удалось открыть HKCU\\Software\\SAMP");
+        return;
     };
-    if launcher_path.is_empty() || !std::path::Path::new(&launcher_path).exists() {
-        return Ok(serde_json::json!({"success": false, "message": "Launcher not found", "code": "LAUNCHER_MISSING"}));
+    if let Err(e) = key.set_value("PlayerName", &nickname) {
+        log::warn!("write_samp_registry: PlayerName: {e}");
     }
-    if game_path.is_empty() || !std::path::Path::new(&game_path).exists() {
-        return Ok(serde_json::json!({"success": false,
-            "message": "Game path is missing or invalid — set it in Settings", "code": "GAME_MISSING"}));
+    if let Err(e) = key.set_value("mem", &mem_mb) {
+        log::warn!("write_samp_registry: mem: {e}");
     }
-    if nickname.trim().is_empty() {
-        return Ok(serde_json::json!({"success": false, "message": "Enter nickname", "code": "NICKNAME_EMPTY"}));
-    }
-    let nickname = sanitize_nickname(&nickname);
-    if nickname.is_empty() {
-        return Ok(serde_json::json!({"success": false,
-            "message": "Nickname contains only invalid characters", "code": "NICKNAME_INVALID"}));
-    }
+}
 
-    let srv_ip = server_data
-        .as_ref()
-        .and_then(|s| s.get("ip"))
-        .and_then(|v| v.as_str())
-        .unwrap_or("payson.arizona-rp.com")
-        .to_string();
-    let srv_port = server_data
-        .as_ref()
-        .and_then(|s| s.get("port"))
-        .map(|v| v.to_string().trim_matches('"').to_string())
-        .unwrap_or_else(|| "7777".to_string());
-
-    let params = match launch_params {
-        Some(p) => serde_json::from_value::<crate::config::LaunchParams>(p).ok(),
-        None => None,
-    };
-    let params = match params {
-        Some(p) => p,
-        None => util::lock_config(&state)?.launch_params.clone(),
-    };
-
-    let launcher_ver = detect_launcher_version(&state);
-    let is_v7plus = launcher_ver == "v7" || launcher_ver == "v8";
+/// Собирает аргументы запуска. База одинакова, хвост отличается
+/// (03 §3 — так командную строку получает игра от Air-ретранслятора):
+///   нативно:  ... -cdn <n,n,n> -arizona [доп. флаги]
+///   через Air: ... -arizona [доп. флаги] -cdn <n,n,n>  (порядок легаси worteng)
+fn build_launch_args(
+    native: bool,
+    is_v7plus: bool,
+    srv_ip: &str,
+    srv_port: &str,
+    nick: &str,
+    params: &crate::config::LaunchParams,
+) -> Vec<String> {
     let cdn_value = validate_cdn(&params.cdn);
-
-    // Базовая команда
-    let mut cmd = vec![
+    let mut cmd: Vec<String> = vec![
         "-c".to_string(),
         "-h".to_string(),
-        srv_ip,
+        srv_ip.to_string(),
         "-p".to_string(),
-        srv_port,
+        srv_port.to_string(),
         "-mem".to_string(),
         params.memory.to_string(),
         "-n".to_string(),
-        nickname.clone(),
-        "-arizona".to_string(),
+        nick.to_string(),
     ];
+    if native {
+        cmd.push("-cdn".to_string());
+        cmd.push(cdn_value.clone());
+    }
+    cmd.push("-arizona".to_string());
 
     // Общие флаги для всех версий (v6/v7/v8)
     let common_flags: [(&bool, &str); 8] = [
@@ -402,17 +465,133 @@ pub async fn start_game(
         }
     }
 
-    cmd.push("-cdn".to_string());
-    cmd.push(cdn_value);
+    if !native {
+        cmd.push("-cdn".to_string());
+        cmd.push(cdn_value);
+    }
+    cmd
+}
+
+#[cfg(test)]
+mod launch_tests {
+    use super::*;
+
+    /// Дефолтные параметры: autologin → "-x", window_mode → "-window".
+    #[test]
+    fn native_args_order() {
+        let p = crate::config::LaunchParams::default();
+        let args = build_launch_args(true, true, "host.example", "7777", "Nick", &p);
+        let got: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+        assert_eq!(
+            got,
+            vec![
+                "-c", "-h", "host.example", "-p", "7777", "-mem", "4096", "-n", "Nick",
+                "-cdn", "1,1,1", "-arizona", "-x", "-window"
+            ]
+        );
+    }
+
+    #[test]
+    fn air_args_order() {
+        let p = crate::config::LaunchParams::default();
+        let args = build_launch_args(false, true, "host.example", "7777", "Nick", &p);
+        let got: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+        assert_eq!(
+            got,
+            vec![
+                "-c", "-h", "host.example", "-p", "7777", "-mem", "4096", "-n", "Nick",
+                "-arizona", "-x", "-window", "-cdn", "1,1,1"
+            ]
+        );
+    }
+}
+
+#[tauri::command]
+pub async fn start_game(
+    state: State<'_, AppState>,
+    nickname: String,
+    server_data: Option<serde_json::Value>,
+    launch_params: Option<serde_json::Value>,
+) -> Result<serde_json::Value, String> {
+    // Валидации (порядок как в Python)
+    let (launcher_path, game_path, launch_method) = {
+        let cfg = util::lock_config(&state)?;
+        (
+            cfg.launcher_path.clone(),
+            cfg.game_path.clone(),
+            cfg.launch_method.clone(),
+        )
+    };
+    // "native" — запускаем gta_sa.exe напрямую; "air" — через ArizonaLauncher*.exe
+    let native = launch_method != "air";
+    if !native && (launcher_path.is_empty() || !std::path::Path::new(&launcher_path).exists()) {
+        return Ok(serde_json::json!({"success": false, "message": "Launcher not found", "code": "LAUNCHER_MISSING"}));
+    }
+    if game_path.is_empty() || !std::path::Path::new(&game_path).exists() {
+        return Ok(serde_json::json!({"success": false,
+            "message": "Game path is missing or invalid — set it in Settings", "code": "GAME_MISSING"}));
+    }
+    if nickname.trim().is_empty() {
+        return Ok(serde_json::json!({"success": false, "message": "Enter nickname", "code": "NICKNAME_EMPTY"}));
+    }
+    let nickname = sanitize_nickname(&nickname);
+    if nickname.is_empty() {
+        return Ok(serde_json::json!({"success": false,
+            "message": "Nickname contains only invalid characters", "code": "NICKNAME_INVALID"}));
+    }
+
+    let srv_ip = server_data
+        .as_ref()
+        .and_then(|s| s.get("ip"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("payson.arizona-rp.com")
+        .to_string();
+    let srv_port = server_data
+        .as_ref()
+        .and_then(|s| s.get("port"))
+        .map(|v| v.to_string().trim_matches('"').to_string())
+        .unwrap_or_else(|| "7777".to_string());
+
+    let params = match launch_params {
+        Some(p) => serde_json::from_value::<crate::config::LaunchParams>(p).ok(),
+        None => None,
+    };
+    let params = match params {
+        Some(p) => p,
+        None => util::lock_config(&state)?.launch_params.clone(),
+    };
+
+    let launcher_ver = detect_launcher_version(&state);
+    // При нативном запуске поддержка только v8 → все доп. флаги без проверок
+    let is_v7plus = native || launcher_ver == "v7" || launcher_ver == "v8";
+    let cmd = build_launch_args(native, is_v7plus, &srv_ip, &srv_port, &nickname, &params);
 
     // kill_all_launchers перед стартом (в Python — синхронно с sleep 1s)
     tokio::task::spawn_blocking(kill_all_launchers).await.ok();
 
-    let exe = std::path::PathBuf::from(&launcher_path);
-    let cwd = exe
-        .parent()
-        .map(|p| p.to_path_buf())
-        .unwrap_or_else(|| std::path::PathBuf::from("."));
+    let (exe, cwd) = if native {
+        // Реестр — паритет с оригиналом (03 §1, 04): SA-MP читает оттуда ник
+        write_samp_registry(&nickname, params.memory);
+        let game = std::path::PathBuf::from(&game_path);
+        let dir = game
+            .parent()
+            .map(|p| p.to_path_buf())
+            .unwrap_or_else(|| std::path::PathBuf::from("."));
+        (game, dir)
+    } else {
+        let exe = std::path::PathBuf::from(&launcher_path);
+        let cwd = exe
+            .parent()
+            .map(|p| p.to_path_buf())
+            .unwrap_or_else(|| std::path::PathBuf::from("."));
+        (exe, cwd)
+    };
+    log::info!(
+        "start_game[{}]: {:?} {:?}",
+        if native { "native" } else { "air" },
+        exe,
+        cmd
+    );
 
     use std::os::windows::process::CommandExt;
     const CREATE_NO_WINDOW: u32 = 0x0800_0000;
@@ -1063,10 +1242,86 @@ pub fn check_launcher_update(state: State<'_, AppState>) -> Result<serde_json::V
     Ok(serde_json::json!({"success": true, "needs_update": false, "message": "Лаунчер v8 уже установлен"}))
 }
 
+/// Python `get_install_action`, но лаунчер определяется по ресурсу версии среди
+/// всех exe папки (не по имени файла):
+/// - action: 'none' | 'choose_version' | 'install_launcher_only'
+///           | 'install_preloading_only' | 'upgrade_to_v8' | 'error'
 #[tauri::command]
 pub fn get_install_action(folder_path: String) -> Result<serde_json::Value, String> {
-    // TODO: check game folder
-    Ok(serde_json::json!({"action": "none", "message": "OK"}))
+    let folder = std::path::Path::new(&folder_path);
+    if !folder.join("gta_sa.exe").exists() {
+        return Ok(serde_json::json!({"action": "error", "message": "gta_sa.exe не найден"}));
+    }
+    // Что реально лежит в папке: найденный лаунчер и его версия
+    let launcher = find_launcher_exe(folder); // Option<(PathBuf, major)>
+    let has_launcher = launcher.is_some();
+    let launcher_version: Option<&'static str> =
+        launcher.as_ref().map(|(_, major)| major_to_version(*major));
+    let has_v8 = launcher_version == Some("v8");
+    let plugins = folder.join("preloading_plugins");
+    let has_preloading = plugins.is_dir()
+        && std::fs::read_dir(&plugins)
+            .map(|mut rd| rd.next().is_some())
+            .unwrap_or(false);
+
+    // 1. preloading + v8 → ничего делать не надо
+    if has_preloading && has_v8 {
+        return Ok(serde_json::json!({
+            "action": "none",
+            "message": "Лаунчер v8 уже установлен",
+            "has_launcher": true,
+            "has_preloading": true,
+            "launcher_version": "v8"
+        }));
+    }
+    // 2/3. preloading + старый лаунчер (v7/v6) → обновление до v8
+    if has_preloading && has_launcher && !has_v8 {
+        return Ok(serde_json::json!({
+            "action": "upgrade_to_v8",
+            "message": "Доступно обновление до v8",
+            "has_launcher": true,
+            "has_preloading": true,
+            "launcher_version": launcher_version
+        }));
+    }
+    // 4. нет preloading, но лаунчер есть
+    if !has_preloading && has_launcher {
+        if has_v8 {
+            // Для v8 ставку preloading решает удалённый флаг патчера
+            return Ok(serde_json::json!({
+                "action": "none",
+                "message": "Лаунчер v8 уже установлен",
+                "has_launcher": true,
+                "has_preloading": false,
+                "launcher_version": "v8"
+            }));
+        }
+        return Ok(serde_json::json!({
+            "action": "install_preloading_only",
+            "message": "Требуется установка папки preloading_plugins",
+            "has_launcher": true,
+            "has_preloading": false,
+            "launcher_version": launcher_version
+        }));
+    }
+    // 5. preloading есть, лаунчера нет
+    if has_preloading && !has_launcher {
+        return Ok(serde_json::json!({
+            "action": "install_launcher_only",
+            "message": "Требуется установка лаунчера v8",
+            "has_launcher": false,
+            "has_preloading": true,
+            "launcher_version": null
+        }));
+    }
+    // 6. Полная установка: нет ни лаунчера, ни preloading_plugins
+    Ok(serde_json::json!({
+        "action": "choose_version",
+        "message": "Выберите версию лаунчера для установки",
+        "has_launcher": false,
+        "has_preloading": false,
+        "launcher_version": null
+    }))
 }
 
 /// API-обёртка для JS: {success, install_info} (как в Python get_install_action_api)
@@ -1361,6 +1616,66 @@ fn get_dll_version(_path: &std::path::Path) -> Option<String> {
     None
 }
 
+/// Diff кандидата патчей (импортируемого файла/бэкапа) против текущего
+/// #ArizonaPatches.json. Возвращает {changed:[{key,from,to}], added:[{key,to}],
+/// removed:[{key,from}], same_count}. Плоский и вложенный формат нормализуются.
+fn diff_vs_current_patches(state: &AppState, candidate: &serde_json::Value) -> serde_json::Value {
+    // Текущий конфиг → плоский map
+    let current_flat = util::read_patches_file(&patches_json_path(state))
+        .ok()
+        .and_then(|d| patches_flat(&d))
+        .unwrap_or_default();
+    // Кандидат → плоский map
+    let cand_flat = patches_flat(candidate).unwrap_or_default();
+
+    let mut changed = Vec::new();
+    let mut added = Vec::new();
+    let mut same_count = 0usize;
+    for (k, v) in &cand_flat {
+        match current_flat.get(k) {
+            Some(cur) if cur == v => same_count += 1,
+            Some(cur) => changed.push(serde_json::json!({
+                "key": k,
+                "from": cur,
+                "to": v,
+            })),
+            None => added.push(serde_json::json!({"key": k, "to": v})),
+        }
+    }
+    let mut removed = Vec::new();
+    for (k, v) in &current_flat {
+        if !cand_flat.contains_key(k) {
+            removed.push(serde_json::json!({"key": k, "from": v}));
+        }
+    }
+
+    serde_json::json!({
+        "changed": changed,
+        "added": added,
+        "removed": removed,
+        "same_count": same_count,
+        "current_exists": !current_flat.is_empty(),
+    })
+}
+
+/// Нормализация данных патчей к плоскому map: вложенный формат
+/// {"patches": {...}} разворачивается, плоский — как есть.
+/// (нет файла/пусто → None)
+fn patches_flat(data: &serde_json::Value) -> Option<serde_json::Map<String, serde_json::Value>> {
+    let obj = data.as_object()?;
+    if let Some(nested) = obj.get("patches").and_then(|p| p.as_object()) {
+        return Some(nested.clone());
+    }
+    Some(obj.clone())
+}
+
+/// Краткая сводка конфига патчей из плоского map: {total, on, off}.
+fn patches_summary(flat: &serde_json::Map<String, serde_json::Value>) -> serde_json::Value {
+    let total = flat.len();
+    let on = flat.values().filter(|v| v.as_bool().unwrap_or(false)).count();
+    serde_json::json!({"total": total, "on": on, "off": total - on})
+}
+
 /// Python: _create_patches_backup — бэкап перед записью, максимум 15 штук.
 fn create_patches_backup(state: &AppState, label: &str) -> Option<PathBuf> {
     let src = patches_json_path(state);
@@ -1629,6 +1944,12 @@ pub fn list_patches_backups(state: State<'_, AppState>) -> Result<serde_json::Va
     if !backup_dir.exists() {
         return Ok(serde_json::json!([]));
     }
+    // Текущий конфиг — чтобы каждому бэкапу сразу посчитать отличия
+    let current_flat = util::read_patches_file(&patches_json_path(&state))
+        .ok()
+        .and_then(|d| patches_flat(&d))
+        .unwrap_or_default();
+
     let mut items: Vec<(std::time::SystemTime, serde_json::Value)> = Vec::new();
     if let Ok(rd) = std::fs::read_dir(&backup_dir) {
         for e in rd.flatten() {
@@ -1641,6 +1962,30 @@ pub fn list_patches_backups(state: State<'_, AppState>) -> Result<serde_json::Va
             let date = chrono::DateTime::<chrono::Local>::from(mtime)
                 .format("%d.%m.%Y %H:%M:%S")
                 .to_string();
+
+            // Сводка бэкапа: сколько патчей вкл/выкл и сколько отличий
+            // от текущего конфига (для бейджа в списке).
+            let flat = util::read_patches_file(&e.path())
+                .ok()
+                .and_then(|d| patches_flat(&d));
+            let (summary, diff_count) = match &flat {
+                Some(f) => {
+                    let diff = diff_vs_current_patches(&state, &serde_json::Value::Object(f.clone()));
+                    let n = diff["changed"].as_array().map(|a| a.len()).unwrap_or(0)
+                        + diff["added"].as_array().map(|a| a.len()).unwrap_or(0)
+                        + diff["removed"].as_array().map(|a| a.len()).unwrap_or(0);
+                    (patches_summary(f), serde_json::json!(n))
+                }
+                None => (serde_json::Value::Null, serde_json::Value::Null),
+            };
+            let r#type = if name.contains("before_import") {
+                "before_import"
+            } else if name.contains("before_restore") {
+                "before_restore"
+            } else {
+                "save"
+            };
+
             items.push((
                 mtime,
                 serde_json::json!({
@@ -1648,6 +1993,9 @@ pub fn list_patches_backups(state: State<'_, AppState>) -> Result<serde_json::Va
                     "path": e.path().to_string_lossy(),
                     "date": date,
                     "size": md.len(),
+                    "type": r#type,
+                    "summary": summary,
+                    "diff_count": diff_count,
                 }),
             ));
         }
@@ -1776,6 +2124,10 @@ pub fn preview_patches_backup(state: State<'_, AppState>, filename: String) -> R
         "save"
     };
 
+    // Diff против текущего конфига — фронт показывает «что изменится при
+    // восстановлении» прямо в превью.
+    let diff = diff_vs_current_patches(&state, &data);
+
     Ok(serde_json::json!({
         "success": true,
         "filename": filename,
@@ -1785,6 +2137,7 @@ pub fn preview_patches_backup(state: State<'_, AppState>, filename: String) -> R
         "patches_enabled": enabled,
         "patches_disabled": disabled,
         "launch_params": launch_params,
+        "diff": diff,
         "saved_at": obj.and_then(|o| o.get("saved_at")).cloned().unwrap_or_else(|| serde_json::json!("")),
     }))
 }
@@ -1898,15 +2251,124 @@ pub async fn check_patches_update_status() -> Result<serde_json::Value, String> 
     }))
 }
 
+/// Экспорт настроек патчей в JSON-файл через системный диалог сохранения.
 #[tauri::command]
-pub fn export_patches(data: serde_json::Value) -> Result<serde_json::Value, String> {
-    let _ = data; // TODO: save-file dialog (tauri-plugin-dialog) + write JSON
-    Ok(serde_json::json!({"success": false, "message": "Not implemented"}))
+pub fn export_patches(app: tauri::AppHandle, data: serde_json::Value) -> Result<serde_json::Value, String> {
+    use tauri_plugin_dialog::DialogExt;
+
+    let ts = chrono::Local::now().format("%Y%m%d_%H%M%S");
+    let picked = app
+        .dialog()
+        .file()
+        .set_title("Сохранить настройки патчей")
+        .set_file_name(&format!("ArizonaPatches_{}.json", ts))
+        .add_filter("JSON файл", &["json"])
+        .blocking_save_file();
+
+    let Some(picked) = picked else {
+        return util::fail_message("Отменено");
+    };
+    let path = match picked {
+        tauri_plugin_dialog::FilePath::Path(p) => p,
+        tauri_plugin_dialog::FilePath::Url(u) => u
+            .to_file_path()
+            .map_err(|_| "Некорректный путь".to_string())?,
+    };
+
+    // Pretty JSON — тем же сериализатором, что и write_patches_inner
+    let mut buf: Vec<u8> = Vec::new();
+    {
+        use serde::Serialize;
+        let mut ser = serde_json::Serializer::with_formatter(
+            &mut buf,
+            serde_json::ser::PrettyFormatter::with_indent(b"    "),
+        );
+        data.serialize(&mut ser).map_err(|e| e.to_string())?;
+    }
+    match std::fs::write(&path, &buf) {
+        Ok(_) => {
+            log::info!("export_patches: сохранён {}", path.display());
+            Ok(serde_json::json!({"success": true, "message": format!("Сохранено: {}", path.to_string_lossy())}))
+        }
+        Err(e) => Ok(serde_json::json!({"success": false, "message": e.to_string()})),
+    }
 }
 
+/// Импорт настроек патчей из JSON-файла через системный диалог открытия.
+/// Только читает и валидирует файл — запись делает фронтенд (после показа
+/// diff-подтверждения), бэкап перед записью создаёт write_patches_inner.
 #[tauri::command]
-pub fn import_patches() -> Result<serde_json::Value, String> {
-    Ok(serde_json::json!({"success": false, "message": "Not implemented"}))
+pub fn import_patches(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<serde_json::Value, String> {
+    use tauri_plugin_dialog::DialogExt;
+
+    let picked = app
+        .dialog()
+        .file()
+        .set_title("Открыть файл настроек патчей")
+        .add_filter("JSON файл", &["json"])
+        .blocking_pick_file();
+
+    let Some(picked) = picked else {
+        return util::fail_message("Отменено");
+    };
+    let path = match picked {
+        tauri_plugin_dialog::FilePath::Path(p) => p,
+        tauri_plugin_dialog::FilePath::Url(u) => u
+            .to_file_path()
+            .map_err(|_| "Некорректный путь".to_string())?,
+    };
+
+    let raw = match std::fs::read_to_string(&path) {
+        Ok(s) => s,
+        Err(e) => {
+            return Ok(serde_json::json!({"success": false, "message": format!("Не удалось прочитать файл: {}", e)}))
+        }
+    };
+    // Python: уб строки, начинающиеся с // (JSON с комментариями)
+    let cleaned: String = raw
+        .lines()
+        .filter(|l| !l.trim_start().starts_with("//"))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let data: serde_json::Value = match serde_json::from_str(&cleaned) {
+        Ok(d) => d,
+        Err(e) => return Ok(serde_json::json!({"success": false, "message": format!("Ошибка JSON: {}", e)})),
+    };
+    let Some(obj) = data.as_object() else {
+        return util::fail_message("Файл не содержит настроек патчей");
+    };
+
+    // Вложенный формат {"patches": {...}} — разворачиваем до плоского:
+    // в #ArizonaPatches.json пишется только плоский map патчей.
+    let is_nested = obj.get("patches").map(|p| p.is_object()).unwrap_or(false);
+    let flat: serde_json::Map<String, serde_json::Value> = if is_nested {
+        obj["patches"].as_object().cloned().unwrap_or_default()
+    } else {
+        obj.clone()
+    };
+    let bool_count = flat.values().filter(|v| v.as_bool().unwrap_or(false)).count();
+    if bool_count == 0 {
+        return util::fail_message("Файл не содержит настроек патчей");
+    }
+
+    let flat_val = serde_json::Value::Object(flat);
+    let diff = diff_vs_current_patches(&state, &flat_val);
+    log::info!(
+        "import_patches: выбран {}, настроек {}, diff changed={} added={} removed={}",
+        path.display(),
+        bool_count,
+        diff["changed"].as_array().map(|a| a.len()).unwrap_or(0),
+        diff["added"].as_array().map(|a| a.len()).unwrap_or(0),
+        diff["removed"].as_array().map(|a| a.len()).unwrap_or(0),
+    );
+    Ok(serde_json::json!({
+        "success": true,
+        "data": flat_val,
+        "keys_count": bool_count,
+        "filename": path.file_name().map(|f| f.to_string_lossy().to_string()).unwrap_or_default(),
+        "diff": diff
+    }))
 }
 
 #[tauri::command]
@@ -1950,24 +2412,171 @@ pub async fn start_launcher_install(folder_path: String, version: Option<String>
 
 // ==================== Moonloader ====================
 
-#[tauri::command]
-pub fn get_moonloader_scripts() -> Result<serde_json::Value, String> {
-    Ok(serde_json::json!({"success": false, "message": "Not implemented"}))
+/// Путь к `moonloader/` рядом с gta_sa.exe — 1-в-1 как `_get_moonloader_dir` в Python.
+/// Ошибка — текст для фронта («Путь к игре не установлен» / «Папка moonloader не найдена»).
+fn moonloader_dir(state: &AppState) -> Result<PathBuf, String> {
+    let gp = util::game_path(state);
+    if gp.is_empty() {
+        return Err("Путь к игре не установлен".to_string());
+    }
+    let dir = std::path::Path::new(&gp)
+        .parent()
+        .map(|p| p.join("moonloader"))
+        .ok_or_else(|| "Invalid game path".to_string())?;
+    if !dir.is_dir() {
+        return Err("Папка moonloader не найдена".to_string());
+    }
+    Ok(dir)
+}
+
+/// Имя файла без обходов путей: только basename, никаких `..`, `/`, `\`.
+fn safe_script_name(name: &str) -> Result<&str, String> {
+    if name.is_empty()
+        || name.contains('/')
+        || name.contains('\\')
+        || name == "."
+        || name == ".."
+    {
+        return Err("Недопустимое имя файла".to_string());
+    }
+    Ok(name)
 }
 
 #[tauri::command]
-pub fn toggle_moonloader_script(script_name: String, enable: bool) -> Result<serde_json::Value, String> {
-    Ok(serde_json::json!({"success": false, "message": "Not implemented"}))
+pub fn get_moonloader_scripts(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
+    let dir = match moonloader_dir(&state) {
+        Ok(d) => d,
+        Err(e) => return util::fail_message(e),
+    };
+    let entries = match std::fs::read_dir(&dir) {
+        Ok(e) => e,
+        Err(e) => return util::fail_message(e.to_string()),
+    };
+    let mut scripts: Vec<serde_json::Value> = Vec::new();
+    for entry in entries.flatten() {
+        // Только файлы, без подпапок
+        match entry.file_type() {
+            Ok(t) if t.is_file() => {}
+            _ => continue,
+        }
+        let name = entry.file_name().to_string_lossy().to_string();
+        // Активный = не заканчивается на .disabled
+        let (real_name, enabled) = match name.strip_suffix(".disabled") {
+            Some(base) => (base.to_string(), false),
+            None => (name, true),
+        };
+        // Только скриптовые расширения
+        let ext = match std::path::Path::new(&real_name).extension() {
+            Some(e) => e.to_string_lossy().to_lowercase(),
+            None => continue,
+        };
+        if !matches!(ext.as_str(), "lua" | "cs" | "asi" | "luac") {
+            continue;
+        }
+        scripts.push(serde_json::json!({
+            "name": real_name,
+            "ext": ext,
+            "enabled": enabled,
+            "full_path": entry.path().to_string_lossy(),
+        }));
+    }
+    scripts.sort_by(|a, b| {
+        a["name"]
+            .as_str()
+            .unwrap_or("")
+            .to_lowercase()
+            .cmp(&b["name"].as_str().unwrap_or("").to_lowercase())
+    });
+    Ok(serde_json::json!({
+        "success": true,
+        "scripts": scripts,
+        "dir": dir.to_string_lossy(),
+    }))
 }
 
 #[tauri::command]
-pub fn delete_moonloader_script(filename: String) -> Result<serde_json::Value, String> {
-    Ok(serde_json::json!({"success": false, "message": "Not implemented"}))
+pub fn toggle_moonloader_script(
+    state: State<'_, AppState>,
+    script_name: String,
+    enable: bool,
+) -> Result<serde_json::Value, String> {
+    let dir = match moonloader_dir(&state) {
+        Ok(d) => d,
+        Err(e) => return util::fail_message(e),
+    };
+    let name = match safe_script_name(&script_name) {
+        Ok(n) => n,
+        Err(e) => return util::fail_message(e),
+    };
+    let enabled_path = dir.join(name);
+    let disabled_path = dir.join(format!("{}.disabled", name));
+
+    let result = if enable {
+        // Включить: убрать .disabled
+        if disabled_path.exists() {
+            std::fs::rename(&disabled_path, &enabled_path)
+        } else if !enabled_path.exists() {
+            return util::fail_message(format!("Файл не найден: {}", name));
+        } else {
+            return util::ok_true();
+        }
+    } else {
+        // Выключить: добавить .disabled
+        if enabled_path.exists() {
+            std::fs::rename(&enabled_path, &disabled_path)
+        } else if !disabled_path.exists() {
+            return util::fail_message(format!("Файл не найден: {}", name));
+        } else {
+            return util::ok_true();
+        }
+    };
+    match result {
+        Ok(_) => util::ok_true(),
+        Err(e) => util::fail_message(e.to_string()),
+    }
 }
 
 #[tauri::command]
-pub fn open_moonloader_folder() -> Result<serde_json::Value, String> {
-    Ok(serde_json::json!({"success": false, "message": "Not implemented"}))
+pub fn delete_moonloader_script(
+    state: State<'_, AppState>,
+    filename: String,
+) -> Result<serde_json::Value, String> {
+    let dir = match moonloader_dir(&state) {
+        Ok(d) => d,
+        Err(e) => return util::fail_message(e),
+    };
+    let name = match safe_script_name(&filename) {
+        Ok(n) => n,
+        Err(e) => return util::fail_message(e),
+    };
+    // Пробуем оба варианта: обычный и .disabled
+    let candidates = [dir.join(name), dir.join(format!("{}.disabled", name))];
+    let mut deleted: Vec<String> = Vec::new();
+    for path in &candidates {
+        if path.exists() {
+            if let Err(e) = std::fs::remove_file(path) {
+                return util::fail_message(e.to_string());
+            }
+            deleted.push(path.file_name().unwrap_or_default().to_string_lossy().to_string());
+        }
+    }
+    if deleted.is_empty() {
+        return util::fail_message(format!("Файл не найден: {}", name));
+    }
+    Ok(serde_json::json!({
+        "success": true,
+        "message": format!("Удалён: {}", deleted.join(", ")),
+    }))
+}
+
+#[tauri::command]
+pub fn open_moonloader_folder(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
+    let dir = match moonloader_dir(&state) {
+        Ok(d) => d,
+        Err(e) => return util::fail_message(e),
+    };
+    open::that(&dir).map_err(|e| e.to_string())?;
+    util::ok_true()
 }
 
 #[tauri::command]

@@ -306,6 +306,28 @@
         body.sb-right .interface { padding-right: 48px; }
         body.sb-top #profilesHoverWidget { top: 44px; }
 
+        /* Размеры строки состояния (толщина) */
+        .status-bar.sb-size-md {
+            font-size: 10px;
+            gap: 14px;
+        }
+        .status-bar.sb-size-md.sb-pos-bottom,
+        .status-bar.sb-size-md.sb-pos-top,
+        .status-bar.sb-size-md:not([class*="sb-pos-"]) { height: 28px; padding: 0 12px; }
+        .status-bar.sb-size-md.sb-pos-left,
+        .status-bar.sb-size-md.sb-pos-right { width: 33px; gap: 10px; padding: 10px 0; }
+
+        .status-bar.sb-size-sm {
+            font-size: 9px;
+            gap: 11px;
+        }
+        .status-bar.sb-size-sm.sb-pos-bottom,
+        .status-bar.sb-size-sm.sb-pos-top,
+        .status-bar.sb-size-sm:not([class*="sb-pos-"]) { height: 24px; padding: 0 10px; }
+        .status-bar.sb-size-sm.sb-pos-left,
+        .status-bar.sb-size-sm.sb-pos-right { width: 29px; gap: 8px; padding: 8px 0; }
+        .status-bar.sb-size-sm .sb-chip svg { width: 11px; height: 11px; }
+
         /* Сегмент положения строки в настройках */
         .sb-pos-wrap { margin: 4px 16px 12px; }
         .sb-pos-label {
@@ -1498,7 +1520,7 @@
         .install-overlay.closing .install-modal { animation: creOut 0.25s cubic-bezier(0.4, 0, 1, 1) forwards; }
 
         .script-detail-overlay.closing                { animation: overlayFadeOut 0.25s ease forwards; }
-        .script-detail-overlay.closing .script-detail-panel { animation: slideOutRight 0.22s ease forwards; }
+        .script-detail-overlay.closing .sd-panel     { animation: slideOutRight 0.22s ease forwards; }
 
         .settings-panel.closing { animation: settingsSink 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards; }
         /* Закрытие из пикера обоев: та же анимация, но на «левой» позиции */
@@ -2722,6 +2744,18 @@
             position: absolute; opacity: 0; width: 0; height: 0; pointer-events: none;
         }
 
+        .launch-item input[type="radio"] {
+            position: absolute; opacity: 0; width: 0; height: 0; pointer-events: none;
+        }
+
+        /* Подпись под переключателем способа запуска */
+        #launchTab .lm-hint {
+            margin-top: 8px;
+            font-size: 11px;
+            line-height: 1.45;
+            color: rgba(255,255,255,0.4);
+        }
+
         .launch-item-text { flex: 1; min-width: 0; }
 
         .launch-item-name {
@@ -3084,6 +3118,50 @@
             stroke-width: 2.2;
         }
 
+        /* ── Импорт/Экспорт: список бэкапов и diff-превью ── */
+        .bk-empty { font-family:'Montserrat Alternates'; font-size:11px; color:rgba(255,255,255,0.25); text-align:center; padding:20px 10px; line-height:1.5; }
+        .bk-row { display:flex; align-items:center; gap:10px; padding:8px 12px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.05); border-radius:8px; transition:border-color .15s, background .15s; }
+        .bk-row:hover { background:rgba(255,255,255,0.05); border-color:rgba(255,255,255,0.1); }
+        .bk-ic { flex-shrink:0; width:26px; height:26px; display:flex; align-items:center; justify-content:center; background:rgba(255,255,255,0.04); border-radius:6px; }
+        .bk-ic svg { width:14px; height:14px; }
+        .bk-main { flex:1; min-width:0; }
+        .bk-date { font-family:'Montserrat Alternates'; font-size:11px; color:rgba(255,255,255,0.8); }
+        .bk-meta { font-family:'Montserrat Alternates'; font-size:10px; color:rgba(255,255,255,0.35); margin-top:1px; }
+        .bk-pills { display:flex; gap:6px; flex-shrink:0; align-items:center; flex-wrap:wrap; justify-content:flex-end; }
+        .bk-pill { display:inline-flex; align-items:center; gap:3px; padding:2px 8px; border-radius:99px; font-family:'Montserrat Alternates'; font-size:9.5px; font-weight:600; white-space:nowrap; border:1px solid transparent; }
+        .bk-pill svg { width:10px; height:10px; }
+        .bk-pill-on { background:rgba(130,220,150,0.08); border-color:rgba(130,220,150,0.25); color:rgba(130,220,150,0.9); }
+        .bk-pill-off { background:rgba(255,255,255,0.04); border-color:rgba(255,255,255,0.1); color:rgba(255,255,255,0.45); }
+        .bk-pill-diff { background:rgba(255,180,80,0.08); border-color:rgba(255,180,80,0.3); color:rgba(255,190,100,0.95); }
+        .bk-pill-same { background:rgba(120,200,255,0.07); border-color:rgba(120,200,255,0.25); color:rgba(140,200,255,0.85); }
+        .bk-btns { display:flex; gap:6px; flex-shrink:0; }
+        .bk-btn { height:28px; width:28px; padding:0; border-radius:6px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); color:rgba(220,220,220,0.85); cursor:pointer; display:inline-flex; align-items:center; justify-content:center; transition:all .15s; }
+        .bk-btn svg { width:13px; height:13px; }
+        .bk-btn:hover { background:rgba(255,255,255,0.12); }
+        .bk-btn-restore { background:rgba(0,120,212,0.2); border-color:rgba(0,140,255,0.3); color:rgba(140,200,255,0.9); }
+        .bk-btn-restore:hover { background:rgba(0,140,255,0.32); }
+        .bk-btn-del { background:rgba(220,60,60,0.12); border-color:rgba(255,80,80,0.25); color:rgba(255,140,140,0.9); }
+        .bk-btn-del:hover { background:rgba(220,60,60,0.28); }
+        .bk-btn-del.armed { background:rgba(255,80,80,0.45); border-color:rgba(255,120,120,0.8); color:#fff; animation:bkPulse .8s ease-in-out infinite alternate; }
+        @keyframes bkPulse { from { box-shadow:0 0 0 rgba(255,80,80,0); } to { box-shadow:0 0 10px rgba(255,80,80,0.55); } }
+        .bk-stat { background:rgba(0,0,0,0.2); padding:8px 10px; border-radius:6px; border:1px solid rgba(255,255,255,0.05); }
+        .bk-stat-cap { font-size:9px; color:rgba(255,255,255,0.4); text-transform:uppercase; letter-spacing:0.5px; }
+        .bk-stat-val { font-size:12px; color:rgba(255,255,255,0.85); margin-top:2px; }
+        .bk-sec-cap { font-size:10px; color:rgba(255,255,255,0.5); text-transform:uppercase; letter-spacing:0.5px; font-weight:600; margin:4px 0 6px; display:flex; align-items:center; gap:5px; }
+        .bk-sec-cap svg { width:12px; height:12px; }
+        .bk-diff-head { font-size:11px; color:rgba(255,255,255,0.6); margin-bottom:6px; }
+        .bk-diff-head b { color:rgba(255,255,255,0.9); }
+        .bk-diff-list { max-height:260px; overflow-y:auto; background:rgba(0,0,0,0.15); border:1px solid rgba(255,255,255,0.05); border-radius:8px; padding:6px 10px; }
+        .bk-diff-row { display:flex; align-items:center; gap:8px; padding:3px 0; font-family:'Montserrat Alternates'; font-size:11px; }
+        .bk-diff-ic { width:12px; height:12px; flex-shrink:0; }
+        .bk-diff-name { color:rgba(255,255,255,0.8); flex:1; min-width:0; }
+        .bk-diff-vals { color:rgba(255,255,255,0.4); font-size:10px; flex-shrink:0; }
+        .bk-v-old { color:rgba(255,140,140,0.9); }
+        .bk-v-new { color:rgba(130,220,150,0.95); }
+        .bk-diff-note { font-family:'Montserrat Alternates'; font-size:11px; color:rgba(255,255,255,0.5); padding:10px 12px; background:rgba(255,255,255,0.03); border:1px dashed rgba(255,255,255,0.1); border-radius:8px; line-height:1.5; }
+        .bk-diff-ok { color:rgba(130,220,150,0.85); border-color:rgba(130,220,150,0.3); background:rgba(130,220,150,0.05); display:flex; align-items:center; gap:6px; }
+        .bk-diff-ok svg { width:14px; height:14px; flex-shrink:0; }
+
         .s-btn:hover {
             background: rgba(255,255,255,0.12);
             border-color: rgba(255,255,255,0.18);
@@ -3345,6 +3423,23 @@
             border: 1px solid rgba(255,255,255,0.07);
             border-radius: 12px;
             flex-shrink: 0;
+            position: relative;
+        }
+
+        /* Ездящий индикатор: одна пилюля, которая плавно переезжает
+           между кнопками вкладок вместо мгновенного появления фона */
+        .mods-tab-indicator {
+            position: absolute;
+            top: 4px;
+            left: 0;
+            height: calc(100% - 8px);
+            border-radius: 9px;
+            background: rgba(255,255,255,0.1);
+            box-shadow: 0 1px 6px rgba(0,0,0,0.25);
+            pointer-events: none;
+            z-index: 0;
+            transition: transform 0.32s cubic-bezier(0.22, 0.61, 0.36, 1),
+                        width   0.32s cubic-bezier(0.22, 0.61, 0.36, 1);
         }
 
         .mods-tab {
@@ -3360,6 +3455,8 @@
             display: flex;
             align-items: center;
             gap: 7px;
+            position: relative;
+            z-index: 1;
         }
         .mods-tab svg { width: 14px !important; height: 14px !important; flex-shrink: 0; opacity: 0.8; }
 
@@ -3369,9 +3466,8 @@
         }
 
         .mods-tab.active {
-            background: rgba(255,255,255,0.1);
+            background: transparent;
             color: #fff;
-            box-shadow: 0 1px 6px rgba(0,0,0,0.25);
         }
         .mods-tab.active svg { opacity: 1; }
 
@@ -3677,12 +3773,29 @@
             display: flex;
             align-items: center;
             gap: 5px;
+            position: relative;
+            z-index: 1;
         }
         .ml-sub-tab svg { width: 12px !important; height: 12px !important; flex-shrink: 0; opacity: 0.7; }
         .ml-sub-tab:hover { color: rgba(255,255,255,0.7); }
         .ml-sub-tab.active {
-            background: rgba(255,255,255,0.1);
+            background: transparent;
             color: white;
+        }
+
+        /* Ездящий индикатор подвкладок — та же идея, что у .mods-tab-indicator:
+           одна пилюля плавно переезжает между кнопками группы */
+        .ml-sub-tab-indicator {
+            position: absolute;
+            top: 3px;
+            left: 0;
+            height: calc(100% - 6px);
+            border-radius: 6px;
+            background: rgba(255,255,255,0.1);
+            pointer-events: none;
+            z-index: 0;
+            transition: transform 0.28s cubic-bezier(0.22, 0.61, 0.36, 1),
+                        width   0.28s cubic-bezier(0.22, 0.61, 0.36, 1);
         }
 
         #mlTagFilters {
@@ -4134,6 +4247,10 @@
             flex-shrink: 0;
         }
 
+        /* В сетке «по 2 в ряд» служебные надписи (Загрузка/Скриптов нет/ошибки)
+           занимают всю ширину, а не одну ячейку */
+        #mlPaneInstalled > .mods-empty { grid-column: 1 / -1; }
+
         #mlCatalogSearch:focus {
             border-color: rgba(var(--accent2-rgb), 0.45) !important;
             background: rgba(255,255,255,0.08) !important;
@@ -4317,9 +4434,10 @@
             display: none;
             position: fixed;
             inset: 0;
-            background: rgba(0, 0, 0, 0.75);
-            backdrop-filter: blur(6px);
-            z-index: 900;
+            background: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(10px) saturate(1.1);
+            -webkit-backdrop-filter: blur(10px) saturate(1.1);
+            z-index: 950;
             align-items: center;
             justify-content: center;
             animation: modsFadeIn 0.2s ease;
@@ -4328,211 +4446,533 @@
             display: flex;
         }
 
-        .script-detail-panel {
-            width: 90%;
-            max-width: 640px;
-            max-height: 88vh;
-            background: rgba(18, 18, 26, 0.98);
-            border: 1px solid rgba(255,255,255,0.12);
+        .sd-panel {
+            width: 92%;
+            max-width: 600px;
+            max-height: 84vh;
+            background: rgba(12, 14, 22, 0.55);
+            backdrop-filter: blur(30px) saturate(1.35);
+            -webkit-backdrop-filter: blur(30px) saturate(1.35);
+            border: 1px solid rgba(255,255,255,0.11);
             border-radius: 18px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.7);
+            box-shadow: 0 24px 80px rgba(0,0,0,0.7);
             display: flex;
             flex-direction: column;
             overflow: hidden;
+            animation: creIn 0.32s cubic-bezier(0.34, 1.3, 0.64, 1);
         }
 
-        .script-detail-header {
+        /* ── Шапка: иконка, имя, автор, тег ── */
+        .sd-head {
             display: flex;
             align-items: center;
-            justify-content: space-between;
-            padding: 18px 22px 14px;
+            gap: 14px;
+            padding: 18px 20px 14px;
             border-bottom: 1px solid rgba(255,255,255,0.07);
             flex-shrink: 0;
         }
 
-        .script-detail-header-title {
-            font-family: 'Montserrat Alternates', sans-serif;
-            font-size: 15px;
-            color: rgba(255,255,255,0.6);
-        }
-
-        .script-detail-body {
-            display: flex;
-            gap: 20px;
-            padding: 22px;
-            flex-shrink: 0;
-        }
-
-        .script-detail-left {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 10px;
-            flex-shrink: 0;
-        }
-
-        .script-detail-icon-wrap {
-            width: 72px;
-            height: 72px;
-            background: rgba(255,255,255,0.06);
-            border: 1px solid rgba(255,255,255,0.1);
-            border-radius: 16px;
+        .sd-icon {
+            width: 52px;
+            height: 52px;
+            background: rgba(var(--accent-rgb), 0.14);
+            border: 1px solid rgba(var(--accent2-rgb), 0.28);
+            border-radius: 14px;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 36px;
+            font-size: 26px;
+            flex-shrink: 0;
         }
-        .script-detail-icon-wrap svg { width: 32px !important; height: 32px !important; }
+        .sd-icon svg { width: 24px !important; height: 24px !important; color: rgba(var(--accent2-rgb), 0.9); }
 
-        .script-detail-name {
-            font-family: 'Montserrat Alternates', sans-serif;
-            font-size: 14px;
-            font-weight: 700;
-            color: rgba(255,255,255,0.95);
-            text-align: center;
-            max-width: 90px;
-        }
+        .sd-head-info { flex: 1; min-width: 0; }
 
-        .script-detail-author {
-            font-family: 'Montserrat Alternates', sans-serif;
-            font-size: 11px;
-            color: rgba(255,255,255,0.35);
-            text-align: center;
-        }
-
-        .script-detail-tag {
+        .sd-crumb {
             font-family: 'Montserrat Alternates', sans-serif;
             font-size: 10px;
-            color: rgba(255,255,255,0.35);
-            background: rgba(255,255,255,0.07);
-            border-radius: 5px;
-            padding: 3px 8px;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            color: rgba(255,255,255,0.3);
+            margin-bottom: 3px;
         }
 
-        .script-detail-right {
-            flex: 1;
+        .sd-name {
+            font-family: 'Montserrat Alternates', sans-serif;
+            font-size: 16px;
+            font-weight: 700;
+            color: rgba(255,255,255,0.95);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .sd-meta {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 4px;
+            font-family: 'Montserrat Alternates', sans-serif;
+            font-size: 11px;
+            color: rgba(255,255,255,0.4);
             min-width: 0;
         }
 
-        .script-detail-image {
+        .sd-dot {
+            width: 3px; height: 3px;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.25);
+            flex-shrink: 0;
+        }
+        .sd-dot.hide { display: none; }
+
+        .sd-tag {
+            font-family: 'Montserrat Alternates', sans-serif;
+            font-size: 10px;
+            color: rgba(var(--accent2-rgb), 0.85);
+            background: rgba(var(--accent-rgb), 0.16);
+            border: 1px solid rgba(var(--accent2-rgb), 0.25);
+            border-radius: 5px;
+            padding: 1px 8px;
+            flex-shrink: 0;
+        }
+        .sd-tag.hide { display: none; }
+
+        /* ── Тело: скролл ── */
+        .sd-body {
+            padding: 16px 20px 18px;
+            overflow-y: auto;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+        .sd-body::-webkit-scrollbar { width: 4px; }
+        .sd-body::-webkit-scrollbar-track { background: transparent; }
+        .sd-body::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 4px; }
+
+        .sd-hero {
             width: 100%;
-            height: 150px;
-            border-radius: 10px;
-            background: rgba(255,255,255,0.04);
+            height: 180px;
+            border-radius: 12px;
             border: 1px solid rgba(255,255,255,0.08);
-            object-fit: cover;
+            background: rgba(255,255,255,0.03);
             display: flex;
             align-items: center;
             justify-content: center;
-            font-family: 'Montserrat Alternates', sans-serif;
-            font-size: 12px;
-            color: rgba(255,255,255,0.2);
             overflow: hidden;
+            flex-shrink: 0;
         }
-
-        .script-detail-image img {
+        .sd-hero img {
             width: 100%;
             height: 100%;
             object-fit: cover;
-            border-radius: 10px;
         }
 
-        .script-detail-info {
-            padding: 0 22px 18px;
-            overflow-y: auto;
-            flex: 1;
-        }
+        .sd-section { display: flex; flex-direction: column; }
 
-        .script-detail-info::-webkit-scrollbar { width: 4px; }
-        .script-detail-info::-webkit-scrollbar-track { background: transparent; }
-        .script-detail-info::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 4px; }
-
-        .script-detail-section-title {
+        .sd-label {
             font-family: 'Montserrat Alternates', sans-serif;
-            font-size: 12px;
-            color: rgba(255,255,255,0.45);
+            font-size: 10px;
+            letter-spacing: 1px;
             text-transform: uppercase;
-            letter-spacing: 0.8px;
-            margin-bottom: 6px;
-            margin-top: 14px;
+            color: rgba(255,255,255,0.35);
+            margin-bottom: 7px;
+            display: flex;
+            align-items: center;
+            gap: 5px;
         }
+        .sd-label svg { width: 12px !important; height: 12px !important; }
 
-        .script-detail-section-title:first-child { margin-top: 0; }
-
-        .script-detail-text {
+        .sd-desc {
             font-family: 'Montserrat Alternates', sans-serif;
-            font-size: 13px;
+            font-size: 12.5px;
             color: rgba(255,255,255,0.75);
-            line-height: 1.7;
+            line-height: 1.65;
             white-space: pre-wrap;
+            word-break: break-word;
         }
 
-        .script-detail-footer {
-            padding: 16px 22px;
+        .sd-usage {
+            background: rgba(var(--accent-rgb), 0.08);
+            border: 1px solid rgba(var(--accent2-rgb), 0.16);
+            border-radius: 10px;
+            padding: 10px 12px;
+            color: rgba(255,255,255,0.65);
+        }
+
+        /* Библиотеки — компактные чипы */
+        .sd-libs { display: flex; flex-wrap: wrap; gap: 6px; }
+
+        .sd-lib-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            height: 32px;
+            padding: 0 6px 0 11px;
+            border-radius: 9px;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.09);
+            font-family: 'Montserrat Alternates', sans-serif;
+            font-size: 11px;
+            color: rgba(255,255,255,0.7);
+            transition: border-color 0.18s, background 0.18s;
+        }
+        .sd-lib-chip:hover { background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.14); }
+        .sd-lib-chip > svg { width: 13px !important; height: 13px !important; opacity: 0.55; flex-shrink: 0; }
+
+        .sd-lib-chip button {
+            height: 22px;
+            padding: 0 9px;
+            border-radius: 6px;
+            border: none;
+            font-family: 'Montserrat Alternates', sans-serif;
+            font-size: 10px;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            transition: all 0.15s;
+        }
+        .sd-lib-chip button svg { width: 11px !important; height: 11px !important; }
+        .sd-lib-chip button:not(.done) {
+            background: rgba(var(--accent-rgb), 0.25);
+            color: rgba(255,255,255,0.85);
+        }
+        .sd-lib-chip button:not(.done):hover { background: rgba(var(--accent2-rgb), 0.4); }
+        .sd-lib-chip button.done {
+            background: rgba(0, 180, 100, 0.15);
+            color: rgba(120, 220, 160, 0.9);
+            cursor: default;
+        }
+
+        /* Строка файла */
+        .sd-file-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 9px 12px;
+            background: rgba(255,255,255,0.03);
+            border: 1px dashed rgba(255,255,255,0.1);
+            border-radius: 10px;
+            font-family: 'Montserrat Alternates', sans-serif;
+            font-size: 11px;
+            color: rgba(255,255,255,0.4);
+            min-width: 0;
+        }
+        .sd-file-row > svg { width: 14px !important; height: 14px !important; opacity: 0.6; flex-shrink: 0; }
+        .sd-file-name {
+            color: rgba(255,255,255,0.65);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .sd-file-dst { flex-shrink: 0; color: rgba(var(--accent2-rgb), 0.6); }
+
+        /* ── Футер ── */
+        .sd-footer {
+            padding: 14px 20px;
             border-top: 1px solid rgba(255,255,255,0.07);
             display: flex;
             gap: 10px;
             flex-shrink: 0;
+            background: rgba(0,0,0,0.18);
         }
 
-        .script-detail-install-btn {
+        .sd-install-btn {
             flex: 1;
-            height: 44px;
-            background: rgba(0, 140, 255, 0.3);
-            border: 1px solid rgba(0, 140, 255, 0.5);
-            border-radius: 10px;
-            color: rgba(140, 210, 255, 0.95);
+            height: 42px;
+            background: rgba(var(--accent-rgb), 0.28);
+            border: 1px solid rgba(var(--accent2-rgb), 0.45);
+            border-radius: 11px;
+            color: rgba(255,255,255,0.92);
             font-family: 'Montserrat Alternates', sans-serif;
-            font-size: 14px;
+            font-size: 13px;
             font-weight: 600;
             cursor: pointer;
             transition: all 0.2s;
             display: flex;
             align-items: center;
             justify-content: center;
-            gap: 6px;
+            gap: 7px;
         }
-        .script-detail-install-btn svg { width: 16px !important; height: 16px !important; flex-shrink: 0; opacity: 0.85; }
+        .sd-install-btn svg { width: 15px !important; height: 15px !important; flex-shrink: 0; opacity: 0.9; }
 
-        .script-detail-install-btn:hover:not(:disabled) {
-            background: rgba(0, 140, 255, 0.5);
-            border-color: rgba(0, 140, 255, 0.8);
+        .sd-install-btn:hover:not(:disabled) {
+            background: rgba(var(--accent2-rgb), 0.4);
+            border-color: rgba(var(--accent2-rgb), 0.7);
             transform: translateY(-1px);
         }
 
-        .script-detail-install-btn:disabled {
-            background: rgba(80, 80, 90, 0.4);
+        .sd-install-btn:disabled {
+            background: rgba(255,255,255,0.05);
             border-color: rgba(255,255,255,0.1);
-            color: rgba(255,255,255,0.4);
+            color: rgba(255,255,255,0.35);
             cursor: default;
+            transform: none;
         }
 
-        .script-detail-install-btn.progress {
-            background: rgba(255, 160, 0, 0.2);
+        .sd-install-btn.progress {
+            background: rgba(255, 160, 0, 0.18);
             border-color: rgba(255, 160, 0, 0.4);
             color: rgba(255, 200, 100, 0.95);
         }
 
-        .script-detail-uninstall-btn {
-            height: 44px;
+        .sd-uninstall-btn {
+            height: 42px;
             padding: 0 18px;
-            background: rgba(200, 50, 50, 0.25);
-            border: 1px solid rgba(200, 50, 50, 0.4);
-            border-radius: 10px;
+            background: rgba(200, 50, 50, 0.22);
+            border: 1px solid rgba(220, 70, 70, 0.35);
+            border-radius: 11px;
             color: rgba(255, 140, 140, 0.9);
             font-family: 'Montserrat Alternates', sans-serif;
-            font-size: 13px;
+            font-size: 12px;
             cursor: pointer;
             transition: all 0.2s;
             display: none;
+            align-items: center;
+            gap: 6px;
         }
-        .script-detail-uninstall-btn svg { width: 14px !important; height: 14px !important; flex-shrink: 0; opacity: 0.7; }
+        .sd-uninstall-btn svg { width: 14px !important; height: 14px !important; flex-shrink: 0; opacity: 0.8; }
 
-        .script-detail-uninstall-btn:hover {
-            background: rgba(200, 50, 50, 0.4);
-            border-color: rgba(200, 50, 50, 0.7);
+        .sd-uninstall-btn:hover {
+            background: rgba(210, 60, 60, 0.38);
+            border-color: rgba(230, 80, 80, 0.6);
             transform: translateY(-1px);
         }
+
+        /* ── Галерея фото в окне скрипта ── */
+        .sd-gallery { position: relative; flex-shrink: 0; }
+        .sd-gallery .sd-hero { cursor: zoom-in; }
+
+        .sd-nav {
+            position: absolute;
+            top: 90px;                     /* центр баннера (высота 180px) */
+            transform: translateY(-50%);
+            width: 34px; height: 34px;
+            border-radius: 50%;
+            background: rgba(10, 12, 18, 0.65);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.16);
+            color: rgba(255,255,255,0.8);
+            cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            opacity: 0;
+            transition: opacity 0.18s, background 0.18s, transform 0.12s;
+            z-index: 2;
+        }
+        .sd-nav svg { width: 18px !important; height: 18px !important; }
+        .sd-gallery:hover .sd-nav { opacity: 1; }
+        .sd-nav:hover { background: rgba(var(--accent2-rgb), 0.4); border-color: rgba(var(--accent2-rgb), 0.6); color: #fff; }
+        .sd-nav:active { transform: translateY(-50%) scale(0.9); }
+        .sd-nav-prev { left: 10px; }
+        .sd-nav-next { right: 10px; }
+
+        .sd-zoom-btn {
+            position: absolute;
+            top: 10px; right: 10px;
+            width: 30px; height: 30px;
+            border-radius: 9px;
+            background: rgba(10, 12, 18, 0.65);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.16);
+            color: rgba(255,255,255,0.75);
+            cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            opacity: 0;
+            transition: opacity 0.18s, background 0.18s;
+            z-index: 2;
+        }
+        .sd-zoom-btn svg { width: 14px !important; height: 14px !important; }
+        .sd-gallery:hover .sd-zoom-btn { opacity: 1; }
+        .sd-zoom-btn:hover { background: rgba(var(--accent2-rgb), 0.4); border-color: rgba(var(--accent2-rgb), 0.6); color: #fff; }
+
+        /* Точки-пагинация: ВСЕГДА видимые */
+        .sd-dots {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 7px;
+            margin-top: 10px;
+            min-height: 8px;
+        }
+        .sd-dot-i {
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            border: none;
+            padding: 0;
+            background: rgba(255,255,255,0.22);
+            cursor: pointer;
+            transition: background 0.2s, transform 0.2s;
+        }
+        .sd-dot-i:hover { background: rgba(255,255,255,0.45); transform: scale(1.25); }
+        .sd-dot-i.active {
+            background: rgba(var(--accent2-rgb), 0.95);
+            box-shadow: 0 0 8px rgba(var(--accent2-rgb), 0.55);
+            transform: scale(1.2);
+        }
+
+        /* ── Лайтбокс ── */
+        .lb-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            z-index: 1200;
+            background: rgba(0, 0, 0, 0.82);
+            backdrop-filter: blur(16px) saturate(1.1);
+            -webkit-backdrop-filter: blur(16px) saturate(1.1);
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            gap: 14px;
+            animation: modsFadeIn 0.2s ease;
+        }
+        .lb-overlay.open { display: flex; }
+
+        .lb-stage {
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+            max-width: 92vw;
+            max-height: 84vh;
+            animation: creIn 0.28s cubic-bezier(0.34, 1.3, 0.64, 1);
+        }
+
+        .lb-stage img {
+            max-width: 88vw;
+            max-height: 74vh;
+            object-fit: contain;
+            border-radius: 12px;
+            border: 1px solid rgba(255,255,255,0.12);
+            box-shadow: 0 30px 90px rgba(0,0,0,0.8);
+            background: rgba(255,255,255,0.03);
+        }
+
+        .lb-caption {
+            font-family: 'Montserrat Alternates', sans-serif;
+            font-size: 12px;
+            color: rgba(255,255,255,0.45);
+            text-align: center;
+            max-width: 80vw;
+        }
+
+        .lb-close {
+            position: absolute;
+            top: 18px; right: 22px;
+            width: 40px; height: 40px;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.07);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.14);
+            color: rgba(255,255,255,0.8);
+            font-size: 24px;
+            line-height: 1;
+            cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            transition: background 0.18s, transform 0.15s;
+        }
+        .lb-close:hover { background: rgba(220, 60, 60, 0.4); border-color: rgba(240, 80, 80, 0.6); transform: rotate(90deg); }
+
+        .lb-arrow {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 48px; height: 48px;
+            border-radius: 50%;
+            background: rgba(10, 12, 18, 0.55);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.15);
+            color: rgba(255,255,255,0.85);
+            cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            transition: background 0.18s, transform 0.12s;
+            z-index: 2;
+        }
+        .lb-arrow svg { width: 24px !important; height: 24px !important; }
+        .lb-arrow:hover { background: rgba(var(--accent2-rgb), 0.4); border-color: rgba(var(--accent2-rgb), 0.65); color: #fff; }
+        .lb-arrow:active { transform: translateY(-50%) scale(0.88); }
+        .lb-arrow:disabled { opacity: 0.25; cursor: default; }
+        .lb-prev { left: 24px; }
+        .lb-next { right: 24px; }
+
+        .lb-dots {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+        .lb-dots:empty { display: none; }
+        .lb-dot {
+            width: 9px; height: 9px;
+            border-radius: 50%;
+            border: none;
+            padding: 0;
+            background: rgba(255,255,255,0.25);
+            cursor: pointer;
+            transition: background 0.2s, transform 0.2s;
+        }
+        .lb-dot:hover { background: rgba(255,255,255,0.5); transform: scale(1.3); }
+        .lb-dot.active {
+            background: rgba(var(--accent2-rgb), 0.95);
+            box-shadow: 0 0 10px rgba(var(--accent2-rgb), 0.6);
+            transform: scale(1.25);
+        }
+
+        /* ── Масштаб в лайтбоксе ── */
+        .lb-stage img {
+            transition: transform 0.18s ease;   /* плавный зум кнопками/колесом */
+            will-change: transform;
+        }
+        .lb-stage img.zoomed { cursor: grab; }
+        .lb-stage img.zoomed.dragging { cursor: grabbing; transition: none; }
+        .lb-overlay.zoomed .lb-caption { opacity: 0.4; }
+
+        .lb-zoom {
+            position: absolute;
+            bottom: 20px; right: 24px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            padding: 5px 8px;
+            border-radius: 12px;
+            background: rgba(10, 12, 18, 0.6);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255,255,255,0.14);
+            opacity: 0.35;
+            transition: opacity 0.2s;
+        }
+        .lb-zoom:hover { opacity: 1; }
+
+        .lb-zoom-btn {
+            width: 30px; height: 30px;
+            border-radius: 8px;
+            border: none;
+            background: rgba(255,255,255,0.06);
+            color: rgba(255,255,255,0.8);
+            cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            transition: background 0.15s, transform 0.12s;
+        }
+        .lb-zoom-btn svg { width: 15px !important; height: 15px !important; }
+        .lb-zoom-btn:hover { background: rgba(var(--accent2-rgb), 0.35); color: #fff; }
+        .lb-zoom-btn:active { transform: scale(0.88); }
+
+        .lb-zoom-val {
+            font-family: 'Montserrat Alternates', sans-serif;
+            font-size: 11px;
+            color: rgba(255,255,255,0.65);
+            min-width: 42px;
+            text-align: center;
+            cursor: pointer;
+            user-select: none;
+            transition: color 0.15s;
+        }
+        .lb-zoom-val:hover { color: rgba(var(--accent2-rgb), 0.95); }
         /* ══════════════════════════════════════
            CUSTOM SERVER SELECT
         ══════════════════════════════════════ */
@@ -4742,8 +5182,9 @@
             display: none;
             position: fixed;
             inset: 0;
-            background: rgba(0,0,0,0.55);
-            backdrop-filter: blur(6px);
+            background: rgba(0,0,0,0.45);
+            backdrop-filter: blur(10px) saturate(1.1);
+            -webkit-backdrop-filter: blur(10px) saturate(1.1);
             z-index: 1100;
             align-items: center;
             justify-content: center;
@@ -4751,8 +5192,10 @@
         .profiles-overlay.open { display: flex; }
 
         .profiles-modal {
-            background: rgba(var(--surface-rgb), 0.99);
-            border: 1px solid rgba(255,255,255,0.08);
+            background: rgba(var(--surface-rgb), 0.55);
+            backdrop-filter: blur(30px) saturate(1.3);
+            -webkit-backdrop-filter: blur(30px) saturate(1.3);
+            border: 1px solid rgba(255,255,255,0.10);
             border-radius: 16px;
             width: min(500px, 92vw);
             max-height: 80vh;
@@ -4918,7 +5361,9 @@
         .ph-trigger {
             height: 34px;
             padding: 0 13px;
-            background: rgba(255,255,255,0.07);
+            background: rgba(10, 12, 18, 0.40);
+            backdrop-filter: blur(14px) saturate(1.2);
+            -webkit-backdrop-filter: blur(14px) saturate(1.2);
             border: 1px solid rgba(255,255,255,0.13);
             border-radius: 8px;
             color: rgba(255,255,255,0.85);
@@ -4954,15 +5399,16 @@
             left: 50%;
             transform: translateX(-50%);
             min-width: 260px;
-            background: rgba(12, 14, 22, 0.97);
-            border: 1px solid rgba(255,255,255,0.09);
+            background: rgba(10, 12, 18, 0.45);
+            border: 1px solid rgba(255,255,255,0.12);
             border-radius: 12px;
-            box-shadow: 0 12px 40px rgba(0,0,0,0.7);
+            box-shadow: 0 12px 40px rgba(0,0,0,0.55);
             padding: 8px;
             display: flex;
             flex-direction: column;
             gap: 3px;
-            backdrop-filter: blur(16px);
+            backdrop-filter: blur(28px) saturate(1.4);
+            -webkit-backdrop-filter: blur(28px) saturate(1.4);
             max-height: 420px;
             overflow-y: auto;
             opacity: 0;
@@ -5931,7 +6377,7 @@
                     <span class="sb-key">Наиграно</span>
                     <span class="sb-val" id="sbPlaytimeVal">0 м</span>
                 </div>
-                <div class="sb-chip" id="sbScripts" style="display:none;" title="Lua-скрипты в папке игры и включённые в активном профиле">
+                <div class="sb-chip" id="sbScripts" style="display:none;" title="Lua-скрипты в папке игры: всего/включено">
                     <i data-lucide="file-code"></i>
                     <span class="sb-key">Скрипты</span>
                     <span class="sb-val" id="sbScriptsVal"></span>
@@ -6088,6 +6534,38 @@
 
                     <!-- Нулевой маркер версии лаунчера: id читает saveSettings() -->
                     <div class="v7-marker" id="v7SectionDivider" style="display:none;"></div>
+
+                    <!-- Способ запуска игры -->
+                    <section class="lp-sec">
+                        <div class="lp-cap">Запуск игры</div>
+                        <div class="lp-grid">
+
+                            <label class="launch-item">
+                                <input type="radio" name="launchMethodRadio" id="lmNative" value="native" checked>
+                                <span class="lp-ico"><i data-lucide="rocket"></i></span>
+                                <span class="launch-item-text">
+                                    <span class="lp-nameline">
+                                        <span class="launch-item-name">Нативный</span>
+                                    </span>
+                                </span>
+                                <span class="lp-check"><i data-lucide="check" stroke-width="3"></i></span>
+                            </label>
+
+                            <label class="launch-item">
+                                <input type="radio" name="launchMethodRadio" id="lmAir" value="air">
+                                <span class="lp-ico"><i data-lucide="wind"></i></span>
+                                <span class="launch-item-text">
+                                    <span class="lp-nameline">
+                                        <span class="launch-item-name">Через лаунчер Air</span>
+                                    </span>
+                                </span>
+                                <span class="lp-check"><i data-lucide="check" stroke-width="3"></i></span>
+                            </label>
+
+                        </div>
+                        <div class="lm-hint">Нативный запускает gta_sa.exe напрямую, минуя лаунчер Air.
+                            Плагины из preloading_plugins при нативном запуске пока не внедряются.</div>
+                    </section>
 
                     <!-- Окно -->
                     <section class="lp-sec">
@@ -6357,21 +6835,21 @@
                     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
                         <div class="s-card">
                             <div class="s-card-title"><i data-lucide="upload"></i> Экспорт</div>
-                            <div class="s-card-desc">Сохранить текущий конфиг в файл</div>
+                            <div class="s-card-desc">Сохранить текущий конфиг (патчи + параметры запуска) в JSON-файл — например, чтобы поделиться или перенести на другой ПК.</div>
                             <div class="s-btn-row" style="margin-top:6px;">
-                                <button onclick="doExport()" class="s-btn primary"><i data-lucide="upload"></i> Сохранить</button>
+                                <button onclick="doExport()" class="s-btn primary"><i data-lucide="upload"></i> Сохранить в файл…</button>
                             </div>
                         </div>
                         <div class="s-card">
                             <div class="s-card-title"><i data-lucide="download"></i> Импорт</div>
-                            <div class="s-card-desc">Загрузить конфиг из файла</div>
+                            <div class="s-card-desc">Загрузить конфиг из JSON-файла. Перед применением покажем, что изменится; текущий конфиг сохранится в бэкап.</div>
                             <div class="s-btn-row" style="margin-top:6px;">
-                                <button onclick="doImport()" class="s-btn primary"><i data-lucide="download"></i> Загрузить</button>
+                                <button onclick="doImport()" class="s-btn primary"><i data-lucide="download"></i> Открыть файл…</button>
                             </div>
                         </div>
                     </div>
 
-                    <div id="importStatus" style="font-family:'Montserrat Alternates';font-size:11px;color:rgba(255,255,255,0.35);min-height:16px;"></div>
+                    <div id="importStatus" style="font-family:'Montserrat Alternates';font-size:11px;color:rgba(255,255,255,0.35);min-height:16px;flex-shrink:0;line-height:1.4;"></div>
 
                     <!-- Бэкапы -->
                     <div style="display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
@@ -6380,11 +6858,12 @@
                         </span>
                         <button class="s-btn" style="height:28px;padding:0 12px;font-size:10px;" onclick="loadBackupsList()"><i data-lucide="refresh-cw"></i> Обновить</button>
                     </div>
+                    <div style="font-family:'Montserrat Alternates';font-size:10px;color:rgba(255,255,255,0.25);flex-shrink:0;">
+                        Бэкапы создаются автоматически перед каждым сохранением, импортом и восстановлением. Хранится максимум 15 последних.
+                    </div>
 
                     <div id="backupsList" style="display:flex;flex-direction:column;gap:4px;">
-                        <div style="font-family:'Montserrat Alternates';font-size:11px;color:rgba(255,255,255,0.2);text-align:center;padding:20px 0;">
-                            Загрузка...
-                        </div>
+                        <div class="bk-empty">Загрузка...</div>
                     </div>
 
                 </div>
@@ -6459,6 +6938,14 @@
                                     <button class="sb-pos-btn" data-pos="top" onclick="setStatusBarPos('top')">Вверху</button>
                                     <button class="sb-pos-btn" data-pos="left" onclick="setStatusBarPos('left')">Слево</button>
                                     <button class="sb-pos-btn" data-pos="right" onclick="setStatusBarPos('right')">Справо</button>
+                                </div>
+                            </div>
+                            <div class="sb-pos-wrap">
+                                <div class="sb-pos-label">Толщина строки</div>
+                                <div class="sb-pos-row" id="sbSizeRow">
+                                    <button class="sb-pos-btn" data-size="lg" onclick="setStatusBarSize('lg')">Большая</button>
+                                    <button class="sb-pos-btn" data-size="md" onclick="setStatusBarSize('md')">Средняя</button>
+                                    <button class="sb-pos-btn" data-size="sm" onclick="setStatusBarSize('sm')">Маленькая</button>
                                 </div>
                             </div>
                         </div>
@@ -6626,8 +7113,8 @@
 
                 <div id="moonloaderStatus" style="font-family:'Montserrat Alternates';font-size:11px;color:rgba(255,255,255,0.5);min-height:14px;"></div>
 
-                <!-- Установленные скрипты -->
-                <div id="mlPaneInstalled" style="display:flex;flex-direction:column;gap:6px;">
+                <!-- Установленные скрипты — сетка по 2 в ряд -->
+                <div id="mlPaneInstalled" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;">
                     <div class="mods-empty">Загрузка...</div>
                 </div>
 
@@ -6701,7 +7188,7 @@
                             <i data-lucide="refresh-cw"></i> Обновить
                         </button>
                     </div>
-                    <div id="patchPresetsStatus" style="font-family:'Montserrat Alternates';font-size:12px;color:rgba(255,255,255,0.55);min-height:16px;"></div>
+                    <div id="patchPresetsStatus" style="font-family:'Montserrat Alternates';font-size:12px;color:rgba(255,255,255,0.55);min-height:16px;margin-top:14px;margin-bottom:14px;"></div>
                     <div id="patchPresetsGrid" class="mods-grid">
                         <!-- Заполняется через JS -->
                     </div>
@@ -6725,46 +7212,74 @@
             </div>
         </div>
         <!-- Детальное окно скрипта из каталога -->
-        <div class="script-detail-overlay" id="scriptDetailOverlay" role="dialog" aria-modal="true" aria-labelledby="sdHeaderTitle" onclick="closeScriptDetail(event)">
-            <div class="script-detail-panel">
-                <div class="script-detail-header">
-                    <div class="script-detail-header-title" id="sdHeaderTitle"><i data-lucide="moon"></i> Moonloader · Каталог</div>
+        <div class="script-detail-overlay" id="scriptDetailOverlay" role="dialog" aria-modal="true" aria-labelledby="sdName" onclick="closeScriptDetail(event)">
+            <div class="sd-panel">
+                <div class="sd-head">
+                    <div class="sd-icon" id="sdIcon"><i data-lucide="moon"></i></div>
+                    <div class="sd-head-info">
+                        <div class="sd-crumb" id="sdCrumb">Каталог · Moonloader</div>
+                        <div class="sd-name" id="sdName">—</div>
+                        <div class="sd-meta">
+                            <span id="sdAuthor">—</span>
+                            <span class="sd-dot" id="sdMetaDot"></span>
+                            <span class="sd-tag" id="sdTag"></span>
+                        </div>
+                    </div>
                     <button class="close-btn" onclick="closeScriptDetail(null, true)" aria-label="Закрыть">×</button>
                 </div>
 
-                <div class="script-detail-body">
-                    <div class="script-detail-left">
-                        <div class="script-detail-icon-wrap" id="sdIcon"><i data-lucide="moon"></i></div>
-                        <div class="script-detail-name" id="sdName">—</div>
-                        <div class="script-detail-author" id="sdAuthor">—</div>
-                        <div class="script-detail-tag" id="sdTag"></div>
+                <div class="sd-body">
+                    <div class="sd-gallery" id="sdGallery" style="display:none;">
+                        <div class="sd-hero" id="sdImageWrap" onclick="openImageLightbox()" title="Открыть во весь экран"></div>
+                        <button class="sd-nav sd-nav-prev" id="sdNavPrev" onclick="event.stopPropagation(); sdGalleryNav(-1)" aria-label="Предыдущее фото"><i data-lucide="chevron-left"></i></button>
+                        <button class="sd-nav sd-nav-next" id="sdNavNext" onclick="event.stopPropagation(); sdGalleryNav(1)" aria-label="Следующее фото"><i data-lucide="chevron-right"></i></button>
+                        <button class="sd-zoom-btn" onclick="event.stopPropagation(); openImageLightbox()" title="Открыть во весь экран"><i data-lucide="maximize-2"></i></button>
+                        <div class="sd-dots" id="sdDots"></div>
                     </div>
-                    <div class="script-detail-right">
-                        <div class="script-detail-image" id="sdImageWrap"></div>
+
+                    <div class="sd-section">
+                        <div class="sd-label">О скрипте</div>
+                        <div class="sd-desc" id="sdDesc">—</div>
+                    </div>
+
+                    <div class="sd-section" id="sdUsageBlock" style="display:none;">
+                        <div class="sd-label">Как пользоваться</div>
+                        <div class="sd-desc sd-usage" id="sdUsage"></div>
+                    </div>
+
+                    <div class="sd-section" id="sdLibsBlock" style="display:none;">
+                        <div class="sd-label"><i data-lucide="package"></i> Необходимые библиотеки</div>
+                        <div class="sd-libs" id="sdLibsList"></div>
+                    </div>
+
+                    <div class="sd-file-row">
+                        <i data-lucide="file-code"></i>
+                        <span class="sd-file-name" id="sdFile">—</span>
+                        <span class="sd-file-dst" id="sdDest"></span>
                     </div>
                 </div>
 
-                <div class="script-detail-info">
-                    <div class="script-detail-section-title">О скрипте</div>
-                    <div class="script-detail-text" id="sdDesc">—</div>
-                    <div id="sdUsageBlock" style="display:none;">
-                        <div class="script-detail-section-title">Как пользоваться</div>
-                        <div class="script-detail-text" id="sdUsage"></div>
-                    </div>
-                    <div id="sdFileBlock" style="margin-top:10px;">
-                        <div class="script-detail-section-title">Файл</div>
-                        <div class="script-detail-text" id="sdFile" style="color:rgba(255,255,255,0.35);font-size:11px;"></div>
-                    </div>
-                    <div id="sdLibsBlock" style="display:none;margin-top:12px;">
-                        <div class="script-detail-section-title"><i data-lucide="package"></i> Необходимые библиотеки</div>
-                        <div id="sdLibsList" style="display:flex;flex-direction:column;gap:6px;margin-top:6px;"></div>
-                    </div>
+                <div class="sd-footer">
+                    <button class="sd-install-btn" id="sdInstallBtn" onclick="installFromDetail()"><i data-lucide="download"></i> Установить</button>
+                    <button class="sd-uninstall-btn" id="sdUninstallBtn" onclick="uninstallFromDetail()"><i data-lucide="trash-2"></i> Удалить</button>
                 </div>
+            </div>
+        </div>
 
-                <div class="script-detail-footer">
-                    <button class="script-detail-install-btn" id="sdInstallBtn" onclick="installFromDetail()"><i data-lucide="download"></i> Установить</button>
-                    <button class="script-detail-uninstall-btn" id="sdUninstallBtn" onclick="uninstallFromDetail()"><i data-lucide="trash-2"></i> Удалить</button>
-                </div>
+        <!-- Лайтбокс: полноэкранное просмотр фото скрипта -->
+        <div class="lb-overlay" id="lbOverlay" onclick="closeLightbox(event)" onwheel="lbWheel(event)">
+            <button class="lb-close" onclick="closeLightbox(null, true)" aria-label="Закрыть">×</button>
+            <button class="lb-arrow lb-prev" id="lbPrev" onclick="event.stopPropagation(); lbNav(-1)" aria-label="Предыдущее"><i data-lucide="chevron-left"></i></button>
+            <button class="lb-arrow lb-next" id="lbNext" onclick="event.stopPropagation(); lbNav(1)" aria-label="Следующее"><i data-lucide="chevron-right"></i></button>
+            <figure class="lb-stage">
+                <img id="lbImg" alt="preview" onmousedown="lbDragStart(event)" ondblclick="lbDblClick(event)">
+                <figcaption class="lb-caption" id="lbCaption"></figcaption>
+            </figure>
+            <div class="lb-dots" id="lbDots"></div>
+            <div class="lb-zoom">
+                <button class="lb-zoom-btn" onclick="event.stopPropagation(); lbZoomBy(1/1.5)" title="Отдалить (−)"><i data-lucide="minus"></i></button>
+                <span class="lb-zoom-val" id="lbZoomVal" onclick="event.stopPropagation(); lbZoomReset()" title="Сбросить масштаб (0)">100%</span>
+                <button class="lb-zoom-btn" onclick="event.stopPropagation(); lbZoomBy(1.5)" title="Приблизить (+)"><i data-lucide="plus"></i></button>
             </div>
         </div>
 
@@ -7288,6 +7803,7 @@
                                     await window.pywebview.api.toggle_moonloader_script(s.name, shouldBeEnabled);
                                 }
                             }
+                            if (typeof _sbRefreshScripts === 'function') _sbRefreshScripts();
                         }
                     }
                 }
@@ -8208,7 +8724,7 @@
         }
 
         // ── Универсальная модалка для коротких preview/info сообщений ──
-        function _openGenericModal({ title = '', subtitle = '', body = '', closeText = 'Закрыть', onClose = null } = {}) {
+        function _openGenericModal({ title = '', subtitle = '', body = '', closeText = 'Закрыть', footerHtml = '', onClose = null } = {}) {
             // Закрываем предыдущую, если есть
             const existing = document.getElementById('__genericModal');
             if (existing) existing.remove();
@@ -8246,8 +8762,9 @@
                     <div style="padding:4px 20px 20px;overflow-y:auto;flex:1;min-height:0;">
                         ${body}
                     </div>
-                    <div style="padding:12px 20px;border-top:1px solid rgba(255,255,255,0.06);display:flex;justify-content:flex-end;flex-shrink:0;">
-                        <button class="s-btn" onclick="document.getElementById('__genericModal')._close()">${closeText}</button>
+                    <div class="cre-footer" style="padding:12px 20px;border-top:1px solid rgba(255,255,255,0.06);display:flex;justify-content:flex-end;align-items:center;gap:8px;flex-shrink:0;">
+                        ${footerHtml}
+                        ${closeText ? `<button class="s-btn" onclick="document.getElementById('__genericModal')._close()">${closeText}</button>` : ''}
                     </div>
                 </div>
             `;
@@ -8276,6 +8793,9 @@
             const modal = document.getElementById('modsModal');
             modal.style.display = 'flex';
             if (typeof lucide !== 'undefined') refreshLucideIcons();
+            // пилюли сразу на месте (после lucide — чтобы ширины кнопок были финальные)
+            _modsMoveIndicator(true);
+            _moveAllSubIndicators(true);
             if (document.getElementById('modsTabPatches').classList.contains('active')) {
                 loadPatchPresets();
             } else if (document.getElementById('modsTabMoonloader').classList.contains('active')) {
@@ -8291,20 +8811,102 @@
             }, 440);
         }
 
-        function switchModsTab(tab) {
-            document.querySelectorAll('.mods-tab').forEach(t => { t.classList.remove('active'); t.setAttribute('aria-selected', 'false'); });
-            document.querySelectorAll('.mods-tab-content').forEach(c => c.classList.remove('active'));
-            const tabMap = {
-                'moonloader': 'modsTabMoonloader',
-                'patches':    'modsTabPatches',
-                'other':      'modsTabOther'
-            };
-            if (tabMap[tab]) {
-                document.getElementById(tabMap[tab]).classList.add('active');
+        // Плавное переключение вкладок «Моды»: старая панель уезжает и гаснет,
+        // затем новая въезжает снизу. Заголовки-пилюли переключаются мгновенно
+        // (их плавность даёт CSS-transition на .mods-tab).
+        const _MODS_TAB_MAP = {
+            'moonloader': 'modsTabMoonloader',
+            'patches':    'modsTabPatches',
+            'other':      'modsTabOther'
+        };
+        let _modsLeavePanel = null;   // панель, которая сейчас уезжает
+        let _modsLeaveAnim  = null;
+
+        // Сброс незавершённого fade-out (нужен при быстрых кликах по вкладкам)
+        function _modsEndLeave() {
+            if (_modsLeaveAnim) {
+                _modsLeaveAnim.onfinish = null;
+                _modsLeaveAnim.cancel();
+                _modsLeaveAnim = null;
             }
-            const tabs = document.querySelectorAll('.mods-tab');
-            const idx = Object.keys(tabMap).indexOf(tab);
-            if (idx >= 0 && tabs[idx]) { tabs[idx].classList.add('active'); tabs[idx].setAttribute('aria-selected', 'true'); }
+            if (_modsLeavePanel) {
+                _modsLeavePanel.classList.remove('active');
+                _modsLeavePanel = null;
+            }
+        }
+
+        function _modsFadeIn(panel) {
+            panel.classList.add('active');
+            panel.animate(
+                [{ opacity: 0, transform: 'translateY(10px)' },
+                 { opacity: 1, transform: 'translateY(0)' }],
+                { duration: 210, easing: 'cubic-bezier(0.22, 0.61, 0.36, 1)' }
+            );
+        }
+
+        // Позиционирует пилюлю-индикатор под активной кнопкой вкладки.
+        // instant=true — без анимации (первое открытие модалки, ресайз, шрифты).
+        function _modsMoveIndicator(instant) {
+            const rail = document.querySelector('.mods-modal-tabs');
+            if (!rail) return;
+            let ind = rail.querySelector('.mods-tab-indicator');
+            if (!ind) {
+                ind = document.createElement('span');
+                ind.className = 'mods-tab-indicator';
+                ind.setAttribute('aria-hidden', 'true');
+                rail.appendChild(ind);
+            }
+            const btn = rail.querySelector('.mods-tab.active');
+            if (!btn || !btn.offsetWidth) return; // модалка скрыта — не измеряем
+            if (instant) ind.style.transition = 'none';
+            ind.style.width = btn.offsetWidth + 'px';
+            ind.style.transform = 'translateX(' + btn.offsetLeft + 'px)';
+            if (instant) { void ind.offsetWidth; ind.style.transition = ''; }
+        }
+        window.addEventListener('resize', () => { _modsMoveIndicator(true); _moveAllSubIndicators(true); });
+        if (document.fonts && document.fonts.ready) {
+            document.fonts.ready.then(() => { _modsMoveIndicator(true); _moveAllSubIndicators(true); });
+        }
+
+        function switchModsTab(tab) {
+            const targetId = _MODS_TAB_MAP[tab];
+            if (!targetId) return;
+
+            // Кнопки-пилюли: подсветка активной вкладки
+            const keys = Object.keys(_MODS_TAB_MAP);
+            document.querySelectorAll('.mods-tab').forEach((t, i) => {
+                const on = keys[i] === tab;
+                t.classList.toggle('active', on);
+                t.setAttribute('aria-selected', on ? 'true' : 'false');
+            });
+            _modsMoveIndicator();
+
+            const newPanel = document.getElementById(targetId);
+            const activePanel = document.querySelector('.mods-tab-content.active');
+
+            if (!(activePanel === newPanel && !_modsLeavePanel)) {
+                _modsEndLeave();
+                const old = document.querySelector('.mods-tab-content.active');
+                if (old && old !== newPanel) {
+                    // Fade-out старой панели, после неё — fade-in новой
+                    _modsLeavePanel = old;
+                    _modsLeaveAnim = old.animate(
+                        [{ opacity: 1, transform: 'translateY(0)' },
+                         { opacity: 0, transform: 'translateY(-8px)' }],
+                        { duration: 130, easing: 'ease-in', fill: 'forwards' }
+                    );
+                    const leaving = old;
+                    _modsLeaveAnim.onfinish = () => {
+                        leaving.classList.remove('active');
+                        leaving.getAnimations().forEach(a => a.cancel());
+                        _modsLeavePanel = null;
+                        _modsLeaveAnim = null;
+                        _modsFadeIn(newPanel);
+                    };
+                } else {
+                    _modsFadeIn(newPanel);
+                }
+            }
 
             if (tab === 'patches')    loadPatchSettings();
             if (tab === 'moonloader') loadMoonloaderScripts();
@@ -8315,14 +8917,44 @@
         const EXT_ICONS = { lua: '<i data-lucide="moon"></i>', cs: '<i data-lucide="scroll-text"></i>', asi: '<i data-lucide="wrench"></i>', luac: '<i data-lucide="moon"></i>' };
         let mlActiveSub = 'installed';
 
+        // Ездящий индикатор подвкладок: rail — контейнер-«рельс» с кнопками .ml-sub-tab.
+        // instant=true — без анимации (первое открытие, ресайз, шрифты, впервые показанная группа).
+        function _moveSubIndicator(rail, instant) {
+            if (!rail) return;
+            if (getComputedStyle(rail).position === 'static') rail.style.position = 'relative';
+            let ind = rail.querySelector('.ml-sub-tab-indicator');
+            if (!ind) {
+                ind = document.createElement('span');
+                ind.className = 'ml-sub-tab-indicator';
+                ind.setAttribute('aria-hidden', 'true');
+                rail.appendChild(ind);
+            }
+            const btn = rail.querySelector('.ml-sub-tab.active');
+            if (!btn || !btn.offsetWidth) return; // группа скрыта — не измеряем
+            if (instant) ind.style.transition = 'none';
+            ind.style.width = btn.offsetWidth + 'px';
+            ind.style.transform = 'translateX(' + btn.offsetLeft + 'px)';
+            if (instant) { void ind.offsetWidth; ind.style.transition = ''; }
+        }
+
+        function _moveAllSubIndicators(instant) {
+            const rails = new Set();
+            document.querySelectorAll('.ml-sub-tab').forEach(b => rails.add(b.parentElement));
+            rails.forEach(r => _moveSubIndicator(r, instant));
+        }
+
         function switchMlSub(sub) {
             mlActiveSub = sub;
             document.getElementById('mlSubInstalled').classList.toggle('active', sub === 'installed');
             document.getElementById('mlSubCatalog').classList.toggle('active', sub === 'catalog');
             document.getElementById('mlSubLibraries').classList.toggle('active', sub === 'libraries');
-            document.getElementById('mlPaneInstalled').style.display  = sub === 'installed'  ? 'flex' : 'none';
+            document.getElementById('mlPaneInstalled').style.display  = sub === 'installed'  ? 'grid' : 'none';
             document.getElementById('mlPaneCatalog').style.display    = sub === 'catalog'    ? 'flex' : 'none';
             document.getElementById('mlPaneLibraries').style.display  = sub === 'libraries'  ? 'flex' : 'none';
+            // пилюля плавно переезжает в группе Moonloader…
+            _moveSubIndicator(document.getElementById('mlSubInstalled').parentElement);
+            // …а группа «Библиотеки» только что могла стать видимой — позиционируем мгновенно
+            if (sub === 'libraries') _moveSubIndicator(document.getElementById('libSubInstalled').parentElement, true);
             if (sub === 'installed') loadMoonloaderScripts();
             else if (sub === 'catalog')   loadMoonloaderCatalog();
             else if (sub === 'libraries') loadLibrariesTab();
@@ -8428,6 +9060,7 @@
                 showNotification('Ошибка: ' + e.message, 'error');
             } finally {
                 btn.disabled = false;
+                if (typeof _sbRefreshScripts === 'function') _sbRefreshScripts();
             }
         }
 
@@ -8454,6 +9087,7 @@
                     computeRequiredLibs();
                     renderLibRequired();
                     renderLibCatalog();
+                    if (typeof _sbRefreshScripts === 'function') _sbRefreshScripts();
                 } else {
                     btn.disabled = false;
                     btn.innerHTML = '<i data-lucide="trash-2"></i>';
@@ -8500,7 +9134,7 @@
             // Fallback — прямой fetch (браузер / разработка)
             if (!catalog) {
                 try {
-                    const resp = await fetch('https://raw.githubusercontent.com/worteng/ArizonaLauncher/main/moonloader.txt', { cache: 'no-store' });
+                    const resp = await fetch('https://raw.githubusercontent.com/halfik24/ArzLaunchRepo/main/Lua/lua.txt', { cache: 'no-store' });
                     if (resp.ok) catalog = parsConfigsTxt(await resp.text());
                     else lastError = `HTTP ${resp.status}`;
                 } catch(e) { lastError = e.message; }
@@ -8706,6 +9340,7 @@
             document.getElementById('libSubCatalog').classList.toggle('active', sub === 'catalog');
             document.getElementById('libPaneInstalled').style.display = sub === 'installed' ? 'grid' : 'none';
             document.getElementById('libPaneCatalog').style.display   = sub === 'catalog'   ? 'grid' : 'none';
+            _moveSubIndicator(document.getElementById('libSubInstalled').parentElement);
         }
 
         function clearLibSearch() {
@@ -9121,6 +9756,15 @@
         // ---- ДЕТАЛЬНОЕ ОКНО СКРИПТА ----
         let _sdCurrentIdx  = null;
         let _sdCatalogType = 'moonloader'; // 'moonloader' | 'other'
+        let _sdImages      = [];           // все фото открытого скрипта
+        let _sdImgIdx      = 0;            // индекс фото в баннере окна
+        let _lbIdx         = 0;            // индекс фото в лайтбоксе
+        let _lbScale       = 1;            // масштаб лайтбокса (1..6)
+        let _lbPanX        = 0;            // смещение при зуме, px
+        let _lbPanY        = 0;
+        let _lbDragging    = null;         // { startX, startY, panX, panY } во время drag
+        let _sdCurrentItemName = '';       // название для подписи лайтбокса
+        const _imgCache    = {};           // url -> data-url (чтобы не качать дважды)
 
         window._othersCatalog      = null;
         window._installedOtherFiles = new Set();
@@ -9154,39 +9798,278 @@
             }
         }
 
-        async function _loadDetailImage(url, wrap) {
-            // 1. Пробуем через Python (обход CORS в PyWebView)
+        /** Все фото скрипта: image, image2, image3… + список через запятую/перенос. */
+        function _collectDetailImages(item) {
+            if (!item) return [];
+            // Плейсхолдеры вида «image = none» / «-» / «нет» — не URL, пропускаем
+            const PLACEHOLDERS = new Set(['none', 'null', 'нет', 'no', 'false', '-', 'n/a', 'undefined']);
+            const out = [];
+            const seen = new Set();
+            const add = (raw) => {
+                if (!raw || typeof raw !== 'string') return;
+                raw.split(/[,\n]/).forEach(u => {
+                    const url = u.trim();
+                    if (!url || PLACEHOLDERS.has(url.toLowerCase())) return;
+                    if (!seen.has(url)) { seen.add(url); out.push(url); }
+                });
+            };
+            add(item.image);
+            for (let i = 2; i <= 9; i++) add(item['image' + i]);
+            return out;
+        }
+
+        /** Отрисовка баннера/точек/стрелок в окне скрипта. */
+        function _renderDetailGallery() {
+            const wrap = document.getElementById('sdImageWrap');
+            const dots = document.getElementById('sdDots');
+            const prev  = document.getElementById('sdNavPrev');
+            const next  = document.getElementById('sdNavNext');
+            const zoom  = document.querySelector('.sd-zoom-btn');
+            if (!wrap || !dots) return;
+
+            const multi = _sdImages.length > 1;
+            if (prev) prev.style.display = multi ? 'flex' : 'none';
+            if (next) next.style.display = multi ? 'flex' : 'none';
+            if (zoom) zoom.style.display = '';
+            dots.style.display = multi ? 'flex' : 'none';
+
+            // Точки — всегда видимые (не только на hover)
+            dots.innerHTML = '';
+            if (multi) {
+                _sdImages.forEach((_, i) => {
+                    const d = document.createElement('button');
+                    d.className = 'sd-dot-i' + (i === _sdImgIdx ? ' active' : '');
+                    d.title = (i + 1) + ' / ' + _sdImages.length;
+                    d.onclick = (e) => { e.stopPropagation(); _sdShowDetailImage(i); };
+                    dots.appendChild(d);
+                });
+            }
+
+            // Картинка (кэш data-url, показываем мгновенно если уже грузили)
+            const url = _sdImages[_sdImgIdx];
+            const cached = _imgCache[url];
+            if (cached) {
+                wrap.innerHTML = `<img src="${cached}" alt="preview" onerror="_sdImageFailed('${url.replace(/'/g, "\\'")}')">`;
+            } else {
+                wrap.innerHTML = '<span style="font-family:\'Montserrat Alternates\';font-size:11px;color:rgba(255,255,255,0.2);"><i data-lucide="loader"></i> Загрузка...</span>';
+                _fetchImageData(url).then(src => {
+                    // Пользователь мог переключить фото, пока грузили — не мигаем
+                    if (_sdImages[_sdImgIdx] === url) wrap.innerHTML = `<img src="${src}" alt="preview" onerror="_sdImageFailed('${url.replace(/'/g, "\\'")}')">`;
+                    if (window.lucide) refreshLucideIcons();
+                });
+            }
+            if (window.lucide) refreshLucideIcons();
+        }
+
+        /** Картинка не скачалась/битая — убираем её из галереи, чтобы не показывать «пустышку». */
+        function _sdImageFailed(url) {
+            const i = _sdImages.indexOf(url);
+            if (i >= 0) _sdImages.splice(i, 1);
+            if (!_sdImages.length) {
+                document.getElementById('sdGallery').style.display = 'none';
+                document.getElementById('sdImageWrap').innerHTML = '';
+                return;
+            }
+            if (_sdImgIdx >= _sdImages.length) _sdImgIdx = 0;
+            _renderDetailGallery();
+        }
+
+        function _sdShowDetailImage(i) {
+            if (!_sdImages.length) return;
+            _sdImgIdx = (i + _sdImages.length) % _sdImages.length;
+            _renderDetailGallery();
+        }
+
+        function sdGalleryNav(delta) {
+            _sdShowDetailImage(_sdImgIdx + delta);
+        }
+
+        /** Скачивает картинку через бэкенд (base64) с кэшем; фолбэк — прямой URL. */
+        async function _fetchImageData(url) {
+            if (_imgCache[url]) return _imgCache[url];
+            let src = url;
             if (window.pywebview && window.pywebview.api.fetch_image_as_base64) {
                 try {
                     const result = await window.pywebview.api.fetch_image_as_base64(url);
-                    if (result && result.success && result.data_url) {
-                        wrap.innerHTML = `<img src="${result.data_url}" alt="preview">`;
-                        return;
-                    }
+                    if (result && result.success && result.data_url) src = result.data_url;
                 } catch(e) {}
             }
-
-            // 2. Пробуем прямой img (работает в браузере / когда CORS не мешает)
-            await new Promise(resolve => {
-                const img = document.createElement('img');
-                img.alt = 'preview';
-                img.onload = () => { wrap.innerHTML = ''; wrap.appendChild(img); resolve(); };
-                img.onerror = () => {
-                    _setImgPlaceholder(wrap);
-                    resolve();
-                };
-                img.src = url;
-            });
+            _imgCache[url] = src;
+            return src;
         }
 
-        function _setImgPlaceholder(wrap) {
-            wrap.innerHTML = `
-                <div style="display:flex;flex-direction:column;align-items:center;gap:6px;opacity:0.35;">
-                    <svg width="32" height="32" viewBox="0 0 24 24" fill="rgba(255,255,255,0.5)">
-                        <path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/>
-                    </svg>
-                    <span style="font-family:'Montserrat Alternates';font-size:11px;color:rgba(255,255,255,0.5);">Нет превью</span>
-                </div>`;
+        /** Открыть лайтбокс на текущем фото окна скрипта. */
+        async function openImageLightbox() {
+            if (!_sdImages.length) return;
+            _lbIdx = _sdImgIdx;
+            _lbResetZoom();
+            document.getElementById('lbOverlay').classList.add('open');
+            await _lbRender();
+            if (window.lucide) refreshLucideIcons();
+        }
+
+        async function _lbRender() {
+            const img = document.getElementById('lbImg');
+            const cap = document.getElementById('lbCaption');
+            const dots = document.getElementById('lbDots');
+            const prev = document.getElementById('lbPrev');
+            const next = document.getElementById('lbNext');
+            if (!img) return;
+
+            const multi = _sdImages.length > 1;
+            if (prev) prev.style.display = multi ? 'flex' : 'none';
+            if (next) next.style.display = multi ? 'flex' : 'none';
+
+            const url = _sdImages[_lbIdx];
+            const itemName = (_sdCurrentItemName || '');
+            if (cap) cap.textContent = itemName + (multi ? ' · фото ' + (_lbIdx + 1) + ' из ' + _sdImages.length : '');
+
+            img.src = await _fetchImageData(url);
+            img.onerror = () => {
+                _lbImageFailed(url);
+            };
+
+            dots.innerHTML = '';
+            if (multi) {
+                _sdImages.forEach((_, i) => {
+                    const d = document.createElement('button');
+                    d.className = 'lb-dot' + (i === _lbIdx ? ' active' : '');
+                    d.onclick = (e) => { e.stopPropagation(); _lbShow(i); };
+                    dots.appendChild(d);
+                });
+            }
+        }
+
+        async function _lbShow(i) {
+            if (!_sdImages.length) return;
+            _lbIdx = (i + _sdImages.length) % _sdImages.length;
+            _lbResetZoom();
+            await _lbRender();
+        }
+
+        /** Битое фото в лайтбоксе — убираем из списка, при пустом закрываем. */
+        function _lbImageFailed(url) {
+            const i = _sdImages.indexOf(url);
+            if (i >= 0) _sdImages.splice(i, 1);
+            if (!_sdImages.length) {
+                closeLightbox(null, true);
+                // Галерея в окне скрипта осталась без фото — убираем и её
+                const gallery = document.getElementById('sdGallery');
+                if (gallery) gallery.style.display = 'none';
+                return;
+            }
+            if (_lbIdx >= _sdImages.length) _lbIdx = 0;
+            if (_sdImgIdx >= _sdImages.length) _sdImgIdx = 0;
+            _lbRender();
+            _renderDetailGallery();
+        }
+
+        function lbNav(delta) { _lbShow(_lbIdx + delta); }
+
+        function closeLightbox(event, force) {
+            if (!force && event && event.target !== document.getElementById('lbOverlay')) return;
+            lbDragEnd();   // снять drag, если закрыли посреди перетаскивания
+            document.getElementById('lbOverlay').classList.remove('open');
+            _lbResetZoom();
+        }
+
+        // ── Масштаб лайтбокса ──
+        const LB_ZOOM_MIN = 1, LB_ZOOM_MAX = 6;
+
+        function _lbApplyTransform() {
+            const img = document.getElementById('lbImg');
+            const overlay = document.getElementById('lbOverlay');
+            if (!img) return;
+            const zoomed = _lbScale > 1.01;
+            img.classList.toggle('zoomed', zoomed);
+            if (overlay) overlay.classList.toggle('zoomed', zoomed);
+            img.style.transform = `translate(${_lbPanX}px, ${_lbPanY}px) scale(${_lbScale})`;
+            const val = document.getElementById('lbZoomVal');
+            if (val) val.textContent = Math.round(_lbScale * 100) + '%';
+        }
+
+        function _lbResetZoom() {
+            _lbScale = 1; _lbPanX = 0; _lbPanY = 0;
+            _lbApplyTransform();
+        }
+
+        /** Ограничиваем панорамирование, чтобы фото не «улетело» за экран. */
+        function _lbClampPan() {
+            const img = document.getElementById('lbImg');
+            if (!img || !img.naturalWidth) return;
+            const rect = img.getBoundingClientRect();
+            // rect уже с учётом scale — «свободные» пиксели по каждой оси
+            const freeX = Math.max(0, (rect.width  - window.innerWidth  * 0.96) / 2);
+            const freeY = Math.max(0, (rect.height - window.innerHeight * 0.92) / 2);
+            _lbPanX = Math.max(-freeX, Math.min(freeX, _lbPanX));
+            _lbPanY = Math.max(-freeY, Math.min(freeY, _lbPanY));
+        }
+
+        /** Зум относительно точки (курсора). anchorX/anchorY — client-координаты. */
+        function _lbZoomAt(newScale, anchorX, anchorY) {
+            newScale = Math.max(LB_ZOOM_MIN, Math.min(LB_ZOOM_MAX, newScale));
+            const img = document.getElementById('lbImg');
+            if (!img) return;
+            const rect = img.getBoundingClientRect();
+            const cx = rect.left + rect.width / 2;   // центр картинки на экране
+            const cy = rect.top + rect.height / 2;
+            // Точка под курсором должна остаться на месте:
+            // newPan = anchorFromCenter * (1 - k) + oldPan * k, где k = new/old
+            const k = newScale / _lbScale;
+            if (anchorX === undefined) { anchorX = cx; anchorY = cy; }
+            _lbPanX = (anchorX - cx) * (1 - k) + _lbPanX * k;
+            _lbPanY = (anchorY - cy) * (1 - k) + _lbPanY * k;
+            _lbScale = newScale;
+            if (_lbScale <= LB_ZOOM_MIN) { _lbPanX = 0; _lbPanY = 0; }
+            _lbClampPan();
+            _lbApplyTransform();
+        }
+
+        function lbZoomBy(factor) {
+            _lbZoomAt(_lbScale * factor);
+        }
+
+        function lbZoomReset() { _lbResetZoom(); }
+
+        function lbWheel(e) {
+            e.preventDefault();
+            // ctrl+колесо и просто колесо — оба зумят (в окне лайтбокса другого
+            // смысла у скролла нет)
+            const factor = e.deltaY < 0 ? 1.25 : 1 / 1.25;
+            _lbZoomAt(_lbScale * factor, e.clientX, e.clientY);
+        }
+
+        /** Двойной клик: 1× ↔ 2.5× под курсором. */
+        function lbDblClick(e) {
+            e.stopPropagation();
+            if (_lbScale > 1.01) _lbResetZoom();
+            else _lbZoomAt(2.5, e.clientX, e.clientY);
+        }
+
+        /** Перетаскивание зумленного фото. */
+        function lbDragStart(e) {
+            if (_lbScale <= 1.01) return;   // без зума drag не нужен
+            e.preventDefault();
+            e.stopPropagation();
+            _lbDragging = { startX: e.clientX, startY: e.clientY, panX: _lbPanX, panY: _lbPanY };
+            const img = document.getElementById('lbImg');
+            if (img) img.classList.add('dragging');
+            document.addEventListener('mousemove', lbDragMove);
+            document.addEventListener('mouseup', lbDragEnd);
+        }
+        function lbDragMove(e) {
+            if (!_lbDragging) return;
+            _lbPanX = _lbDragging.panX + (e.clientX - _lbDragging.startX);
+            _lbPanY = _lbDragging.panY + (e.clientY - _lbDragging.startY);
+            _lbClampPan();
+            _lbApplyTransform();
+        }
+        function lbDragEnd() {
+            _lbDragging = null;
+            const img = document.getElementById('lbImg');
+            if (img) img.classList.remove('dragging');
+            document.removeEventListener('mousemove', lbDragMove);
+            document.removeEventListener('mouseup', lbDragEnd);
         }
 
         function _renderDetailLibs(item) {
@@ -9200,17 +10083,18 @@
                     libsBlock.style.display = '';
                     const installedNames = new Set((window._libInstalled || []).map(l => l.name.toLowerCase()));
                     libs.forEach(libName => {
-                        const row = document.createElement('div');
-                        row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:6px 10px;background:rgba(255,255,255,0.04);border-radius:6px;border:1px solid rgba(255,255,255,0.06);';
                         const isLibInstalled = installedNames.has(libName.toLowerCase());
-                        const btn = isLibInstalled
-                            ? `<button class="ml-card-install-btn done" style="height:26px;padding:0 10px;font-size:10px;" disabled><i data-lucide="check"></i> Установлено</button>`
-                            : `<button class="ml-card-install-btn" style="height:26px;padding:0 10px;font-size:10px;" onclick="event.stopPropagation(); installLibFromDetail('${libName.replace(/'/g, "\\'")}', this)">Установить</button>`;
-                        row.innerHTML = `
-                            <span style="font-family:'Montserrat Alternates';font-size:12px;color:rgba(255,255,255,0.7);"><i data-lucide="package"></i> ${libName}</span>
-                            ${btn}
+                        const chip = document.createElement('span');
+                        chip.className = 'sd-lib-chip';
+                        const escName = libName.replace(/'/g, "\\'");
+                        chip.innerHTML = `
+                            <i data-lucide="package"></i>
+                            <span>${libName}</span>
+                            ${isLibInstalled
+                                ? `<button class="done" disabled><i data-lucide="check"></i> Готово</button>`
+                                : `<button onclick="event.stopPropagation(); installLibFromDetail('${escName}', this)"><i data-lucide="download"></i> Установить</button>`}
                         `;
-                        libsList.appendChild(row);
+                        libsList.appendChild(chip);
                     });
                     if (window.lucide) refreshLucideIcons();
                 } else {
@@ -9235,24 +10119,36 @@
             const item = catalog?.[idx];
             if (!item) return;
             _sdCurrentIdx = idx;
+            _sdCurrentItemName = item.name || '';
 
-            document.getElementById('sdHeaderTitle').innerHTML =
-                _sdCatalogType === 'other' ? '<i data-lucide="package"></i> Другое · Каталог' : '<i data-lucide="moon"></i> Moonloader · Каталог';
+            document.getElementById('sdCrumb').textContent =
+                _sdCatalogType === 'other' ? 'Каталог · Другие моды' : 'Каталог · Moonloader';
 
             document.getElementById('sdIcon').innerHTML   = item.icon || (_sdCatalogType === 'other' ? '<i data-lucide="package"></i>' : '<i data-lucide="moon"></i>');
-            document.getElementById('sdName').textContent   = item.name || '—';
-            document.getElementById('sdAuthor').textContent = 'от ' + (item.author || '?');
-            document.getElementById('sdTag').textContent    = item.tag || '';
-            document.getElementById('sdDesc').textContent   = item.description || 'Нет описания';
+            document.getElementById('sdName').textContent   = item.name || 'Без названия';
+            document.getElementById('sdAuthor').textContent = item.author ? 'от ' + item.author : '';
 
+            // Тег и точка-разделитель: прячем, если пусто
+            const tagEl = document.getElementById('sdTag');
+            const dotEl = document.getElementById('sdMetaDot');
+            tagEl.textContent = item.tag || '';
+            tagEl.classList.toggle('hide', !item.tag);
+            dotEl.classList.toggle('hide', !item.tag || !item.author);
+
+            // Описание: поддерживаем \n как перенос
+            const desc = item.description ? item.description.replace(/\\n/g, '\n') : '';
+            document.getElementById('sdDesc').textContent = desc || 'Нет описания';
+
+            // Строка файла (+ назначение для «Другое»)
             let fileText = item.file || '—';
-            if (_sdCatalogType === 'other' && item.destination)
-                fileText += '  →  ' + (DEST_LABELS[item.destination.toLowerCase()] || item.destination);
-            const sdFileEl = document.getElementById('sdFile');
-            if (sdFileEl) {
-                sdFileEl.innerHTML = fileText;
-                if (window.lucide) refreshLucideIcons();
+            let dstText  = '';
+            if (_sdCatalogType === 'other' && item.destination) {
+                // DEST_LABELS — с HTML-иконкой, здесь нужен чистый текст
+                const label = DEST_LABELS[item.destination.toLowerCase()] || item.destination;
+                dstText = '→ ' + label.replace(/<[^>]*>/g, '').trim();
             }
+            document.getElementById('sdFile').textContent = fileText;
+            document.getElementById('sdDest').textContent = dstText;
 
             const usageBlock = document.getElementById('sdUsageBlock');
             if (item.usage) {
@@ -9262,17 +10158,22 @@
                 usageBlock.style.display = 'none';
             }
 
-            const imgWrap = document.getElementById('sdImageWrap');
-            if (item.image) {
-                imgWrap.innerHTML = '<span style="font-family:\'Montserrat Alternates\';font-size:11px;color:rgba(255,255,255,0.2);"><i data-lucide="loader"></i> Загрузка...</span>';
-                _loadDetailImage(item.image, imgWrap);
+            // Превью-баннер: собираем ВСЕ фото скрипта (image, image2… или через запятую)
+            _sdImages = _collectDetailImages(item);
+            _sdImgIdx = 0;
+            const gallery = document.getElementById('sdGallery');
+            if (_sdImages.length) {
+                gallery.style.display = '';
+                _renderDetailGallery();
             } else {
-                _setImgPlaceholder(imgWrap);
+                gallery.style.display = 'none';
+                document.getElementById('sdImageWrap').innerHTML = '';
             }
 
             _renderDetailLibs(item);
             _updateDetailButtons(idx);
             document.getElementById('scriptDetailOverlay').classList.add('open');
+            if (window.lucide) refreshLucideIcons();
         }
 
         function _updateDetailButtons(idx) {
@@ -9293,16 +10194,20 @@
 
             installBtn.disabled        = isInstalled;
             installBtn.innerHTML     = isInstalled ? '<i data-lucide="check-circle"></i> Установлено' : '<i data-lucide="download"></i> Установить';
-            installBtn.className       = 'script-detail-install-btn';
-            uninstallBtn.style.display = isInstalled ? 'block' : 'none';
+            installBtn.className       = 'sd-install-btn';
+            uninstallBtn.style.display = isInstalled ? 'flex' : 'none';
+            if (window.lucide) refreshLucideIcons();
         }
 
         function closeScriptDetail(event, force) {
             if (!force && event && event.target !== document.getElementById('scriptDetailOverlay')) return;
             const overlay = document.getElementById('scriptDetailOverlay');
-            _closeWithAnim(overlay, () => {
-                overlay.classList.remove('open');
-            });
+            // Деталка лежит поверх модс-модалки — НЕ показываем главный интерфейс
+            // (иначе он вылезает под «Моды» на кадр анимации закрытия).
+            overlay.classList.add('closing');
+            setTimeout(() => {
+                overlay.classList.remove('closing', 'open');
+            }, 250);
             _sdCurrentIdx = null;
         }
 
@@ -9325,15 +10230,15 @@
                     const result = await window.pywebview.api.install_library(lib.name, lib.url);
                     showNotification(result.success ? '<i data-lucide="check-circle"></i> ' + result.message : '<i data-lucide="x-circle"></i> ' + result.message, result.success ? 'success' : 'error');
                     if (result.success && btn) {
-                        btn.className = 'ml-card-install-btn done';
-                        btn.innerHTML = '<i data-lucide="check"></i> Установлено';
+                        btn.className = 'done';
+                        btn.innerHTML = '<i data-lucide="check"></i> Готово';
                         btn.disabled = true;
                     }
                 } else {
                     showNotification('(демо) Библиотека установлена', 'success');
                     if (btn) {
-                        btn.className = 'ml-card-install-btn done';
-                        btn.innerHTML = '<i data-lucide="check"></i> Установлено';
+                        btn.className = 'done';
+                        btn.innerHTML = '<i data-lucide="check"></i> Готово';
                         btn.disabled = true;
                     }
                 }
@@ -9356,7 +10261,7 @@
             const item = window._mlCatalog?.[idx];
             if (!item) return;
             const btn = document.getElementById('sdInstallBtn');
-            btn.disabled = true; btn.className = 'script-detail-install-btn progress';
+            btn.disabled = true; btn.className = 'sd-install-btn progress';
             try {
                 // Устанавливаем библиотеки если есть
                 if (item.libraries && item.libraries.trim()) {
@@ -9396,7 +10301,7 @@
                 window._libLoaded = false;
                 await loadLibrariesTab();
             } catch(e) {
-                btn.disabled = false; btn.innerHTML = '<i data-lucide="download"></i> Установить'; btn.className = 'script-detail-install-btn';
+                btn.disabled = false; btn.innerHTML = '<i data-lucide="download"></i> Установить'; btn.className = 'sd-install-btn';
                 showNotification('Ошибка: ' + e.message, 'error');
             }
         }
@@ -9406,7 +10311,7 @@
             const item = window._othersCatalog?.[idx];
             if (!item) return;
             const btn = document.getElementById('sdInstallBtn');
-            btn.disabled = true; btn.className = 'script-detail-install-btn progress';
+            btn.disabled = true; btn.className = 'sd-install-btn progress';
             try {
                 btn.innerHTML = '<i data-lucide="loader"></i> Скачивается...';
                 if (window.pywebview && window.pywebview.api.install_other_file) {
@@ -9419,7 +10324,7 @@
                 _syncCatalogCard('otherInstBtn_' + idx, 'otherInstStatus_' + idx, true);
                 showNotification('Установлен: ' + item.name, 'success');
             } catch(e) {
-                btn.disabled = false; btn.innerHTML = '<i data-lucide="download"></i> Установить'; btn.className = 'script-detail-install-btn';
+                btn.disabled = false; btn.innerHTML = '<i data-lucide="download"></i> Установить'; btn.className = 'sd-install-btn';
                 showNotification('Ошибка: ' + e.message, 'error');
             }
         }
@@ -9592,6 +10497,20 @@
         // ---- ПРЕСЕТЫ ARIZONAPATCHES ----
         const CONFIGS_TXT_URL = 'https://raw.githubusercontent.com/worteng/ArizonaLauncher/main/configs.txt';
 
+        /** Русское склонение: 1 конфиг, 2 конфига, 5 конфигов (11-14 — конфигов).
+         *  Для неправильных слов передай все формы через '|': 'настройк|настройки|настроек'. */
+        function _plural(n, word) {
+            const forms = String(word).split('|');
+            const one = forms[0];
+            const few = forms[1] !== undefined ? forms[1] : one + 'а';
+            const many = forms[2] !== undefined ? forms[2] : one + 'ов';
+            const a = Math.abs(n) % 100, b = a % 10;
+            if (a > 10 && a < 20) return many;
+            if (b > 1 && b < 5)   return few;
+            if (b === 1)          return one;
+            return many;
+        }
+
         function parsConfigsTxt(text) {
             const presets = [];
             let current = null;
@@ -9617,16 +10536,24 @@
 
         async function checkPatchesStatus() {
             try {
-                if (window.pywebview && window.pywebview.api.check_patches_status) {
-                    const result = await window.pywebview.api.check_patches_status();
-                    if (result) {
-                        renderPatchStatusUI(result);
-                        // Раньше здесь показывался toast «Патчи недоступны» и скрывался
-                        // UI настроек при outdated_dll_v1. Убрано: UI патчей теперь
-                        // data-driven и должен быть доступен всегда (патчер V2 ожидается
-                        // в релизе, конфиг можно редактировать заранее).
+                const api = window.pywebview && window.pywebview.api;
+                if (!api || !api.check_patches_status) return;
+
+                // Патчи внедряются только при запуске через лаунчер Air
+                // (плагины из preloading_plugins). При нативном запуске DLL
+                // не грузится — баннер сообщает об этом, настройки скрыты.
+                let method = 'native';
+                try {
+                    if (api.get_launch_method) {
+                        const lm = await api.get_launch_method();
+                        if (lm && lm.success && lm.method === 'air') method = 'air';
                     }
+                } catch (e) {
+                    console.warn('get_launch_method failed:', e);
                 }
+
+                const status = await api.check_patches_status();
+                renderPatchStatusUI(status, method);
             } catch (e) {
                 console.error('checkPatchesStatus error:', e);
             }
@@ -9638,24 +10565,75 @@
 
         // ===== Patches Status UI =====
 
-        function renderPatchStatusUI(status) {
+        /** Баннер + доступность настроек патчей. Патчер применим только при
+            запуске через Air и когда DLL/конфиг на месте и не устарели.
+            Иначе настройки скрываются (нельзя «настраивать» то, что не
+            применится) и показывается баннер с причиной. */
+        function renderPatchStatusUI(status, method) {
             try {
-                // Баннер статуса патчей V1 больше не показываем — UI патчей теперь
-                // data-driven (patches_schema.json), а сам патчер ждём в релизе V2.
-                // Прогресс установки по-прежнему используется (download_and_install_patches).
                 document.getElementById('patchInstallProgress').style.display = 'none';
-                var alert = document.getElementById('patchStatusAlert');
-                if (alert) alert.style.display = 'none';
 
-                var container = document.getElementById('patchPresetsContainer');
-                container.style.display = 'block';
-                loadPatchPresets();
+                var alert    = document.getElementById('patchStatusAlert');
+                var group    = document.getElementById('checkboxGroup');
+                var actBtn   = document.getElementById('patchActionBtn');
+                var checkBtn = document.getElementById('patchCheckUpdateBtn');
+                if (actBtn)   actBtn.style.display   = 'none';
+                if (checkBtn) checkBtn.style.display = 'none';
+
+                var kind, title, detail;
+                if (method !== 'air') {
+                    // Нативный запуск: патчи гарантированно не применяются.
+                    kind   = 'native';
+                    title  = 'Активен нативный запуск';
+                    detail = 'Плагины из preloading_plugins при нативном запуске не внедряются — '
+                           + 'патчи не будут применены. Переключи способ запуска на «Через лаунчер Air» '
+                           + 'во вкладке «Запуск», чтобы патчи работали.';
+                } else if (!status || !status.status) {
+                    // Backend недоступен — честно пишем, что проверить не удалось.
+                    kind   = 'missing';
+                    title  = 'Не удалось проверить патчи';
+                    detail = 'Нет ответа от лаунчера. Настройки патчей скрыты до подтверждения работоспособности.';
+                } else if (status.status === 'current') {
+                    // Всё готово: баннер не показываем, настройки доступны.
+                    kind = null;
+                } else if (status.status === 'outdated_dll_v1') {
+                    kind   = 'outdated';
+                    title  = 'Патчи недоступны: устаревшая DLL';
+                    detail = (status.message_detail || status.message || '')
+                           + ' Настройки скрыты, ждём v2 от EIR.';
+                } else if (status.status === 'outdated_v1') {
+                    kind   = 'outdated';
+                    title  = 'Патчи недоступны: устаревшая версия';
+                    detail = (status.message_detail || status.message || '');
+                } else {
+                    // missing и прочее
+                    kind   = 'missing';
+                    title  = 'Патчи недоступны';
+                    detail = (status.message_detail || status.message || '')
+                           + ' Файлы нужно установить, затем настройки станут доступны.';
+                }
+
+                if (kind) {
+                    var C = {
+                        native:   { c: 'rgba(240,200,90,1)',  i: 'zap-off' },
+                        missing:  { c: 'rgba(255,170,80,1)',  i: 'alert-triangle' },
+                        outdated: { c: 'rgba(255,110,110,1)', i: 'alert-octagon' }
+                    }[kind];
+                    alert.style.borderLeftColor = C.c;
+                    document.getElementById('patchStatusTitle').textContent  = title;
+                    document.getElementById('patchStatusDetail').textContent = detail;
+                    document.getElementById('patchStatusLucide').innerHTML =
+                        '<i data-lucide="' + C.i + '" style="width:20px;height:20px;color:' + C.c + '"></i>';
+                    alert.style.display = 'block';
+                    group.style.display = 'none';
+                } else {
+                    alert.style.display = 'none';
+                    group.style.display = 'flex';   // #checkboxGroup — flex-column в CSS
+                }
 
                 if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
             } catch(e) {
-                console.error('renderPatchStatusUI error: e', e);
-                document.getElementById('patchPresetsContainer').style.display = 'block';
-                loadPatchPresets();
+                console.error('renderPatchStatusUI error:', e);
             }
         }
 
@@ -9797,7 +10775,7 @@
                 return;
             }
 
-            status.textContent = `Найдено ${presets.length} конфигов`;
+            status.textContent = `Найдено ${presets.length} ${_plural(presets.length, 'конфиг')}`;
             renderPatchPresets(presets);
         }
 
@@ -10487,6 +11465,73 @@
         // ---- ИМПОРТ / ЭКСПОРТ ----
         // ---- ИМПОРТ / ЭКСПОРТ / БЭКАПЫ ----
 
+        // ——— Хелперы диффа/отображения ———
+
+        /** Человекочитаемое значение патча: bool → вкл/выкл, массив → «N объектов». */
+        function _fmtPatchVal(v) {
+            if (v === true) return 'вкл';
+            if (v === false) return 'выкл';
+            if (Array.isArray(v)) return v.length + ' ' + _plural(v.length, 'объект');
+            if (v !== null && typeof v === 'object') return JSON.stringify(v);
+            if (v === null || v === undefined) return '—';
+            return String(v);
+        }
+
+        /** Название патча из схемы (fallback — сам id). */
+        function _patchTitle(key) {
+            try { return (typeof getSettingTitle === 'function') ? getSettingTitle(key) : key; }
+            catch (e) { return key; }
+        }
+
+        /** HTML-блок диффа: что изменится / добавится / уберётся против текущего конфига. */
+        function _renderPatchDiffHtml(diff) {
+            if (!diff) return '<div class="bk-diff-note">Нет данных о сравнении с текущим конфигом.</div>';
+            const changed = diff.changed || [], added = diff.added || [], removed = diff.removed || [];
+            const same = diff.same_count || 0;
+            const total = changed.length + added.length + removed.length;
+            if (total === 0) {
+                const note = (diff.current_exists === false)
+                    ? 'Текущий конфиг ещё не создан — после применения будут все настройки из файла.'
+                    : 'Отличий нет: текущий конфиг полностью совпадает с этим файлом (' + same + ' ' + _plural(same, 'настройк|настройки|настроек') + ').';
+                return `<div class="bk-diff-note bk-diff-ok"><i data-lucide="check-circle"></i> <span>${note}</span></div>`;
+            }
+            const row = (icon, color, name, vals) => `
+                <div class="bk-diff-row">
+                    <i data-lucide="${icon}" class="bk-diff-ic" style="color:${color}"></i>
+                    <span class="bk-diff-name">${escapeHtml(name)}</span>
+                    <span class="bk-diff-vals">${vals}</span>
+                </div>`;
+            let html = `<div class="bk-diff-head">Отличий: <b>${total}</b> · совпадает: <b>${same}</b></div><div class="bk-diff-list">`;
+            changed.forEach(r => {
+                html += row('arrow-right', 'rgba(255,190,100,0.95)', _patchTitle(r.key),
+                    `<span class="bk-v-old">${escapeHtml(_fmtPatchVal(r.from))}</span> → <span class="bk-v-new">${escapeHtml(_fmtPatchVal(r.to))}</span>`);
+            });
+            added.forEach(r => {
+                html += row('plus', 'rgba(130,220,150,0.95)', _patchTitle(r.key),
+                    `новое: <span class="bk-v-new">${escapeHtml(_fmtPatchVal(r.to))}</span>`);
+            });
+            removed.forEach(r => {
+                html += row('minus', 'rgba(255,130,130,0.95)', _patchTitle(r.key),
+                    `уберётся: <span class="bk-v-old">${escapeHtml(_fmtPatchVal(r.from))}</span>`);
+            });
+            html += '</div>';
+            return html;
+        }
+
+        /** Иконка и подпись типа бэкапа. */
+        function _backupTypeMeta(type) {
+            if (type === 'before_import') return { icon: 'download', label: 'перед импортом' };
+            if (type === 'before_restore') return { icon: 'rotate-ccw', label: 'перед восстановлением' };
+            return { icon: 'save', label: 'при сохранении' };
+        }
+
+        /** Дата из имени файла бэкапа patches_YYYYMMDD_HHMMSS_*.json (fallback). */
+        function _backupDateFromName(filename) {
+            const m = /patches_(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})/.exec(filename || '');
+            if (!m) return filename || '';
+            return `${m[3]}.${m[2]}.${m[1]} ${m[4]}:${m[5]}:${m[6]}`;
+        }
+
         async function doExport() {
             try {
                 if (window.pywebview && window.pywebview.api.export_patches) {
@@ -10504,27 +11549,63 @@
             }
         }
 
+        // Импорт: сначала показываем дифф, применяем только по кнопке в модалке
+        let _pendingImport = null;
+
         async function doImport() {
             try {
-                if (window.pywebview && window.pywebview.api.import_patches) {
-                    const result = await window.pywebview.api.import_patches();
-                    if (!result.success) {
-                        setImportStatus(result.message === 'Отменено' ? '' : '<i data-lucide="x-circle"></i> ' + apiMsg(result.message), '#f44');
-                        return;
-                    }
-                    patchesData = JSON.parse(JSON.stringify(result.data));
-                    const saveResult = await window.pywebview.api.write_patches(patchesData);
-                    if (!saveResult.success) {
-                        setImportStatus('<i data-lucide="x-circle"></i> Ошибка записи: ' + saveResult.message, '#f44');
-                        return;
-                    }
-                    renderCheckboxes();
-                    switchTab('patches');
-                    setImportStatus('<i data-lucide="check-circle"></i> Загружено ' + result.keys_count + ' настроек. Бэкап создан автоматически.', '#0f0');
-                    loadBackupsList();
-                } else {
+                if (!(window.pywebview && window.pywebview.api.import_patches)) {
                     setImportStatus('<i data-lucide="alert-triangle"></i> Функция доступна только в приложении', '#ff0');
+                    return;
                 }
+                const result = await window.pywebview.api.import_patches();
+                if (!result.success) {
+                    setImportStatus(result.message === 'Отменено' ? '' : '<i data-lucide="x-circle"></i> ' + apiMsg(result.message), '#f44');
+                    return;
+                }
+                _pendingImport = result;
+                const n = result.keys_count || 0;
+                const body = `
+                    <div style="font-family:'Montserrat Alternates';">
+                        <div class="bk-diff-head" style="margin-bottom:10px;">
+                            Файл: <b>${escapeHtml(result.filename || '')}</b> · ${n} ${_plural(n, 'настройк|настройки|настроек')} · изменится <b>${(result.diff ? (result.diff.changed || []).length + (result.diff.added || []).length + (result.diff.removed || []).length : 0)}</b>
+                        </div>
+                        ${_renderPatchDiffHtml(result.diff)}
+                        <div class="bk-diff-note" style="margin-top:10px;">
+                            <i data-lucide="archive"></i> Текущий конфиг будет сохранён в бэкап автоматически перед записью.
+                        </div>
+                    </div>`;
+                _openGenericModal({
+                    title: '<i data-lucide="file-input"></i> Импорт конфига',
+                    subtitle: escapeHtml(result.filename || ''),
+                    body,
+                    closeText: 'Отмена',
+                    footerHtml: '<button class="s-btn primary" onclick="_applyImport()"><i data-lucide="check"></i> Применить импорт</button>'
+                });
+            } catch (e) {
+                setImportStatus('<i data-lucide="x-circle"></i> Ошибка: ' + e.message, '#f44');
+            }
+        }
+
+        /** Применение импорта после подтверждения в модалке с диффом. */
+        async function _applyImport() {
+            const imp = _pendingImport;
+            if (!imp) return;
+            try {
+                patchesData = JSON.parse(JSON.stringify(imp.data));
+                const saveResult = await window.pywebview.api.write_patches(patchesData);
+                if (!saveResult.success) {
+                    setImportStatus('<i data-lucide="x-circle"></i> Ошибка записи: ' + apiMsg(saveResult.message), '#f44');
+                    return;
+                }
+                _pendingImport = null;
+                const m = document.getElementById('__genericModal');
+                if (m && m._close) m._close();
+                renderCheckboxes();
+                switchTab('patches');
+                const n = imp.keys_count || 0;
+                setImportStatus(`<i data-lucide="check-circle"></i> Импортировано ${n} ${_plural(n, 'настройк|настройки|настроек')}. Бэкап предыдущего конфига создан.`, '#0f0');
+                showNotification('<i data-lucide="check-circle"></i> Конфиг импортирован', 'success');
             } catch (e) {
                 setImportStatus('<i data-lucide="x-circle"></i> Ошибка: ' + e.message, '#f44');
             }
@@ -10533,67 +11614,105 @@
         async function loadBackupsList() {
             const container = document.getElementById('backupsList');
             if (!container) return;
-            container.innerHTML = '<div style="font-family:\'Montserrat Alternates\';font-size:11px;color:rgba(255,255,255,0.2);text-align:center;padding:20px 0;">Загрузка...</div>';
+            container.innerHTML = '<div class="bk-empty">Загрузка...</div>';
             if (!window.pywebview || !window.pywebview.api.list_patches_backups) {
-                container.innerHTML = '<div style="font-family:\'Montserrat Alternates\';font-size:11px;color:rgba(255,255,255,0.2);text-align:center;padding:20px 0;">Доступно только в приложении</div>';
+                container.innerHTML = '<div class="bk-empty">Список бэкапов доступен только в приложении</div>';
                 return;
             }
             const list = await window.pywebview.api.list_patches_backups();
             if (!list || list.length === 0) {
-                container.innerHTML = '<div style="font-family:\'Montserrat Alternates\';font-size:11px;color:rgba(255,255,255,0.2);text-align:center;padding:20px 0;">Бэкапов пока нет</div>';
+                container.innerHTML = '<div class="bk-empty">Бэкапов пока нет — они появятся после первого сохранения, импорта или восстановления</div>';
                 return;
             }
             container.innerHTML = '';
-            list.forEach((b, idx) => {
+            list.forEach((b) => {
+                const meta = _backupTypeMeta(b.type);
+                const s = b.summary || null;
+                const dc = (b.diff_count === null || b.diff_count === undefined) ? null : Number(b.diff_count);
+                const pills = [];
+                if (s) {
+                    pills.push(`<span class="bk-pill bk-pill-on" title="Включено в этом бэкапе"><i data-lucide="check"></i>${s.on}</span>`);
+                    pills.push(`<span class="bk-pill bk-pill-off" title="Выключено"><i data-lucide="x"></i>${s.off}</span>`);
+                }
+                if (dc !== null) {
+                    pills.push(dc > 0
+                        ? `<span class="bk-pill bk-pill-diff" title="Отличий от текущего конфига"><i data-lucide="git-compare"></i>${dc} ${_plural(dc, 'отличие|отличия|отличий')}</span>`
+                        : `<span class="bk-pill bk-pill-same" title="Полностью совпадает с текущим конфигом"><i data-lucide="equal"></i>без отличий</span>`);
+                }
                 const item = document.createElement('div');
-                item.style.cssText = 'display:flex;align-items:center;gap:10px;padding:8px 12px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.05);border-radius:8px;';
-                const isImport = b.filename.includes('before_import');
-                const isRestore = b.filename.includes('before_restore');
-                const icon = isImport ? '<i data-lucide="download"></i>' : isRestore ? '<i data-lucide="refresh-cw"></i>' : '<i data-lucide="save"></i>';
-                const label = isImport ? 'перед импортом' : isRestore ? 'перед восстановлением' : 'при сохранении';
+                item.className = 'bk-row';
                 item.innerHTML = `
-                    <span style="font-size:15px;flex-shrink:0;">${icon}</span>
-                    <div style="flex:1;min-width:0;">
-                        <div style="font-family:'Montserrat Alternates';font-size:11px;color:rgba(255,255,255,0.8);">${b.date}</div>
-                        <div style="font-family:'Montserrat Alternates';font-size:10px;color:rgba(255,255,255,0.3);">${label} · ${(b.size/1024).toFixed(1)} КБ</div>
+                    <span class="bk-ic"><i data-lucide="${meta.icon}"></i></span>
+                    <div class="bk-main">
+                        <div class="bk-date">${escapeHtml(b.date || _backupDateFromName(b.filename))}</div>
+                        <div class="bk-meta">${meta.label} · ${(b.size / 1024).toFixed(1)} КБ${s ? ` · ${s.total} ${_plural(s.total, 'настройк|настройки|настроек')}` : ''}</div>
                     </div>
-                    <button onclick="restoreBackup('${b.filename}')" style="height:28px;padding:0 10px;background:rgba(0,120,212,0.25);border:1px solid rgba(0,140,255,0.3);border-radius:6px;color:rgba(140,200,255,0.9);font-family:'Montserrat Alternates';font-size:10px;cursor:pointer;display:inline-flex;align-items:center;gap:4px;transition:all 0.15s;" onmouseover="this.style.background='rgba(0,140,255,0.35)'" onmouseout="this.style.background='rgba(0,120,212,0.25)'" title="Восстановить"><i data-lucide="rotate-ccw"></i></button>
-                    <button onclick="previewBackup('${b.filename}')" style="height:28px;padding:0 10px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:rgba(200,200,200,0.9);font-family:'Montserrat Alternates';font-size:12px;cursor:pointer;display:inline-flex;align-items:center;gap:4px;transition:all 0.15s;" onmouseover="this.style.background='rgba(255,255,255,0.12)';this.style.borderColor='rgba(255,255,255,0.2)'" onmouseout="this.style.background='rgba(255,255,255,0.05)';this.style.borderColor='rgba(255,255,255,0.1)'" title="Предпросмотр содержимого"><i data-lucide="eye"></i></button>
-                    <button onclick="deleteBackup('${b.filename}', this)" style="height:28px;padding:0 10px;background:rgba(220,60,60,0.15);border:1px solid rgba(255,80,80,0.3);border-radius:6px;color:rgba(255,140,140,0.95);font-family:'Montserrat Alternates';font-size:12px;cursor:pointer;display:inline-flex;align-items:center;gap:4px;transition:all 0.15s;" onmouseover="this.style.background='rgba(220,60,60,0.3)';this.style.borderColor='rgba(255,80,80,0.5)'" onmouseout="this.style.background='rgba(220,60,60,0.15)';this.style.borderColor='rgba(255,80,80,0.3)'" title="Удалить"><i data-lucide="trash-2"></i></button>
-                `;
+                    <div class="bk-pills">${pills.join('')}</div>
+                    <div class="bk-btns">
+                        <button class="bk-btn bk-btn-restore" title="Показать отличия и восстановить" onclick="previewBackup('${b.filename}')"><i data-lucide="rotate-ccw"></i></button>
+                        <button class="bk-btn bk-btn-del" title="Удалить бэкап (нажмите дважды)" onclick="deleteBackup('${b.filename}', this)"><i data-lucide="trash-2"></i></button>
+                    </div>`;
                 container.appendChild(item);
             });
             if (window.lucide) refreshLucideIcons();
         }
 
+        /** Восстановление бэкапа — выполняется только из модалки с диффом. */
         async function restoreBackup(filename) {
-            if (!confirm(`Восстановить бэкап от ${filename.replace('patches_','').replace('.json','')}?\nТекущий конфиг будет сохранён как новый бэкап.`)) return;
-            const result = await window.pywebview.api.restore_patches_backup(filename);
-            if (result.success) {
-                patchesData = JSON.parse(JSON.stringify(result.data));
-                renderCheckboxes();
-                switchTab('patches');
-                showNotification('<i data-lucide="check-circle"></i> Конфиг восстановлен из бэкапа', 'success');
-                loadBackupsList();
-            } else {
-                showNotification('<i data-lucide="x-circle"></i> Ошибка: ' + apiMsg(result.message), 'error');
-            }
-        }
-
-        async function deleteBackup(filename, btn) {
-            btn.disabled = true;
-            const result = await window.pywebview.api.delete_patches_backup(filename);
-            if (result.success) {
-                btn.closest('div[style]').remove();
-                const container = document.getElementById('backupsList');
-                if (container && container.children.length === 0) {
-                    container.innerHTML = '<div style="font-family:\'Montserrat Alternates\';font-size:11px;color:rgba(255,255,255,0.2);text-align:center;padding:20px 0;">Бэкапов нет</div>';
+            const m = document.getElementById('__genericModal');
+            if (m && m._close) m._close();
+            try {
+                const result = await window.pywebview.api.restore_patches_backup(filename);
+                if (result.success) {
+                    patchesData = JSON.parse(JSON.stringify(result.data));
+                    renderCheckboxes();
+                    switchTab('patches');
+                    showNotification('<i data-lucide="check-circle"></i> Конфиг восстановлен из бэкапа', 'success');
+                    loadBackupsList();
+                } else {
+                    showNotification('<i data-lucide="x-circle"></i> Ошибка: ' + apiMsg(result.message), 'error');
                 }
-            } else {
-                btn.disabled = false;
+            } catch (e) {
+                showNotification('<i data-lucide="x-circle"></i> Ошибка: ' + e.message, 'error');
             }
         }
 
+        /** Удаление в два шага: первое нажатие — «точно?», второе (в течение 3с) — удалить. */
+        async function deleteBackup(filename, btn) {
+            if (!btn) return;
+            if (btn._armed) {
+                btn._armed = false;
+                clearTimeout(btn._armTimer);
+                btn.disabled = true;
+                const result = await window.pywebview.api.delete_patches_backup(filename);
+                if (result.success) {
+                    const row = btn.closest('.bk-row');
+                    if (row) row.remove();
+                    const container = document.getElementById('backupsList');
+                    if (container && container.children.length === 0) {
+                        container.innerHTML = '<div class="bk-empty">Бэкапов больше нет</div>';
+                    }
+                } else {
+                    btn.disabled = false;
+                    showNotification('<i data-lucide="x-circle"></i> Ошибка: ' + apiMsg(result.message), 'error');
+                }
+                return;
+            }
+            btn._armed = true;
+            btn.classList.add('armed');
+            btn.title = 'Нажмите ещё раз для удаления';
+            btn.innerHTML = '<i data-lucide="alert-triangle"></i>';
+            if (window.lucide) refreshLucideIcons();
+            btn._armTimer = setTimeout(() => {
+                btn._armed = false;
+                btn.classList.remove('armed');
+                btn.title = 'Удалить бэкап (нажмите дважды)';
+                btn.innerHTML = '<i data-lucide="trash-2"></i>';
+                if (window.lucide) refreshLucideIcons();
+            }, 3000);
+        }
+
+        /** Превью бэкапа = модалка восстановления: дифф против текущего конфига + кнопка. */
         async function previewBackup(filename) {
             if (!window.pywebview || !window.pywebview.api.preview_patches_backup) {
                 showNotification('Доступно только в приложении', 'error');
@@ -10604,19 +11723,15 @@
                 showNotification('Ошибка: ' + apiMsg(result.message), 'error');
                 return;
             }
-            const typeLabel = result.type === 'before_import' ? 'Перед импортом'
-                            : result.type === 'before_restore' ? 'Перед восстановлением'
-                            : 'При сохранении';
+            const meta = _backupTypeMeta(result.type);
             const enabledList = result.patches_enabled || [];
             const disabledList = result.patches_disabled || [];
-            // Сортируем и экранируем
-            const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-            const renderList = (items, color) => {
-                if (items.length === 0) return '<div style="color:rgba(255,255,255,0.25);font-style:italic;">— нет —</div>';
-                return items.sort().map(p =>
-                    `<div style="display:flex;align-items:center;gap:6px;padding:3px 0;color:${color};">
-                        <i data-lucide="${color.includes('0,210,100') ? 'check' : 'x'}" style="width:11px;height:11px;flex-shrink:0;"></i>
-                        <span>${esc(p)}</span>
+            const renderList = (items, color, icon) => {
+                if (items.length === 0) return '<div style="color:rgba(255,255,255,0.25);font-style:italic;padding:2px 0;">— нет —</div>';
+                return items.slice().sort().map(p =>
+                    `<div style="display:flex;align-items:center;gap:6px;padding:2px 0;color:${color};">
+                        <i data-lucide="${icon}" style="width:11px;height:11px;flex-shrink:0;"></i>
+                        <span>${escapeHtml(_patchTitle(p))}</span>
                     </div>`
                 ).join('');
             };
@@ -10628,8 +11743,8 @@
                      <div style="margin-top:8px;max-height:160px;overflow-y:auto;background:rgba(0,0,0,0.25);border-radius:6px;padding:8px;font-size:10px;font-family:'Consolas','Courier New',monospace;">
                        ${Object.entries(params).map(([k,v]) =>
                            `<div style="display:flex;gap:8px;padding:1px 0;">
-                               <span style="color:rgba(120,200,255,0.8);min-width:140px;">${esc(k)}</span>
-                               <span style="color:rgba(255,255,255,0.7);">${esc(typeof v === 'object' ? JSON.stringify(v) : String(v))}</span>
+                               <span style="color:rgba(120,200,255,0.8);min-width:140px;">${escapeHtml(k)}</span>
+                               <span style="color:rgba(255,255,255,0.7);">${escapeHtml(typeof v === 'object' ? JSON.stringify(v) : String(v))}</span>
                            </div>`
                        ).join('')}
                      </div>
@@ -10638,53 +11753,55 @@
 
             const body = `
                 <div style="font-family:'Montserrat Alternates';">
-                    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px;">
-                        <div style="background:rgba(0,0,0,0.2);padding:8px 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.05);">
-                            <div style="font-size:9px;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:0.5px;">Тип</div>
-                            <div style="font-size:12px;color:rgba(255,255,255,0.85);margin-top:2px;">${typeLabel}</div>
-                        </div>
-                        <div style="background:rgba(0,0,0,0.2);padding:8px 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.05);">
-                            <div style="font-size:9px;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:0.5px;">Размер</div>
-                            <div style="font-size:12px;color:rgba(255,255,255,0.85);margin-top:2px;">${(result.size/1024).toFixed(1)} КБ</div>
-                        </div>
-                        <div style="background:rgba(0,0,0,0.2);padding:8px 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.05);">
-                            <div style="font-size:9px;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:0.5px;">Всего патчей</div>
-                            <div style="font-size:12px;color:rgba(255,255,255,0.85);margin-top:2px;">${result.patches_total}</div>
-                        </div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-bottom:14px;">
+                        <div class="bk-stat"><div class="bk-stat-cap">Тип</div><div class="bk-stat-val">${meta.label}</div></div>
+                        <div class="bk-stat"><div class="bk-stat-cap">Размер</div><div class="bk-stat-val">${(result.size / 1024).toFixed(1)} КБ</div></div>
+                        <div class="bk-stat"><div class="bk-stat-cap">Всего патчей</div><div class="bk-stat-val">${result.patches_total}</div></div>
+                        <div class="bk-stat"><div class="bk-stat-cap">Включено</div><div class="bk-stat-val">${enabledList.length}</div></div>
                     </div>
+                    <div class="bk-sec-cap"><i data-lucide="git-compare"></i> Отличия от текущего конфига</div>
+                    ${_renderPatchDiffHtml(result.diff)}
+                    <div class="bk-sec-cap" style="margin-top:12px;"><i data-lucide="list"></i> Содержимое бэкапа</div>
                     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
                         <div>
                             <div style="font-size:10px;color:rgba(0,210,100,0.85);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;font-weight:600;">
                                 <i data-lucide="check"></i> Включено (${enabledList.length})
                             </div>
-                            <div style="max-height:240px;overflow-y:auto;background:rgba(0,210,100,0.04);border-radius:6px;padding:6px 10px;font-size:11px;">
-                                ${renderList(enabledList, 'rgba(0,210,100,0.95)')}
+                            <div style="max-height:200px;overflow-y:auto;background:rgba(0,210,100,0.04);border-radius:6px;padding:6px 10px;font-size:11px;">
+                                ${renderList(enabledList, 'rgba(0,210,100,0.95)', 'check')}
                             </div>
                         </div>
                         <div>
                             <div style="font-size:10px;color:rgba(255,100,100,0.85);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;font-weight:600;">
                                 <i data-lucide="x"></i> Выключено (${disabledList.length})
                             </div>
-                            <div style="max-height:240px;overflow-y:auto;background:rgba(255,80,80,0.04);border-radius:6px;padding:6px 10px;font-size:11px;">
-                                ${renderList(disabledList, 'rgba(255,120,120,0.95)')}
+                            <div style="max-height:200px;overflow-y:auto;background:rgba(255,80,80,0.04);border-radius:6px;padding:6px 10px;font-size:11px;">
+                                ${renderList(disabledList, 'rgba(255,120,120,0.95)', 'x')}
                             </div>
                         </div>
                     </div>
                     ${paramsHtml}
+                    <div class="bk-diff-note" style="margin-top:12px;">
+                        <i data-lucide="archive"></i> Перед восстановлением текущий конфиг будет сохранён в бэкап автоматически.
+                    </div>
                 </div>
             `;
             _openGenericModal({
-                title: '<i data-lucide="eye"></i> Содержимое бэкапа',
-                subtitle: esc(filename),
+                title: '<i data-lucide="rotate-ccw"></i> Восстановление из бэкапа',
+                subtitle: escapeHtml(filename),
                 body,
-                closeText: 'Закрыть',
-                onClose: () => {}
+                closeText: 'Отмена',
+                footerHtml: `<button class="s-btn primary" onclick="restoreBackup('${filename}')"><i data-lucide="rotate-ccw"></i> Восстановить</button>`
             });
         }
 
         function setImportStatus(msg, color) {
             const el = document.getElementById('importStatus');
-            if (el) { el.textContent = msg; el.style.color = color || 'white'; }
+            if (el) {
+                el.innerHTML = msg || '';
+                el.style.color = color || 'white';
+                if (msg && window.lucide) refreshLucideIcons();
+            }
         }
 
         // ---- НАСТРОЙКИ ЛАУНЧЕРА ----
@@ -11267,12 +12384,13 @@
             try {
                 if (!(window.pywebview && window.pywebview.api.get_moonloader_scripts)) return;
                 const r = await window.pywebview.api.get_moonloader_scripts();
-                const installed = (r && r.success && Array.isArray(r.scripts)) ? r.scripts.length : 0;
-                let enabled = 0;
-                const prof = _profiles.find(x => x.id === _activeProfileId);
-                if (prof && Array.isArray(prof.lua_enabled)) enabled = prof.lua_enabled.length;
-                if (installed === 0 && enabled === 0) { chip.style.display = 'none'; return; }
-                val.textContent = installed + ' в игре · ' + enabled + ' вкл.';
+                // Считаем реальное состояние скриптов в папке игры, а не
+                // список из профиля — профиль мог быть создан до lua-списка.
+                const ok = !!(r && r.success && Array.isArray(r.scripts));
+                const installed = ok ? r.scripts.length : 0;
+                const enabled = ok ? r.scripts.filter(s => s.enabled).length : 0;
+                if (installed === 0) { chip.style.display = 'none'; return; }
+                val.textContent = installed + '/' + enabled + ' вкл.';
                 chip.style.display = '';
             } catch (e) { chip.style.display = 'none'; }
         }
@@ -11327,10 +12445,13 @@
         function applyStatusBar() {
             if (typeof launcherSettings.status_bar !== 'boolean') launcherSettings.status_bar = true;
             if (['bottom','top','left','right'].indexOf(launcherSettings.status_bar_pos) < 0) launcherSettings.status_bar_pos = 'bottom';
+            if (['lg','md','sm'].indexOf(launcherSettings.status_bar_size) < 0) launcherSettings.status_bar_size = 'lg';
             const bar = document.getElementById('statusBar');
             if (bar) {
                 bar.classList.remove('sb-pos-bottom', 'sb-pos-top', 'sb-pos-left', 'sb-pos-right');
                 bar.classList.add('sb-pos-' + launcherSettings.status_bar_pos);
+                bar.classList.remove('sb-size-md', 'sb-size-sm');
+                if (launcherSettings.status_bar_size !== 'lg') bar.classList.add('sb-size-' + launcherSettings.status_bar_size);
             }
             // Отступы интерфейса/виджета — только пока строка видима
             document.body.classList.remove('sb-top', 'sb-left', 'sb-right');
@@ -11340,15 +12461,28 @@
             if (launcherSettings.status_bar) startStatusBar(); else stopStatusBar();
             const cb = document.getElementById('statusBarCheck');
             if (cb) cb.checked = launcherSettings.status_bar;
-            const btns = document.querySelectorAll('.sb-pos-btn');
+            const btns = document.querySelectorAll('.sb-pos-btn[data-pos]');
             for (let i = 0; i < btns.length; i++) {
                 btns[i].classList.toggle('active', btns[i].dataset.pos === launcherSettings.status_bar_pos);
+            }
+            const sizeBtns = document.querySelectorAll('.sb-pos-btn[data-size]');
+            for (let i = 0; i < sizeBtns.length; i++) {
+                sizeBtns[i].classList.toggle('active', sizeBtns[i].dataset.size === launcherSettings.status_bar_size);
             }
         }
 
         function setStatusBarPos(pos) {
             if (['bottom', 'top', 'left', 'right'].indexOf(pos) < 0) return;
             launcherSettings.status_bar_pos = pos;
+            applyStatusBar();
+            if (window.pywebview && window.pywebview.api.save_launcher_settings) {
+                window.pywebview.api.save_launcher_settings(launcherSettings);
+            }
+        }
+
+        function setStatusBarSize(size) {
+            if (['lg', 'md', 'sm'].indexOf(size) < 0) return;
+            launcherSettings.status_bar_size = size;
             applyStatusBar();
             if (window.pywebview && window.pywebview.api.save_launcher_settings) {
                 window.pywebview.api.save_launcher_settings(launcherSettings);
@@ -11787,15 +12921,19 @@
             overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
 
             const panel = document.createElement('div');
-            panel.className = 'script-detail-panel';
+            panel.className = 'sd-panel';
             panel.style.maxWidth = '420px';
             panel.innerHTML = `
-                <div class="script-detail-header">
-                    <div class="script-detail-header-title"><i data-lucide="sliders-horizontal"></i> ${escapeHtml(setting.title || setting.id)}</div>
+                <div class="sd-head">
+                    <div class="sd-icon"><i data-lucide="sliders-horizontal"></i></div>
+                    <div class="sd-head-info">
+                        <div class="sd-crumb">ArizonaPatches</div>
+                        <div class="sd-name">${escapeHtml(setting.title || setting.id)}</div>
+                    </div>
                     <button class="close-btn" onclick="document.getElementById('bitsEditorOverlay').remove()">×</button>
                 </div>
                 <div style="padding:16px; display:flex; flex-direction:column; gap:8px;" id="bitsList"></div>
-                <div style="padding:0 16px 16px; display:flex; justify-content:flex-end; gap:8px;">
+                <div class="sd-footer" style="justify-content:flex-end;">
                     <button class="s-btn" style="width:auto; padding:0 16px; height:34px;" onclick="document.getElementById('bitsEditorOverlay').remove()">Отмена</button>
                     <button class="s-btn primary" style="width:auto; padding:0 16px; height:34px;" id="bitsApplyBtn">Применить</button>
                 </div>`;
@@ -11896,6 +13034,17 @@
                 onVulkanIncompatChange('modernScaleWarn', !!params.modern_scale);
                 onVulkanIncompatChange('useD3dx9Warn',    !!params.use_d3dx9_43);
                 onVulkanIncompatChange('treesNewWarn',    !!params.trees_new);
+            }
+
+            // Способ запуска (нативный / через Air)
+            try {
+                const lmRes = (window.pywebview?.api?.get_launch_method)
+                    ? await window.pywebview.api.get_launch_method()
+                    : null;
+                const isAir = !!(lmRes && lmRes.success && lmRes.method === 'air');
+                document.getElementById(isAir ? 'lmAir' : 'lmNative').checked = true;
+            } catch (e) {
+                console.warn('get_launch_method failed:', e);
             }
 
             if (verResult && verResult.success) launcherVer = verResult.version;
@@ -12021,6 +13170,27 @@
                         showNotification('Сохранение настроек запуска недоступно (нет API)', 'error');
                     }
 
+                    // Способ запуска (нативный / через Air)
+                    if (window.pywebview.api.set_launch_method) {
+                        try {
+                            const method = document.getElementById('lmAir').checked ? 'air' : 'native';
+                            const lmRes = await window.pywebview.api.set_launch_method(method);
+                            if (!(lmRes && lmRes.success)) {
+                                paramsOk = false;
+                                showNotification('Ошибка сохранения способа запуска'
+                                    + (lmRes && lmRes.message ? ': ' + lmRes.message : ''), 'error');
+                            } else {
+                                // Метод изменился — баннер статуса патчей (вкладка
+                                // ArizonaPatches) перерисуем сразу, чтобы не ждать
+                                // повторного открытия вкладки.
+                                checkPatchesStatus();
+                            }
+                        } catch (e) {
+                            paramsOk = false;
+                            console.error('set_launch_method error:', e);
+                        }
+                    }
+
                     if (patchesOk && paramsOk) {
                         showNotification('Настройки сохранены', 'success');
                         _autosaveToActiveProfile(patchesData, launchParams);
@@ -12062,7 +13232,26 @@
 
         // ESC закрывает настройки, если поверх них нет другой открытой модалки
         document.addEventListener('keydown', function (e) {
-            if (e.key !== 'Escape' || !settingsPanel) return;
+            if (e.key === 'Escape') {
+                // Лайтбокс фото — поверх всего
+                const lb = document.getElementById('lbOverlay');
+                if (lb && lb.classList.contains('open')) { closeLightbox(null, true); return; }
+                // Детальное окно скрипта — следующее по приоритету
+                const sdOverlay = document.getElementById('scriptDetailOverlay');
+                if (sdOverlay && sdOverlay.classList.contains('open')) { closeScriptDetail(null, true); return; }
+            }
+            // Стрелки/зум — навигация в лайтбоксе
+            const lbOpen = document.getElementById('lbOverlay');
+            if (lbOpen && lbOpen.classList.contains('open')) {
+                if (_sdImages.length > 1) {
+                    if (e.key === 'ArrowLeft')  { lbNav(-1); return; }
+                    if (e.key === 'ArrowRight') { lbNav(1);  return; }
+                }
+                if (e.key === '+' || e.key === '=') { lbZoomBy(1.5); return; }
+                if (e.key === '-' || e.key === '_') { lbZoomBy(1 / 1.5); return; }
+                if (e.key === '0') { lbZoomReset(); return; }
+            }
+            if (!settingsPanel) return;
             if (settingsPanel.style.display !== 'flex') return;
             const blocking = ['__genericModal', 'bitsEditorOverlay', 'folderModal', 'modsModal', 'drag-overlay']
                 .some(id => {
