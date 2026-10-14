@@ -124,6 +124,13 @@
             justify-content: center;
             align-items: center;
             position: relative;
+            /* Выделение текста — только в полях ввода */
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        input, textarea, [contenteditable="true"], .selectable, pre, code {
+            user-select: text;
+            -webkit-user-select: text;
         }
         
         #container {
@@ -135,6 +142,122 @@
             display: flex;
             flex-direction: column;
         }
+
+        /* ── Свой тайтлбар (frame-custom): без полосы, поверх фона ── */
+        #titlebar {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 42px;
+            z-index: 1200;
+            align-items: center;
+            justify-content: space-between;
+            padding-right: 6px;
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+            pointer-events: none;
+        }
+        body.frame-custom #titlebar { display: flex; }
+        /* В меню модов: пилюля кнопок окна уезжает влево (чуть-чуть, чтобы
+           встать левее крестика модалки), пилюля названия уезжает вон за
+           левый край — оба с одной анимацией */
+        #tbButtons {
+            transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        #tbTitle {
+            transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        body.tb-shifted #tbButtons {
+            transform: translateX(-64px);
+        }
+        body.tb-shifted #tbTitle {
+            transform: translateX(140px);
+        }
+
+        #tbDrag {
+            flex: 1;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            padding-left: 8px;
+            overflow: hidden;
+        }
+        /* «Челка» как у телефонов: тёмная пилюля вокруг названия */
+        #tbTitle {
+            font-family: 'Montserrat Alternates', sans-serif;
+            font-size: 11px;
+            letter-spacing: 0.4px;
+            color: rgba(255, 255, 255, 0.92);
+            white-space: nowrap;
+            text-overflow: ellipsis;
+            overflow: hidden;
+            background: rgba(0, 0, 0, 0.35);
+            backdrop-filter: blur(18px) saturate(1.2);
+            -webkit-backdrop-filter: blur(18px) saturate(1.2);
+            padding: 5px 12px;
+            border-radius: 14px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        /* «Челка» для кнопок: общая тёмная пилюля вокруг всех трёх */
+        #tbButtons {
+            display: flex;
+            height: auto;
+            align-items: center;
+            gap: 4px;
+            padding: 3px;
+            background: rgba(0, 0, 0, 0.35);
+            backdrop-filter: blur(18px) saturate(1.2);
+            -webkit-backdrop-filter: blur(18px) saturate(1.2);
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            pointer-events: auto;
+        }
+        .tb-btn {
+            width: 26px;
+            height: 26px;
+            border: none;
+            border-radius: 6px;
+            background: transparent;
+            color: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: background 0.15s ease, color 0.15s ease;
+            padding: 0;
+        }
+        .tb-btn svg {
+            width: 14px;
+            height: 14px;
+            fill: none;
+            stroke: currentColor;
+            stroke-width: 1.2;
+            stroke-linecap: round;
+        }
+        .tb-btn:hover { background: rgba(255, 255, 255, 0.14); }
+        .tb-close:hover { background: #e81123; color: #fff; }
+        #tbIconRestore { display: none; }
+        body.frame-maximized #tbIconMax { display: none; }
+        body.frame-maximized #tbIconRestore { display: block; }
+
+        /* ── Ручки ресайза frameless-окна ── */
+        .resize-handle { display: none; position: fixed; z-index: 1300; }
+        body.frame-custom .resize-handle { display: block; }
+        body.frame-maximized .resize-handle { display: none !important; }
+        .rh-left   { top: 32px; left: 0;  bottom: 0; width: 5px; cursor: w-resize; }
+        .rh-right  { top: 32px; right: 0; bottom: 0; width: 5px; cursor: e-resize; }
+        .rh-top    { top: 0; left: 0; right: 0; height: 5px; cursor: n-resize; }
+        .rh-bottom { bottom: 0; left: 0; right: 0; height: 5px; cursor: s-resize; }
+        .rh-tl { top: 0; left: 0; width: 10px; height: 10px; cursor: nw-resize; }
+        .rh-tr { top: 0; right: 0; width: 10px; height: 10px; cursor: ne-resize; }
+        .rh-bl { bottom: 0; left: 0; width: 10px; height: 10px; cursor: sw-resize; }
+        .rh-br { bottom: 0; right: 0; width: 10px; height: 10px; cursor: se-resize; }
         
 
         /* ── Drag & Drop оверлей ── */
@@ -1896,6 +2019,17 @@
             color: rgba(255, 255, 255, 0.85);
         }
 
+        /* Скрытая вкладка Debug — раскрывается пятикратным тапом по жуку в «О программе» */
+        .settings-nav-item.settings-nav-hidden {
+            display: none;
+            animation: navReveal 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        @keyframes navReveal {
+            from { opacity: 0; transform: translateY(-6px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+
         .settings-nav-item.active {
             background: rgba(var(--accent-rgb), 0.14);
             color: rgba(255,255,255,0.92);
@@ -3183,9 +3317,10 @@
         .s-btn-row {
             display: flex;
             gap: 8px;
+            flex-wrap: wrap;
         }
 
-        .s-btn-row .s-btn { flex: 1; }
+        .s-btn-row .s-btn { flex: 1 1 160px; }
 
 
         /* Wallpaper grid */
@@ -4292,6 +4427,102 @@
             pointer-events: none;
             max-width: 360px;
         }
+
+        /* ══ Обратная связь: кнопка в углу + попап ══ */
+        #feedbackFab {
+            position: fixed;
+            right: 16px;
+            bottom: 46px; /* над статус-баром (34px) */
+            width: 38px;
+            height: 38px;
+            border-radius: 50%;
+            border: 1px solid rgba(255,255,255,0.12);
+            background: rgba(12, 14, 20, 0.55);
+            backdrop-filter: blur(14px) saturate(1.2);
+            -webkit-backdrop-filter: blur(14px) saturate(1.2);
+            color: rgba(255,255,255,0.6);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            z-index: 9999;
+            transition: background 0.18s, border-color 0.18s, color 0.18s, transform 0.15s;
+        }
+        #feedbackFab svg { width: 18px; height: 18px; }
+        #feedbackFab:hover {
+            background: rgba(var(--accent-rgb), 0.25);
+            border-color: rgba(var(--accent-rgb), 0.5);
+            color: rgba(255,255,255,0.95);
+            transform: translateY(-1px);
+        }
+        .feedback-popup {
+            position: fixed;
+            right: 16px;
+            bottom: 94px;
+            width: 300px;
+            background: rgba(15, 17, 24, 0.88);
+            backdrop-filter: blur(24px) saturate(1.3);
+            -webkit-backdrop-filter: blur(24px) saturate(1.3);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 14px;
+            padding: 16px;
+            z-index: 9998;
+            box-shadow: 0 12px 32px rgba(0,0,0,0.45);
+            display: none;
+            animation: flFeatIn 0.25s cubic-bezier(0.34, 1.2, 0.64, 1);
+            user-select: text;
+        }
+        .feedback-popup.open { display: block; }
+        .feedback-popup-title {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-family: 'Montserrat Alternates', sans-serif;
+            font-size: 13px;
+            font-weight: 700;
+            color: rgba(255,255,255,0.95);
+            margin-bottom: 8px;
+        }
+        .feedback-popup-title svg { width: 16px; height: 16px; color: rgba(var(--accent-rgb), 1); }
+        .feedback-popup-text {
+            font-family: 'Montserrat Alternates', sans-serif;
+            font-size: 11.5px;
+            line-height: 1.55;
+            color: rgba(255,255,255,0.6);
+            margin-bottom: 14px;
+        }
+        .feedback-popup-btns { display: flex; gap: 8px; }
+        .feedback-popup-open {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 9px 12px;
+            border: none;
+            border-radius: 9px;
+            background: rgba(var(--accent-rgb), 0.9);
+            color: #fff;
+            font-family: 'Montserrat Alternates', sans-serif;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+        .feedback-popup-open:hover { background: rgba(var(--accent-rgb), 1); }
+        .feedback-popup-open svg { width: 14px; height: 14px; }
+        .feedback-popup-close {
+            padding: 9px 14px;
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 9px;
+            background: transparent;
+            color: rgba(255,255,255,0.55);
+            font-family: 'Montserrat Alternates', sans-serif;
+            font-size: 12px;
+            cursor: pointer;
+            transition: background 0.15s, color 0.15s;
+        }
+        .feedback-popup-close:hover { background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.85); }
 
         .notification {
             position: relative;
@@ -5539,17 +5770,30 @@
         }
 
         /* ── Debug tab styles ── */
+        /* Группа строк инкапсулируется в карточку — так же, как s-card на других вкладках */
+        .dbg-card {
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.06);
+            border-radius: 12px;
+            padding: 12px 16px 8px;
+            flex-shrink: 0;
+        }
+
         .debug-section-title {
             font-family: 'Montserrat Alternates', sans-serif;
             font-size: 10px;
             font-weight: 700;
-            color: rgba(255,255,255,0.28);
+            color: rgba(255,255,255,0.35);
             letter-spacing: 1px;
             text-transform: uppercase;
-            padding: 12px 0 6px;
+            padding: 0 0 6px;
             border-bottom: 1px solid rgba(255,255,255,0.05);
-            margin-bottom: 6px;
+            margin-bottom: 2px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
         }
+        .debug-section-title svg { width: 12px; height: 12px; opacity: 0.7; }
 
         .debug-row {
             display: flex;
@@ -5565,17 +5809,74 @@
             font-family: 'Montserrat Alternates', sans-serif;
             font-size: 11px;
             color: rgba(255,255,255,0.4);
-            flex: 0 0 120px;
+            flex: 0 0 130px;
             padding-top: 2px;
         }
 
         .debug-value {
-            font-family: 'Courier New', monospace;
+            font-family: 'Consolas','Courier New', monospace;
             font-size: 11px;
             color: rgba(200,230,255,0.75);
             flex: 1;
             word-break: break-all;
             line-height: 1.5;
+        }
+
+        /* Значок-копирование: путь копируется в буфер по клику */
+        .debug-value.dbg-copy { cursor: pointer; transition: color 0.15s; border-radius: 4px; }
+        .debug-value.dbg-copy:hover { color: rgba(140,210,255,0.95); background: rgba(255,255,255,0.04); }
+        .debug-value.dbg-copy.copied { color: rgba(130,220,150,0.95); }
+
+        /* ── О программе ── */
+        .about-hero { align-items: center; text-align: center; gap: 6px; padding: 24px 18px; }
+        .about-logo {
+            width: 56px; height: 56px;
+            display: flex; align-items: center; justify-content: center;
+            border-radius: 14px;
+            overflow: hidden;
+            margin-bottom: 6px;
+            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+        }
+        .about-logo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+        .about-logo { cursor: pointer; transition: transform 0.15s ease; }
+        .about-logo:hover { transform: scale(1.05); }
+        .about-logo:active { transform: scale(0.97); }
+        .about-logo svg { width: 28px; height: 28px; }
+        .about-name {
+            font-family: 'Montserrat Alternates', sans-serif;
+            font-size: 17px; font-weight: 700;
+            color: rgba(255,255,255,0.92);
+            letter-spacing: 0.4px;
+        }
+        .about-version {
+            font-family: 'Consolas','Courier New', monospace;
+            font-size: 11px;
+            color: rgba(255,255,255,0.4);
+        }
+
+        .about-easter {
+            display: flex; flex-direction: column; align-items: center;
+            gap: 6px; padding: 6px 0 2px; flex-shrink: 0;
+        }
+        .about-bug {
+            width: 34px; height: 34px;
+            display: flex; align-items: center; justify-content: center;
+            background: transparent;
+            border: 1px solid transparent;
+            border-radius: 50%;
+            color: rgba(255,255,255,0.14);
+            cursor: pointer;
+            transition: color 0.2s, background 0.2s, transform 0.1s;
+        }
+        .about-bug svg { width: 16px; height: 16px; }
+        .about-bug:hover { color: rgba(255,255,255,0.3); }
+        .about-bug:active { transform: scale(0.9); }
+        .about-bug.unlocked { color: rgba(255,180,80,0.85); background: rgba(255,180,80,0.08); }
+        .about-bug-hint {
+            font-family: 'Montserrat Alternates', sans-serif;
+            font-size: 10px;
+            color: rgba(255,255,255,0.25);
+            min-height: 13px;
         }
 
         /* ── Share button in mods (hidden) ── */
@@ -5596,9 +5897,7 @@
             display: none;
             position: fixed;
             inset: 0;
-            background: rgba(6, 7, 10, 0.68);
-            backdrop-filter: blur(18px) saturate(1.1);
-            -webkit-backdrop-filter: blur(18px) saturate(1.1);
+            background: rgba(6, 7, 10, 0.38);
             z-index: 1300;
             align-items: center;
             justify-content: center;
@@ -5607,12 +5906,12 @@
         .fl-overlay.closing { animation: overlayFadeOut 0.25s ease forwards; }
         .fl-overlay.closing .fl-modal { animation: creOut 0.25s cubic-bezier(0.4, 0, 1, 1) forwards; }
 
-        /* Стеклянная панель в стиле настроек: скрим с блюром сзади,
-           полупрозрачный корпус — сквозь него видно размытые обои.
-           Свой backdrop-filter у .fl-modal НЕ даём (вложенные корни
-           блюра ломают друг друга — см. правила backdrop-root). */
+        /* Стеклянная панель в стиле настроек: полупрозрачный корпус с блюром —
+           сквозь него видно размытые обои (как у settings-panel). */
         .fl-modal {
-            background: rgba(15, 17, 24, 0.86);
+            background: rgba(15, 17, 24, 0.6);
+            backdrop-filter: blur(40px) saturate(1.3);
+            -webkit-backdrop-filter: blur(40px) saturate(1.3);
             border: 1px solid rgba(255,255,255,0.1);
             border-radius: 20px;
             width: min(520px, 94vw);
@@ -5719,12 +6018,11 @@
         .fl-welcome-logo {
             width: 66px; height: 66px;
             border-radius: 18px;
-            background: rgba(255,255,255,0.05);
-            border: 1px solid rgba(255,255,255,0.09);
+            overflow: hidden;
             display: flex; align-items: center; justify-content: center;
-            color: rgba(var(--accent-rgb), 0.95);
-            box-shadow: 0 10px 26px rgba(0,0,0,0.28), inset 0 1px 0 rgba(255,255,255,0.06);
+            box-shadow: 0 10px 26px rgba(0,0,0,0.28);
         }
+        .fl-welcome-logo img { width: 100%; height: 100%; object-fit: cover; display: block; }
         .fl-welcome-logo svg { width: 30px; height: 30px; }
         .fl-welcome-title {
             font-family: 'Montserrat Alternates', sans-serif;
@@ -5836,106 +6134,143 @@
             font-family: 'Montserrat Alternates', sans-serif;
             font-size: 11px; font-weight: 700;
             text-transform: uppercase; letter-spacing: 1.2px;
-            color: rgba(255,255,255,0.38);
+            color: rgba(255,255,255,0.5);
             margin-bottom: 14px;
         }
         .fl-features-title svg { width: 14px; height: 14px; color: rgba(var(--accent-rgb),0.9); }
         .fl-features-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 8px;
+            display: flex;
+            flex-direction: column;
+            gap: 7px;
         }
         .fl-feature-card {
-            background: rgba(255,255,255,0.04);
-            border: 1px solid rgba(255,255,255,0.07);
-            border-radius: 14px;
-            padding: 14px;
-            display: flex; flex-direction: column; gap: 6px;
-            transition: background 0.18s, border-color 0.18s;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 13px;
+            padding: 11px 13px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            transition: background 0.18s, border-color 0.18s, transform 0.18s;
+            animation: flFeatIn 0.34s cubic-bezier(0.34, 1.2, 0.64, 1) backwards;
+        }
+        .fl-feature-card:nth-child(1) { animation-delay: 0.02s; }
+        .fl-feature-card:nth-child(2) { animation-delay: 0.07s; }
+        .fl-feature-card:nth-child(3) { animation-delay: 0.12s; }
+        .fl-feature-card:nth-child(4) { animation-delay: 0.17s; }
+        .fl-feature-card:nth-child(5) { animation-delay: 0.22s; }
+        @keyframes flFeatIn {
+            from { opacity: 0; transform: translateY(8px); }
+            to   { opacity: 1; transform: translateY(0); }
         }
         .fl-feature-card:hover {
-            background: rgba(var(--accent-rgb),0.07);
-            border-color: rgba(var(--accent-rgb),0.28);
+            background: rgba(var(--accent-rgb),0.1);
+            border-color: rgba(var(--accent-rgb),0.32);
+            transform: translateY(-1px);
         }
         .fl-feature-icon {
-            width: 34px; height: 34px;
-            border-radius: 10px;
-            background: rgba(255,255,255,0.06);
+            width: 36px; height: 36px;
+            flex-shrink: 0;
+            border-radius: 11px;
+            background: rgba(var(--accent-rgb),0.14);
+            border: 1px solid rgba(var(--accent-rgb),0.24);
             display: flex; align-items: center; justify-content: center;
-            color: rgba(var(--accent-rgb),0.95);
-            margin-bottom: 2px;
+            color: rgba(var(--accent-rgb),1);
         }
-        .fl-feature-icon svg { width: 17px; height: 17px; }
+        .fl-feature-icon svg { width: 18px; height: 18px; }
+        .fl-feature-text { min-width: 0; }
         .fl-feature-name {
             font-family: 'Montserrat Alternates', sans-serif;
-            font-size: 12px; font-weight: 600;
-            color: rgba(255,255,255,0.88);
+            font-size: 12.5px; font-weight: 600;
+            color: rgba(255,255,255,0.95);
+            margin-bottom: 2px;
         }
         .fl-feature-desc {
             font-family: 'Montserrat Alternates', sans-serif;
-            font-size: 10px; color: rgba(255,255,255,0.4);
-            line-height: 1.5;
+            font-size: 10.5px; color: rgba(255,255,255,0.5);
+            line-height: 1.45;
         }
 
         /* Step 3: Wallpapers */
         .fl-wp-hint {
             font-family: 'Montserrat Alternates', sans-serif;
-            font-size: 11px; color: rgba(255,255,255,0.38);
+            font-size: 11px; color: rgba(255,255,255,0.45);
             margin: -8px 0 12px; line-height: 1.5;
         }
         .fl-wp-empty {
             font-family: 'Montserrat Alternates', sans-serif;
-            font-size: 12px; color: rgba(255,255,255,0.3);
-            text-align: center; padding: 20px 0;
+            font-size: 12px; color: rgba(255,255,255,0.35);
+            text-align: center; padding: 18px 0;
+            background: rgba(255,255,255,0.04);
+            border: 1px dashed rgba(255,255,255,0.12);
+            border-radius: 13px;
+            line-height: 1.6;
+        }
+        .fl-wp-empty code {
+            font-size: 11px;
+            background: rgba(255,255,255,0.08);
+            padding: 1px 6px; border-radius: 5px;
+            color: rgba(255,255,255,0.7);
         }
         .fl-wp-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(88px, 1fr));
-            gap: 8px;
-            max-height: 210px;
+            grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+            gap: 10px;
+            max-height: 264px;
             overflow-y: auto;
-            padding-right: 2px;
+            padding-right: 3px;
         }
         .fl-wp-card {
             display: flex; flex-direction: column;
-            align-items: center; gap: 6px;
+            gap: 6px;
             cursor: pointer;
+            animation: flFeatIn 0.34s cubic-bezier(0.34, 1.2, 0.64, 1) backwards;
         }
+        .fl-wp-card:nth-child(odd)  { animation-delay: 0.03s; }
+        .fl-wp-card:nth-child(even) { animation-delay: 0.09s; }
         .fl-wp-thumb {
-            width: 100%; aspect-ratio: 16/9;
-            border-radius: 10px;
+            width: 100%; aspect-ratio: 16/10;
+            border-radius: 12px;
             background: rgba(255,255,255,0.05);
             border: 2px solid rgba(255,255,255,0.08);
             background-size: cover; background-position: center;
             display: flex; align-items: center; justify-content: center;
-            font-size: 20px;
+            font-size: 22px;
             transition: border-color 0.18s, transform 0.15s, box-shadow 0.18s;
             position: relative;
             overflow: hidden;
         }
         .fl-wp-card:hover .fl-wp-thumb {
-            border-color: rgba(var(--accent-rgb), 0.45);
-            transform: scale(1.03);
+            border-color: rgba(var(--accent-rgb), 0.5);
+            transform: translateY(-2px) scale(1.02);
+            box-shadow: 0 8px 20px rgba(0,0,0,0.35);
         }
         .fl-wp-active .fl-wp-thumb {
-            border-color: rgba(var(--accent-rgb), 0.9);
-            box-shadow: 0 0 0 2px rgba(var(--accent-rgb), 0.22), 0 8px 18px rgba(0,0,0,0.3);
+            border-color: rgba(var(--accent-rgb), 0.95);
+            box-shadow: 0 0 0 2px rgba(var(--accent-rgb), 0.25), 0 8px 18px rgba(0,0,0,0.3);
         }
-        .fl-wp-none { color: rgba(255,255,255,0.25); font-size: 18px; }
-        .fl-wp-custom { font-size: 18px; border: 1px dashed rgba(255,255,255,0.18); background: rgba(255,255,255,0.03); color: rgba(255,255,255,0.45); }
+        .fl-wp-none { color: rgba(255,255,255,0.3); font-size: 20px; }
+        .fl-wp-custom { font-size: 20px; border: 1px dashed rgba(255,255,255,0.2); background: rgba(255,255,255,0.03); color: rgba(255,255,255,0.5); }
+        /* Галочка в углу — не заливает всю картинку */
         .fl-wp-check {
-            position: absolute; inset: 0;
-            background: rgba(var(--accent-rgb), 0.92);
+            position: absolute;
+            top: 6px; right: 6px;
+            width: 22px; height: 22px;
+            border-radius: 50%;
+            background: rgba(var(--accent-rgb), 0.95);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.4);
             display: flex; align-items: center; justify-content: center;
-            color: #241f18;
+            color: #fff;
         }
-        .fl-wp-check svg { width: 15px; height: 15px; }
+        .fl-wp-check svg { width: 12px; height: 12px; stroke-width: 3; }
         .fl-wp-name {
             font-family: 'Montserrat Alternates', sans-serif;
-            font-size: 10px; color: rgba(255,255,255,0.5);
+            font-size: 10.5px; color: rgba(255,255,255,0.55);
             text-align: center; max-width: 100%;
             overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+            transition: color 0.15s;
         }
+        .fl-wp-active .fl-wp-name { color: rgba(255,255,255,0.92); }
 
         /* Скроллбары визарда — как во всём приложении:
            5px, без стрелок, полупрозрачный бегунок */
@@ -6277,6 +6612,35 @@
     </style>
 </head>
 <body>
+    <!-- ── Свой тайтлбар (только frame-custom) ── -->
+    <div id="titlebar" data-tauri-drag-region>
+        <div id="tbDrag" data-tauri-drag-region>
+            <span id="tbTitle" data-tauri-drag-region>Arizona RP Launcher</span>
+        </div>
+        <div id="tbButtons">
+            <button id="tbMin" class="tb-btn" title="Свернуть" onclick="tbMinimize()">
+                <svg viewBox="0 0 12 12"><line x1="2" y1="6" x2="10" y2="6"/></svg>
+            </button>
+            <button id="tbMax" class="tb-btn" title="Развернуть" onclick="tbToggleMaximize()">
+                <svg id="tbIconMax" viewBox="0 0 12 12"><rect x="2.5" y="2.5" width="7" height="7" rx="1"/></svg>
+                <svg id="tbIconRestore" viewBox="0 0 12 12"><rect x="1.5" y="3.5" width="6" height="6" rx="1"/><path d="M4 3.5V2.5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1h-1"/></svg>
+            </button>
+            <button id="tbClose" class="tb-btn tb-close" title="Свернуть в трей" onclick="tbCloseToTray()">
+                <svg viewBox="0 0 12 12"><line x1="2.5" y1="2.5" x2="9.5" y2="9.5"/><line x1="9.5" y1="2.5" x2="2.5" y2="9.5"/></svg>
+            </button>
+        </div>
+    </div>
+
+    <!-- ── Ручки ресайза для frameless-окна ── -->
+    <div class="resize-handle rh-left" data-edge="left"></div>
+    <div class="resize-handle rh-right" data-edge="right"></div>
+    <div class="resize-handle rh-top" data-edge="top"></div>
+    <div class="resize-handle rh-bottom" data-edge="bottom"></div>
+    <div class="resize-handle rh-tl" data-edge="top-left"></div>
+    <div class="resize-handle rh-tr" data-edge="top-right"></div>
+    <div class="resize-handle rh-bl" data-edge="bottom-left"></div>
+    <div class="resize-handle rh-br" data-edge="bottom-right"></div>
+
     <!-- Drag & Drop оверлей -->
     <div id="drag-overlay">
         <div class="drag-icon">
@@ -6319,7 +6683,7 @@
                         <span>Launcher</span>
                         <div class="version-stable">
                             <span class="vs-arrow">ver</span>
-                            <span class="ver-num">v2.0.0 dev</span>
+                            <span class="ver-num">v2.0.0 rc1</span>
                         </div>
             </div>
         </div>
@@ -6455,7 +6819,10 @@
                     <span class="snav-icon"><i data-lucide="palette"></i></span> Лаунчер
                 </button>
                 <div class="settings-nav-divider"></div>
-                <button id="tabBtnDebug" class="settings-nav-item" role="tab" aria-selected="false" onclick="switchTab('debug')">
+                <button id="tabBtnAbout" class="settings-nav-item" role="tab" aria-selected="false" onclick="switchTab('about')">
+                    <span class="snav-icon"><i data-lucide="info"></i></span> О программе
+                </button>
+                <button id="tabBtnDebug" class="settings-nav-item settings-nav-hidden" role="tab" aria-selected="false" onclick="switchTab('debug')">
                     <span class="snav-icon"><i data-lucide="bug"></i></span> Debug
                 </button>
             </div>
@@ -6888,6 +7255,24 @@
                         </div>
                     </div>
 
+                    <div class="s-section" style="flex-shrink:0;">
+                        <div class="s-section-head">
+                            <span class="s-section-head-icon"><i data-lucide="panel-top"></i></span>
+                            <span class="s-section-title">Рамка окна</span>
+                        </div>
+                        <div class="s-section-body">
+                            <div style="padding:8px 16px 4px;">
+                                <div class="sb-pos-row" id="frameModeRow">
+                                    <button class="sb-pos-btn" data-frame="system" onclick="setWindowFrame('system')">Системная</button>
+                                    <button class="sb-pos-btn" data-frame="custom" onclick="setWindowFrame('custom')">Наша</button>
+                                </div>
+                            </div>
+                            <div style="padding:0 16px 8px;font-family:'Montserrat Alternates';font-size:10px;color:rgba(255,255,255,0.25);line-height:1.5;">
+                                Системная — стандартная рамка Windows. Наша — свой тайтлбар с кнопками (свернуть, развернуть, свернуть в трей) и скруглённые углы. Переключается сразу, без перезапуска.
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="s-section">
                         <div class="s-section-head">
                             <span class="s-section-head-icon"><i data-lucide="layout"></i></span>
@@ -6969,97 +7354,147 @@
 
                 </div>
 
+                <!-- О программе -->
+                <div id="aboutTab" class="settings-tab-content">
+
+                    <div class="s-card about-hero">
+                        <div class="about-logo" id="aboutLogo" title="Приветственный экран"
+                             onclick="openFirstLaunch()"><img src="app-icon.png" alt="Arizona RP Launcher"></div>
+                        <div class="about-name">Arizona RP Launcher</div>
+                        <div class="about-version">v2.0.0 rc1</div>
+                        <div class="s-card-desc" style="text-align:center;">
+                            Лаунчер для Arizona RP: патчи, параметры запуска, скрипты Moonloader и бэкапы конфига.
+                        </div>
+                    </div>
+
+                    <div class="s-card">
+                        <div class="s-card-title"><i data-lucide="link"></i> Ссылки</div>
+                        <div class="s-btn-row" style="margin-top:4px;">
+                            <button class="s-btn" onclick="openExternal('https://github.com/halfik24/ArizonaLauncher')"><i data-lucide="github"></i> GitHub лаунчера</button>
+                            <button class="s-btn" onclick="openExternal('https://github.com/halfik24/ArzLaunchRepo')"><i data-lucide="package"></i> Каталог скриптов</button>
+                        </div>
+                    </div>
+
+                    <div class="s-card">
+                        <div class="s-card-title"><i data-lucide="folder-open"></i> Файлы</div>
+                        <div class="s-card-desc">Папка данных: конфиг, бэкапы, лог работы лаунчера.</div>
+                        <div class="s-btn-row" style="margin-top:4px;">
+                            <button class="s-btn" onclick="openDataFolder()"><i data-lucide="folder"></i> Открыть папку данных</button>
+                            <button class="s-btn" onclick="openLogFile()"><i data-lucide="clipboard-list"></i> Открыть лог</button>
+                        </div>
+                    </div>
+
+                    <div class="about-easter">
+                        <button class="about-bug" id="aboutBugBtn" title="Жук" aria-label="Скрытое меню" onclick="aboutBugTap()">
+                            <i data-lucide="bug"></i>
+                        </button>
+                        <div class="about-bug-hint" id="aboutBugHint"></div>
+                    </div>
+
+                </div>
+
                 <!-- Debug -->
                 <div id="debugTab" class="settings-tab-content">
 
-                    <div class="debug-section-title"><i data-lucide="monitor"></i> Система</div>
-                    <div class="debug-row">
-                        <span class="debug-label">ОС</span>
-                        <span class="debug-value" id="dbgOsName">—</span>
-                    </div>
-                    <div class="debug-row">
-                        <span class="debug-label">Версия ОС</span>
-                        <span class="debug-value" id="dbgOsVersion">—</span>
-                    </div>
-                    <div class="debug-row">
-                        <span class="debug-label">Архитектура</span>
-                        <span class="debug-value" id="dbgArchitecture">—</span>
-                    </div>
-                    <div class="debug-row">
-                        <span class="debug-label">Python</span>
-                        <span class="debug-value" id="dbgPythonVersion">—</span>
+                    <div class="dbg-card">
+                        <div class="debug-section-title"><i data-lucide="monitor"></i> Система</div>
+                        <div class="debug-row">
+                            <span class="debug-label">ОС</span>
+                            <span class="debug-value" id="dbgOsName">—</span>
+                        </div>
+                        <div class="debug-row">
+                            <span class="debug-label">Версия ОС</span>
+                            <span class="debug-value" id="dbgOsVersion">—</span>
+                        </div>
+                        <div class="debug-row">
+                            <span class="debug-label">Архитектура</span>
+                            <span class="debug-value" id="dbgArchitecture">—</span>
+                        </div>
+                        <div class="debug-row">
+                            <span class="debug-label">Python</span>
+                            <span class="debug-value" id="dbgPythonVersion">—</span>
+                        </div>
                     </div>
 
-                    <div class="debug-section-title" style="margin-top:10px;"><i data-lucide="monitor"></i> Лаунчер</div>
-                    <div class="debug-row">
-                        <span class="debug-label">Версия приложения</span>
-                        <span class="debug-value" id="dbgAppVersion">v2.0.0 dev</span>
+                    <div class="dbg-card">
+                        <div class="debug-section-title"><i data-lucide="package"></i> Лаунчер</div>
+                        <div class="debug-row">
+                            <span class="debug-label">Версия приложения</span>
+                            <span class="debug-value" id="dbgAppVersion">v2.0.0 rc1</span>
+                        </div>
+                        <div class="debug-row">
+                            <span class="debug-label">Конфиг</span>
+                            <span class="debug-value dbg-copy" id="dbgConfigPath" data-copy="dbgConfigPath" onclick="copyDebugValue(this)" title="Нажми, чтобы скопировать">—</span>
+                        </div>
+                        <div class="debug-row">
+                            <span class="debug-label">Папка данных</span>
+                            <span class="debug-value dbg-copy" id="dbgDocsPath" data-copy="dbgDocsPath" onclick="copyDebugValue(this)" title="Нажми, чтобы скопировать">—</span>
+                        </div>
                     </div>
-                    <div class="debug-row">
-                        <span class="debug-label">Конфиг</span>
-                        <span class="debug-value" id="dbgConfigPath">—</span>
+
+                    <div class="dbg-card">
+                        <div class="debug-section-title"><i data-lucide="gamepad-2"></i> Игра</div>
+                        <div class="debug-row">
+                            <span class="debug-label">gta_sa.exe</span>
+                            <span class="debug-value dbg-copy" id="dbgGamePath" data-copy="dbgGamePath" onclick="copyDebugValue(this)" title="Нажми, чтобы скопировать">—</span>
+                        </div>
+                        <div class="debug-row">
+                            <span class="debug-label">Лаунчер AIR</span>
+                            <span class="debug-value dbg-copy" id="dbgLauncherPath" data-copy="dbgLauncherPath" onclick="copyDebugValue(this)" title="Нажми, чтобы скопировать">—</span>
+                        </div>
+                        <div class="debug-row">
+                            <span class="debug-label">Версия лаунчера</span>
+                            <span class="debug-value" id="dbgLauncherVersion">—</span>
+                        </div>
+                        <div class="debug-row">
+                            <span class="debug-label">Патчи</span>
+                            <span class="debug-value dbg-copy" id="dbgPatchesPath" data-copy="dbgPatchesPath" onclick="copyDebugValue(this)" title="Нажми, чтобы скопировать">—</span>
+                        </div>
+                        <div class="debug-row">
+                            <span class="debug-label">Бэкапы патчей</span>
+                            <span class="debug-value" id="dbgBackupsCount">—</span>
+                        </div>
                     </div>
-                    <div class="debug-row">
-                        <span class="debug-label">Папка данных</span>
-                        <span class="debug-value" id="dbgDocsPath">—</span>
+
+                    <div class="dbg-card">
+                        <div class="debug-section-title"><i data-lucide="user"></i> Профили и настройки</div>
+                        <div class="debug-row">
+                            <span class="debug-label">Профили</span>
+                            <span class="debug-value" id="dbgProfilesCount">—</span>
+                        </div>
+                        <div class="debug-row">
+                            <span class="debug-label">Последний никнейм</span>
+                            <span class="debug-value" id="dbgLastNickname">—</span>
+                        </div>
+                        <div class="debug-row">
+                            <span class="debug-label">Последний сервер</span>
+                            <span class="debug-value" id="dbgLastServer">—</span>
+                        </div>
+                        <div class="debug-row">
+                            <span class="debug-label">Память (RAM)</span>
+                            <span class="debug-value" id="dbgMemory">—</span>
+                        </div>
+                        <div class="debug-row">
+                            <span class="debug-label">Параметры запуска</span>
+                            <span class="debug-value" id="dbgLaunchParams">—</span>
+                        </div>
                     </div>
-                    <div style="display:flex;gap:8px;margin-top:8px;flex-shrink:0;">
+
+                    <div class="dbg-card">
+                        <div class="debug-section-title"><i data-lucide="moon"></i> Moonloader</div>
+                        <div class="debug-row">
+                            <span class="debug-label">Статус папки</span>
+                            <span class="debug-value" id="dbgMoonloaderStatus">—</span>
+                        </div>
+                        <div class="debug-row">
+                            <span class="debug-label">Скриптов установлено</span>
+                            <span class="debug-value" id="dbgMoonloaderScripts">—</span>
+                        </div>
+                    </div>
+
+                    <div class="s-btn-row" style="flex-shrink:0;">
                         <button class="s-btn" style="flex:1;" onclick="openDataFolder()"><i data-lucide="folder-open"></i> Открыть папку данных</button>
                         <button class="s-btn" style="flex:1;" onclick="openLogFile()"><i data-lucide="clipboard-list"></i> Открыть лог</button>
-                    </div>
-
-                    <div class="debug-section-title" style="margin-top:10px;"><i data-lucide="gamepad-2"></i> Игра</div>
-                    <div class="debug-row">
-                        <span class="debug-label">gta_sa.exe</span>
-                        <span class="debug-value" id="dbgGamePath">—</span>
-                    </div>
-                    <div class="debug-row">
-                        <span class="debug-label">Лаунчер AIR</span>
-                        <span class="debug-value" id="dbgLauncherPath">—</span>
-                    </div>
-                    <div class="debug-row">
-                        <span class="debug-label">Версия лаунчера</span>
-                        <span class="debug-value" id="dbgLauncherVersion">—</span>
-                    </div>
-                    <div class="debug-row">
-                        <span class="debug-label">Патчи</span>
-                        <span class="debug-value" id="dbgPatchesPath">—</span>
-                    </div>
-                    <div class="debug-row">
-                        <span class="debug-label">Бэкапы патчей</span>
-                        <span class="debug-value" id="dbgBackupsCount">—</span>
-                    </div>
-
-                    <div class="debug-section-title" style="margin-top:10px;"><i data-lucide="user"></i> Профили и настройки</div>
-                    <div class="debug-row">
-                        <span class="debug-label">Профили</span>
-                        <span class="debug-value" id="dbgProfilesCount">—</span>
-                    </div>
-                    <div class="debug-row">
-                        <span class="debug-label">Последний никнейм</span>
-                        <span class="debug-value" id="dbgLastNickname">—</span>
-                    </div>
-                    <div class="debug-row">
-                        <span class="debug-label">Последний сервер</span>
-                        <span class="debug-value" id="dbgLastServer">—</span>
-                    </div>
-                    <div class="debug-row">
-                        <span class="debug-label">Память (RAM)</span>
-                        <span class="debug-value" id="dbgMemory">—</span>
-                    </div>
-                    <div class="debug-row">
-                        <span class="debug-label">Параметры запуска</span>
-                        <span class="debug-value" id="dbgLaunchParams">—</span>
-                    </div>
-
-                    <div class="debug-section-title" style="margin-top:10px;"><i data-lucide="moon"></i> Moonloader</div>
-                    <div class="debug-row">
-                        <span class="debug-label">Статус папки</span>
-                        <span class="debug-value" id="dbgMoonloaderStatus">—</span>
-                    </div>
-                    <div class="debug-row">
-                        <span class="debug-label">Скриптов установлено</span>
-                        <span class="debug-value" id="dbgMoonloaderScripts">—</span>
                     </div>
 
                 </div>
@@ -7519,6 +7954,27 @@
         <!-- Контейнер уведомлений -->
         <div id="notificationContainer" aria-live="polite" role="status"></div>
 
+        <!-- Обратная связь: кнопка в углу + попап с описанием формы -->
+        <button id="feedbackFab" title="Обратная связь" onclick="toggleFeedbackPopup()">
+            <i data-lucide="message-circle-question"></i>
+        </button>
+        <div id="feedbackPopup" class="feedback-popup">
+            <div class="feedback-popup-title">
+                <i data-lucide="message-circle-question"></i> Обратная связь
+            </div>
+            <div class="feedback-popup-text">
+                Форма обращения к разработчику. Здесь можно сообщить о проблеме
+                в лаунчере или предложить идею — разберёмся и постараемся помочь.
+                Откроется в вашем браузере, заполнение займёт пару минут.
+            </div>
+            <div class="feedback-popup-btns">
+                <button class="feedback-popup-open" onclick="openFeedbackForm()">
+                    <i data-lucide="external-link"></i> Открыть форму
+                </button>
+                <button class="feedback-popup-close" onclick="toggleFeedbackPopup()">Закрыть</button>
+            </div>
+        </div>
+
     </div>
 
     <script>
@@ -7619,6 +8075,31 @@
             window.open(url, '_blank');
         }
 
+        // ══════════════════════════════════════════════
+        //  ОБРАТНАЯ СВЯЗЬ — кнопка в углу + Google Forms
+        // ══════════════════════════════════════════════
+        const FEEDBACK_FORM_URL = 'https://forms.gle/R3CW1GowSZBcey9B6';
+
+        function toggleFeedbackPopup() {
+            const popup = document.getElementById('feedbackPopup');
+            if (!popup) return;
+            popup.classList.toggle('open');
+            if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
+        }
+
+        function openFeedbackForm() {
+            openExternal(FEEDBACK_FORM_URL);
+            toggleFeedbackPopup();
+        }
+
+        // Закрытие попапа по клику вне его
+        document.addEventListener('mousedown', (e) => {
+            const popup = document.getElementById('feedbackPopup');
+            if (!popup || !popup.classList.contains('open')) return;
+            if (popup.contains(e.target) || e.target.closest('#feedbackFab')) return;
+            popup.classList.remove('open');
+        });
+
         /** Служебные ответы бэка, которые не стоит показывать пользователю сырыми. */
         function apiMsg(msg) {
             if (msg === 'Not implemented' || msg === 'Not implemented yet') return 'Функция пока не реализована';
@@ -7704,7 +8185,7 @@
                 item.innerHTML = `
                     <div class="profile-icon">${p.icon || '<i data-lucide="user"></i>'}</div>
                     <div class="profile-info">
-                        <div class="profile-name">${p.name}</div>
+                        <div class="profile-name">${escapeHtml(p.name)}</div>
                         <div class="profile-meta">${meta}</div>
                     </div>
                     ${isActive ? '<span class="profile-active-badge"><i data-lucide="check"></i> Активен</span>' : ''}
@@ -7983,6 +8464,7 @@
         };
 
         async function init() {
+            try {
             perfMark('init start');
 
             startBtn.addEventListener('click', handleStartGame);
@@ -7992,6 +8474,7 @@
             setCdnBtns(document.getElementById('cdnInput')?.value || '0,0,0');
             cdnInitReels();
             memInit();
+            applyDebugVisibility();   // вкладка Debug скрыта, пока жук не тапнут 5 раз
             perfMark('events bound');
 
             await initLauncherSettings();
@@ -8007,12 +8490,20 @@
 
             checkLauncherUpdate();
             setTimeout(() => checkPatchesStatus(), 500);
+            // Первый запуск: путь к игре не настроен — открываем онбординг
+            // (в Python это делал main.py:3371 через evaluate_js)
+            setTimeout(() => _maybeStartFirstLaunch(), 300);
 
             setInterval(loadServers, 300000);
             // Примечание: interval ID не хранится намеренно — loadServers
             // выполняется регулярно для обновления онлайна серверов.
             // Внутри loadServers не затирается выбор пользователя (updateServerSelect
             // вызывается только если data changed).
+            } catch (e) {
+                console.error('init() failed:', e);
+                // Окно уже показано — просто сообщаем пользователю, UI остаётся рабочим
+                try { showNotification('Ошибка инициализации: ' + e.message, 'error'); } catch (_) {}
+            }
         }
 
         async function loadInitData() {
@@ -8113,7 +8604,7 @@
                                         ${news.date ? `<div class="news-item-date">${escapeHtml(news.date)}</div>` : ''}
                                         <div class="news-item-link-hint"><i data-lucide="link"></i> Открыть релиз на GitHub</div>`;
                                     newsItem.addEventListener('click', () => {
-                                        openExternal('https://github.com/worteng/ArizonaLauncher/releases');
+                                        openExternal('https://github.com/halfik24/ArizonaLauncher/releases');
                                     });
                                     launcherNewsDiv.appendChild(newsItem);
                                 });
@@ -8328,7 +8819,7 @@
                             <div class="news-item-link-hint"><i data-lucide="link"></i> Открыть релиз на GitHub</div>
                         `;
                         newsItem.addEventListener('click', () => {
-                            openExternal('https://github.com/worteng/ArizonaLauncher/releases');
+                            openExternal('https://github.com/halfik24/ArizonaLauncher/releases');
                         });
                         launcherNewsDiv.appendChild(newsItem);
                     });
@@ -8792,6 +9283,9 @@
             document.querySelector('.right-panel').style.display = 'none';
             const modal = document.getElementById('modsModal');
             modal.style.display = 'flex';
+            // Пилюля кнопок окна уезжает влево с анимацией, чтобы не
+            // перекрывать шапку модалки (крестик и заголовок)
+            document.body.classList.add('tb-shifted');
             if (typeof lucide !== 'undefined') refreshLucideIcons();
             // пилюли сразу на месте (после lucide — чтобы ширины кнопок были финальные)
             _modsMoveIndicator(true);
@@ -8805,6 +9299,7 @@
 
         function closeModsModal() {
             const modal = document.getElementById('modsModal');
+            document.body.classList.remove('tb-shifted');
             // 440мс = анимации modsSink (0.4s) + запас на кадр
             _closeWithAnim(modal, () => {
                 modal.style.display = 'none';
@@ -9001,22 +9496,26 @@
                     const icon = EXT_ICONS[script.ext] || '<i data-lucide="file-text"></i>';
                     const item = document.createElement('div');
                     item.className = 'ml-installed-card';
+                    // Имя файла может содержать кавычки/угловые — экранируем
+                    // и для onclick встраиваем через JSON.stringify
+                    const sName = escapeHtml(script.name);
+                    const sNameJs = JSON.stringify(script.name);
                     item.innerHTML = `
                         <div class="ml-installed-icon">${icon}</div>
                         <div class="ml-installed-info">
-                            <div class="ml-installed-name">${script.name}</div>
+                            <div class="ml-installed-name">${sName}</div>
                             <div class="ml-installed-meta">.${script.ext} · ${script.enabled ? '<i data-lucide="play" class="ml-status-icon active"></i> Активен' : '<i data-lucide="circle" class="ml-status-icon"></i> Отключён'}</div>
                         </div>
                         <div class="ml-installed-actions">
                             <button class="mods-item-toggle ${script.enabled ? 'on' : ''}"
-                                    data-script="${script.name}"
+                                    data-script="${sName}"
                                     data-enabled="${script.enabled}"
                                     title="${script.enabled ? 'Выключить' : 'Включить'}"
                                     onclick="toggleMoonloaderScript(this)">
                             </button>
                             <button class="mods-item-delete"
-                                    title="Удалить ${script.name}"
-                                    onclick="deleteMoonloaderScript('${script.name}', this)"><i data-lucide="trash-2"></i></button>
+                                    title="Удалить ${sName}"
+                                    onclick="deleteMoonloaderScript(${sNameJs}, this)"><i data-lucide="trash-2"></i></button>
                         </div>
                     `;
                     pane.appendChild(item);
@@ -9102,8 +9601,8 @@
 
         async function openMoonloaderFolder() {
             if (!window.pywebview) return;
-            const result = await window.pywebview.api.open_moonloader_folder();
-            if (!result.success) showNotification(result.message, 'error');
+            const result = await window.pywebview.api.open_moonloader_folder().catch(() => null);
+            if (!result || !result.success) showNotification(result?.message || 'Не удалось открыть папку', 'error');
         }
 
         // -- Каталог с GitHub --
@@ -9158,7 +9657,7 @@
                 } catch(e) {}
                 if (!window._mlLibCatalog) {
                     try {
-                        const resp = await fetch('https://raw.githubusercontent.com/worteng/ArzLaunchRepo/main/libraries.txt', { cache: 'no-store' });
+                        const resp = await fetch('https://raw.githubusercontent.com/halfik24/ArzLaunchRepo/main/libraries.txt', { cache: 'no-store' });
                         if (resp.ok) window._mlLibCatalog = parsConfigsTxt(await resp.text());
                     } catch(e) {}
                 }
@@ -9324,7 +9823,7 @@
         }
 
         // =================== БИБЛИОТЕКИ ===================
-        const LIB_CATALOG_URL = 'https://raw.githubusercontent.com/worteng/ArzLaunchRepo/main/libraries.txt';
+        const LIB_CATALOG_URL = 'https://raw.githubusercontent.com/halfik24/ArzLaunchRepo/main/libraries.txt';
 
         window._libLoaded     = false;
         window._libInstalled  = [];
@@ -10397,7 +10896,7 @@
 
             if (!items) {
                 try {
-                    const resp = await fetch('https://raw.githubusercontent.com/worteng/ArizonaLauncher/main/others.txt', { cache: 'no-store' });
+                    const resp = await fetch('https://raw.githubusercontent.com/halfik24/ArzLaunchRepo/main/others.txt', { cache: 'no-store' });
                     if (resp.ok) items = parsConfigsTxt(await resp.text());
                     else lastError = `HTTP ${resp.status}`;
                 } catch(e) { lastError = e.message; }
@@ -10441,9 +10940,9 @@
                     card.innerHTML = `
                         <span class="mods-item-icon" style="font-size:20px;margin-top:2px;">${item.icon || '<i data-lucide="package"></i>'}</span>
                         <div class="mods-item-info">
-                            <div class="mods-item-name">${item.name}</div>
-                            <div class="mods-item-sub" style="margin-bottom:4px;">от ${item.author || '?'} · ${item.tag || ''}</div>
-                            <div style="font-family:'Montserrat Alternates';font-size:11px;color:rgba(255,255,255,0.45);line-height:1.5;">${item.description || ''}</div>
+                            <div class="mods-item-name">${escapeHtml(item.name)}</div>
+                            <div class="mods-item-sub" style="margin-bottom:4px;">от ${escapeHtml(item.author || '?')} · ${escapeHtml(item.tag || '')}</div>
+                            <div style="font-family:'Montserrat Alternates';font-size:11px;color:rgba(255,255,255,0.45);line-height:1.5;">${escapeHtml(item.description || '')}</div>
                             <div id="otherInstStatus_${idx}" style="font-family:'Montserrat Alternates';font-size:11px;min-height:14px;margin-top:4px;${installed ? 'color:rgba(100,220,140,0.8)' : ''}">
                                 ${installed ? '<i data-lucide="check-circle"></i> Установлено' : ''}
                             </div>
@@ -10495,7 +10994,7 @@
             }
         }
         // ---- ПРЕСЕТЫ ARIZONAPATCHES ----
-        const CONFIGS_TXT_URL = 'https://raw.githubusercontent.com/worteng/ArizonaLauncher/main/configs.txt';
+        const CONFIGS_TXT_URL = 'https://raw.githubusercontent.com/halfik24/ArzLaunchRepo/main/configs.txt';
 
         /** Русское склонение: 1 конфиг, 2 конфига, 5 конфигов (11-14 — конфигов).
          *  Для неправильных слов передай все формы через '|': 'настройк|настройки|настроек'. */
@@ -10795,13 +11294,13 @@
                     <div class="mods-card-header">
                         <span class="mods-card-icon">${preset.icon || '<i data-lucide="shield"></i>'}</span>
                         <div class="mods-card-meta">
-                            <div class="mods-card-name">${preset.name}</div>
-                            <div class="mods-card-author">от ${preset.author || 'Community'}</div>
+                            <div class="mods-card-name">${escapeHtml(preset.name)}</div>
+                            <div class="mods-card-author">от ${escapeHtml(preset.author || 'Community')}</div>
                         </div>
                     </div>
-                    <div class="mods-card-desc">${preset.description}</div>
+                    <div class="mods-card-desc">${escapeHtml(preset.description || '')}</div>
                     <div class="mods-card-footer">
-                        <span class="mods-card-tag">${preset.tag || 'Конфиг'}</span>
+                        <span class="mods-card-tag">${escapeHtml(preset.tag || 'Конфиг')}</span>
                         <button class="mods-install-btn" id="installBtn_${idx}" onclick="installPatchPreset(${idx}, this)">
                             <i data-lucide="download"></i> Установить
                         </button>
@@ -11279,12 +11778,21 @@
                     if (installType === 'upgrade_to_v8') {
                         version = 'v8';
                     }
-                    await window.pywebview.api.start_launcher_install(_installFolder, version, installType);
+                    const res = await window.pywebview.api.start_launcher_install(_installFolder, version, installType);
+                    // Бэкенд может сразу ответить отказом (заглушка, нет сети,
+                    // нет прав) — иначе модалка зависает на «Подождите...»
+                    if (!res || res.success === false) {
+                        const msg = (res && res.message) || 'Установка недоступна';
+                        _installModalProgressCb && _installModalProgressCb({ stage: 'error', message: msg, progress: 0 });
+                    }
                 }
             } catch(e) {
                 showNotification('Ошибка запуска установки', 'error');
-                document.getElementById('installCancelBtn').disabled = false;
-                document.getElementById('installCancelBtn').textContent = 'Закрыть';
+                _installModalProgressCb && _installModalProgressCb({
+                    stage: 'error',
+                    message: (e && e.message) || String(e),
+                    progress: 0
+                });
             }
         }
 
@@ -11440,8 +11948,12 @@
                 launch:  { btn: 'tabBtnLaunch',  content: 'launchTab',   title: '<i data-lucide="rocket"></i> Параметры запуска' },
                 import:  { btn: 'tabBtnImport',  content: 'importTab',   title: '<i data-lucide="package"></i> Импорт / Экспорт' },
                 launcher:{ btn: 'tabBtnLauncher',content: 'launcherTab', title: '<i data-lucide="palette"></i> Лаунчер' },
+                about:   { btn: 'tabBtnAbout',   content: 'aboutTab',    title: '<i data-lucide="info"></i> О программе' },
                 debug:   { btn: 'tabBtnDebug',   content: 'debugTab',    title: '<i data-lucide="bug"></i> Debug' },
             };
+            // На вкладках без сохраняемых настроек кнопка внизу панели не нужна
+            const saveBtn = document.querySelector('.settings-body > .save-btn');
+            if (saveBtn) saveBtn.style.display = (tabName === 'debug' || tabName === 'about') ? 'none' : '';
             const t = tabMap[tabName];
             if (t) {
                 const btn = document.getElementById(t.btn);
@@ -11459,6 +11971,78 @@
                 if (tabName === 'import') loadBackupsList();
                 if (tabName === 'debug')  loadDebugInfo();
                 if (tabName === 'patches') checkPatchesStatus();
+                if (tabName === 'about')  _renderAboutBug();
+            }
+        }
+
+        // ---- О программе: скрытая вкладка Debug ----
+
+        const _DEBUG_UNLOCK_KEY = 'az_debug_tab_unlocked';
+        let _bugTaps = 0;          // тапы в текущей серии
+        let _bugTapTimer = null;   // сброс серии, если тапали слишком медленно
+
+        function _isDebugUnlocked() {
+            try { return localStorage.getItem(_DEBUG_UNLOCK_KEY) === '1'; } catch (e) { return false; }
+        }
+
+        /** Показывает/прячет вкладку Debug в сайдбаре (по флагу из localStorage). */
+        function applyDebugVisibility() {
+            const btn = document.getElementById('tabBtnDebug');
+            if (btn) btn.classList.toggle('settings-nav-hidden', !_isDebugUnlocked());
+            _renderAboutBug();
+        }
+
+        /** Состояние жука на вкладке «О программе»: подсветка, если Debug уже открыт. */
+        function _renderAboutBug() {
+            const bug = document.getElementById('aboutBugBtn');
+            if (bug) bug.classList.toggle('unlocked', _isDebugUnlocked());
+        }
+
+        /** Серия из 5 тапов по жуку: 1-4 — таймер обратного отсчёта, 5-й — переключение. */
+        function aboutBugTap() {
+            clearTimeout(_bugTapTimer);
+            _bugTaps++;
+            const hint = document.getElementById('aboutBugHint');
+            const remaining = 5 - _bugTaps;
+
+            if (_bugTaps >= 5) {
+                _bugTaps = 0;
+                const nowUnlocked = !_isDebugUnlocked();
+                try { localStorage.setItem(_DEBUG_UNLOCK_KEY, nowUnlocked ? '1' : '0'); } catch (e) {}
+                applyDebugVisibility();
+                if (hint) hint.textContent = nowUnlocked ? 'Debug-вкладка включена' : 'Debug-вкладка скрыта';
+                showNotification(nowUnlocked
+                    ? '<i data-lucide="bug"></i> Debug-вкладка включена'
+                    : '<i data-lucide="bug"></i> Debug-вкладка скрыта', 'info');
+                if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
+                return;
+            }
+
+            if (hint) hint.textContent = 'Ещё ' + remaining + '…';
+            // Серия обрывается, если между тапами прошло больше 1.5с
+            _bugTapTimer = setTimeout(() => {
+                _bugTaps = 0;
+                if (hint) hint.textContent = '';
+            }, 1500);
+        }
+
+        /** Клик по пути в Debug — копирование в буфер обмена. */
+        function copyDebugValue(el) {
+            const text = (el.textContent || '').trim();
+            if (!text || text === '—') return;
+            const done = () => {
+                el.classList.add('copied');
+                setTimeout(() => el.classList.remove('copied'), 900);
+            };
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(text).then(done).catch(() => {});
+            } else {
+                const ta = document.createElement('textarea');
+                ta.value = text;
+                document.body.appendChild(ta);
+                ta.select();
+                try { document.execCommand('copy'); done(); } catch (e) {}
+                ta.remove();
             }
         }
 
@@ -11619,7 +12203,7 @@
                 container.innerHTML = '<div class="bk-empty">Список бэкапов доступен только в приложении</div>';
                 return;
             }
-            const list = await window.pywebview.api.list_patches_backups();
+            const list = await window.pywebview.api.list_patches_backups().catch(() => null);
             if (!list || list.length === 0) {
                 container.innerHTML = '<div class="bk-empty">Бэкапов пока нет — они появятся после первого сохранения, импорта или восстановления</div>';
                 return;
@@ -11684,7 +12268,7 @@
                 btn._armed = false;
                 clearTimeout(btn._armTimer);
                 btn.disabled = true;
-                const result = await window.pywebview.api.delete_patches_backup(filename);
+                const result = await window.pywebview.api.delete_patches_backup(filename).catch(e => ({ success: false, message: e.message }));
                 if (result.success) {
                     const row = btn.closest('.bk-row');
                     if (row) row.remove();
@@ -11718,7 +12302,7 @@
                 showNotification('Доступно только в приложении', 'error');
                 return;
             }
-            const result = await window.pywebview.api.preview_patches_backup(filename);
+            const result = await window.pywebview.api.preview_patches_backup(filename).catch(e => ({ success: false, message: e.message }));
             if (!result.success) {
                 showNotification('Ошибка: ' + apiMsg(result.message), 'error');
                 return;
@@ -12095,7 +12679,9 @@
         }
 
         async function clearBgImage() {
-            launcherSettings.bg_image = null;
+            // '' = «пользователь явно сбросил фон» — чтобы при следующем
+            // старте дефолтные обои («10») снова не навязывались
+            launcherSettings.bg_image = '';
             launcherSettings.bg_data  = null;
             applyLauncherSettings();
             renderWallpaperGrid();
@@ -12307,6 +12893,14 @@
             await loadWallpapers();
             perfMark('  loadWallpapers done');
 
+            // Дефолтные обои «10» — если пользователь пока ничего не выбирал
+            // (bg_image === undefined/null, но не '' — это явный сброс)
+            if ((launcherSettings.bg_image == null) && !launcherSettings.bg_data) {
+                const defWp = _wallpapers.find(w =>
+                    String(w.filename).replace(/\.[^.]+$/, '') === '10');
+                if (defWp) applyLocalWallpaper(defWp);
+            }
+
             applyLauncherSettingsFromObj(launcherSettings);
             perfMark('  applyLauncherSettings done');
 
@@ -12329,15 +12923,169 @@
                 const input = document.getElementById('windowTitleInput');
                 if (input) input.value = winTitle;
             }
+
+            // Рамка окна: применяем сохранённый режим и вешаем обработчики
+            try {
+                if (window.pywebview && window.pywebview.api.get_window_frame) {
+                    const fr = await window.pywebview.api.get_window_frame();
+                    applyFrameMode(fr && fr.success ? fr.mode : 'system');
+                } else {
+                    applyFrameMode('system');
+                }
+            } catch(e) { applyFrameMode('system'); }
+            _bindResizeHandles();
+            _bindTitlebarDblClick();
+            _bindWindowStateEvents();
+            _syncMaxState();
         }
 
         async function saveWindowTitle(title) {
             try {
                 if (window.pywebview && window.pywebview.api.set_window_title) {
                     await window.pywebview.api.set_window_title(title || 'Arizona RP Launcher');
+                    launcherSettings.window_title = title;
+                    const t = document.getElementById('tbTitle');
+                    if (t) t.textContent = title || 'Arizona RP Launcher';
                     showNotification('<i data-lucide="check"></i> Заголовок обновлён', 'success');
                 }
             } catch(e) { console.error('saveWindowTitle error:', e); }
+        }
+
+        // ── Рамка окна (system / custom) ──
+        let _windowFrameMode = 'system';
+
+        function applyFrameMode(mode) {
+            _windowFrameMode = (mode === 'custom') ? 'custom' : 'system';
+            launcherSettings.window_frame = _windowFrameMode;
+            document.body.classList.toggle('frame-custom', _windowFrameMode === 'custom');
+            const btns = document.querySelectorAll('.sb-pos-btn[data-frame]');
+            for (let i = 0; i < btns.length; i++) {
+                btns[i].classList.toggle('active', btns[i].dataset.frame === _windowFrameMode);
+            }
+            // Заголовок в тайтлбаре
+            const t = document.getElementById('tbTitle');
+            if (t) {
+                t.textContent = (launcherSettings.window_title && launcherSettings.window_title.trim())
+                    ? launcherSettings.window_title.trim() : 'Arizona RP Launcher';
+            }
+        }
+
+        async function setWindowFrame(mode) {
+            applyFrameMode(mode);
+            try {
+                if (window.pywebview && window.pywebview.api.set_window_frame) {
+                    const r = await window.pywebview.api.set_window_frame(mode);
+                    if (r && r.success) {
+                        showNotification('<i data-lucide="check"></i> Рамка окна: ' + (mode === 'custom' ? 'наша' : 'системная'), 'success');
+                    }
+                }
+            } catch(e) { console.error('setWindowFrame error:', e); }
+        }
+
+        // ── Кнопки своего тайтлбара ──
+        function tbMinimize() {
+            if (window.pywebview && window.pywebview.api.minimize_window) {
+                window.pywebview.api.minimize_window();
+            }
+        }
+        async function tbToggleMaximize() {
+            try {
+                if (window.pywebview && window.pywebview.api.toggle_maximize) {
+                    await window.pywebview.api.toggle_maximize();
+                    await _syncMaxState();
+                }
+            } catch(e) { console.error('tbToggleMaximize error:', e); }
+        }
+        function tbCloseToTray() {
+            if (window.pywebview && window.pywebview.api.minimize_to_tray) {
+                window.pywebview.api.minimize_to_tray();
+            } else if (window.pywebview && window.pywebview.api.hide_window) {
+                window.pywebview.api.hide_window();
+            }
+        }
+        async function _syncMaxState() {
+            try {
+                if (window.pywebview && window.pywebview.api.is_maximized) {
+                    const r = await window.pywebview.api.is_maximized();
+                    document.body.classList.toggle('frame-maximized', !!(r && r.maximized));
+                }
+            } catch(e) {}
+        }
+
+        // Ручки ресайза frameless-окна
+        function _bindResizeHandles() {
+            const handles = document.querySelectorAll('.resize-handle');
+            for (let i = 0; i < handles.length; i++) {
+                (function (el) {
+                    el.addEventListener('mousedown', function (ev) {
+                        if (_windowFrameMode !== 'custom') return;
+                        ev.preventDefault();
+                        if (window.pywebview && window.pywebview.api.start_resize) {
+                            window.pywebview.api.start_resize(el.dataset.edge);
+                        }
+                    });
+                })(handles[i]);
+            }
+        }
+
+        // Перетаскивание окна зажатым фоном + dblclick = развернуть
+        function _bindTitlebarDblClick() {
+            const tb = document.getElementById('titlebar');
+            if (tb) {
+                tb.addEventListener('dblclick', function (ev) {
+                    if (ev.target.closest('.tb-btn')) return;
+                    if (_windowFrameMode === 'custom') tbToggleMaximize();
+                });
+            }
+            // Интерактивные зоны — тянуть окно от них нельзя
+            const INTERACTIVE = 'button, input, select, textarea, label, a, ' +
+                '.left-panel, .right-panel, .settings-panel, .status-bar, ' +
+                '#profilesHoverWidget, #toastContainer, .modal, .cs-dropdown, ' +
+                '.resize-handle, #tbButtons, .launch-item, .wp-picker-list, ' +
+                '.notification, #notificationContainer, ' +
+                // Карточки каталогов/модов — div'ы с click-обработчиком
+                '.ml-catalog-card, .mods-item, .ml-installed-card, ' +
+                '.ml-card-preview, .lib-card, .script-detail-overlay';
+            function isBackground(el) {
+                return el && !el.closest(INTERACTIVE);
+            }
+            // Drag — только после реального движения курсора (порог 5px).
+            // Иначе start_dragging на mousedown «съедал» обычные клики по
+            // div-элементам с обработчиком (уведомления, карточки каталога).
+            let _dragPending = null;
+            document.addEventListener('mousedown', function (ev) {
+                if (_windowFrameMode !== 'custom' || ev.button !== 0) return;
+                if (!isBackground(ev.target)) { _dragPending = null; return; }
+                _dragPending = { x: ev.clientX, y: ev.clientY };
+            });
+            document.addEventListener('mousemove', function (ev) {
+                if (!_dragPending) return;
+                if (!(ev.buttons & 1)) { _dragPending = null; return; }
+                const dx = ev.clientX - _dragPending.x;
+                const dy = ev.clientY - _dragPending.y;
+                if (dx * dx + dy * dy < 25) return; // < 5px — это клик, не перетаскивание
+                _dragPending = null;
+                if (window.pywebview && window.pywebview.api.start_dragging) {
+                    window.pywebview.api.start_dragging();
+                }
+            });
+            document.addEventListener('mouseup', function () { _dragPending = null; });
+            window.addEventListener('blur', function () { _dragPending = null; });
+            document.addEventListener('dblclick', function (ev) {
+                if (_windowFrameMode !== 'custom') return;
+                if (!isBackground(ev.target)) return;
+                tbToggleMaximize();
+            });
+            // Отключаем системное контекстное меню WebView2 везде
+            document.addEventListener('contextmenu', function (ev) {
+                ev.preventDefault();
+            });
+        }
+
+        // Следим за состоянием окна (снап к краю, разворот и т.п.)
+        function _bindWindowStateEvents() {
+            // WebView2 шлёт resize при maximize/restore/re-size окна
+            window.addEventListener('resize', function () { _syncMaxState(); });
         }
 
         function toggleHideProfiles() {
@@ -12400,7 +13148,9 @@
             let running = false;
             try {
                 if (window.pywebview && window.pywebview.api.is_gta_running) {
-                    const res = await window.pywebview.api.is_gta_running();
+                    // consumeExit=false: edge «игра вышла» нужен GTA-watcher'у
+                    // для авто-разворота — статус-бар его не съедает
+                    const res = await window.pywebview.api.is_gta_running(false);
                     running = !!(res && res.running);
                 }
             } catch (e) {}
@@ -13252,6 +14002,7 @@
                 if (e.key === '0') { lbZoomReset(); return; }
             }
             if (!settingsPanel) return;
+            if (e.key !== 'Escape') return;
             if (settingsPanel.style.display !== 'flex') return;
             const blocking = ['__genericModal', 'bitsEditorOverlay', 'folderModal', 'modsModal', 'drag-overlay']
                 .some(id => {
@@ -13801,7 +14552,7 @@
                         _setDebugEl('dbgPythonVersion',  d.python_version  || '—');
                         
                         // Лаунчер
-                        _setDebugEl('dbgAppVersion',     d.app_version     || 'v2.0.0 dev');
+                        _setDebugEl('dbgAppVersion',     d.app_version     || 'v2.0.0 rc1');
                         _setDebugEl('dbgConfigPath',     d.config_path     || '—');
                         _setDebugEl('dbgDocsPath',       d.docs_path       || '—');
                         
@@ -13833,7 +14584,7 @@
             _setDebugEl('dbgOsVersion',         'Доступно только в приложении');
             _setDebugEl('dbgArchitecture',      'Доступно только в приложении');
             _setDebugEl('dbgPythonVersion',     'Доступно только в приложении');
-            _setDebugEl('dbgAppVersion',        'v2.0.0 dev');
+            _setDebugEl('dbgAppVersion',        'v2.0.0 rc1');
             _setDebugEl('dbgConfigPath',        'Доступно только в приложении');
             _setDebugEl('dbgDocsPath',          'Доступно только в приложении');
             _setDebugEl('dbgGamePath',          'Доступно только в приложении');
@@ -14098,6 +14849,22 @@
             { icon: '<i data-lucide="puzzle"></i>', name: 'Моды',       desc: 'Lua-скрипты и моды прямо из репозитория сообщества' },
         ];
 
+        // Главное меню прячем на время онбординга (и возвращаем при закрытии)
+        let _flMainPrevDisplay = null;
+        function _flHideMain() {
+            const main = document.querySelector('.interface');
+            if (!main || _flMainPrevDisplay !== null) return;
+            _flMainPrevDisplay = main.style.display || '';
+            main.style.display = 'none';
+        }
+        function _flShowMain() {
+            const main = document.querySelector('.interface');
+            if (main && _flMainPrevDisplay !== null) {
+                main.style.display = _flMainPrevDisplay;
+            }
+            _flMainPrevDisplay = null;
+        }
+
         // Вызывается из Python при первом запуске
         window._flStart = async function(data) {
             _flData = data;
@@ -14105,21 +14872,58 @@
             // Грузим обои заранее чтобы шаг выбора обоев был готов
             if (_wallpapers.length === 0) await loadWallpapers();
             _flRender();
+            _flHideMain();
             document.getElementById('flOverlay').classList.add('open');
         };
+
+        // Автозапуск онбординга: в Tauri нет evaluate_js, поэтому сами
+        // решаем при старте — если путь к игре не настроен, это первый запуск
+        async function _maybeStartFirstLaunch() {
+            // Уже открыт (например, вызван вручную) — не мешаем
+            if (document.getElementById('flOverlay').classList.contains('open')) return;
+            // Путь настроен — это не первый запуск
+            let gp = '';
+            try {
+                if (window.pywebview && window.pywebview.api.get_saved_data) {
+                    const saved = await window.pywebview.api.get_saved_data();
+                    gp = (saved && saved.game_path) || '';
+                }
+            } catch (e) {}
+            if (gp) return; // путь уже есть — онбординг не открываем
+
+            // Пробуем авто-обнаружить игру, как это делал Python
+            const data = { auto_found: false, check_status: 'not_found', game_path: '', folder: '', missing: [] };
+            try {
+                if (window.pywebview && window.pywebview.api.auto_detect_paths) {
+                    const res = await window.pywebview.api.auto_detect_paths();
+                    if (res && res.success && res.game_path) {
+                        data.auto_found = true;
+                        data.game_path = res.game_path;
+                        data.folder = res.game_path.replace(/[\\/][^\\/]+$/, '');
+                        data.check_status = 'ok';
+                    }
+                }
+            } catch (e) {}
+            window._flStart(data);
+        }
 
         function openFirstLaunch() {
             if (!_flData) {
                 _flData = { auto_found: false, check_status: 'not_found', game_path: '', folder: '', missing: [] };
             }
+            // Открывается из «О программе» — сначала убираем панель настроек,
+            // чтобы онбординг не оказался под ней
+            if (typeof closeSettings === 'function') closeSettings();
             _flStep = 0;
             _flRender();
+            _flHideMain();
             document.getElementById('flOverlay').classList.add('open');
         }
 
         function closeFirstLaunch() {
             _closeWithAnim(document.getElementById('flOverlay'), () => {
                 document.getElementById('flOverlay').classList.remove('open');
+                _flShowMain();
             });
         }
 
@@ -14150,12 +14954,12 @@
         function _flBodyHtml() {
             if (_flStep === 0) return `
                 <div class="fl-welcome">
-                    <div class="fl-welcome-logo"><i data-lucide="gamepad-2"></i></div>
+                    <div class="fl-welcome-logo"><img src="app-icon.png" alt="Arizona RP Launcher"></div>
                     <div class="fl-welcome-title">Добро пожаловать!</div>
                     <div class="fl-welcome-ver">
                         Arizona RP Launcher · 
                         <div class="version-stable">
-                            <span class="version-stable-text">v2.0.0 dev</span>
+                            <span class="version-stable-text">v2.0.0 rc1</span>
                         </div>
                     </div>
                     <div class="fl-welcome-desc">Неофициальный лаунчер с расширенными возможностями: профили, темы, моды и многое другое. Давай быстро настроим всё для тебя.</div>
@@ -14190,8 +14994,10 @@
                 const cards = FL_FEATURES.map(f => `
                     <div class="fl-feature-card">
                         <div class="fl-feature-icon">${f.icon}</div>
-                        <div class="fl-feature-name">${f.name}</div>
-                        <div class="fl-feature-desc">${f.desc}</div>
+                        <div class="fl-feature-text">
+                            <div class="fl-feature-name">${f.name}</div>
+                            <div class="fl-feature-desc">${f.desc}</div>
+                        </div>
                     </div>`).join('');
                 return `<div class="fl-features-title"><i data-lucide="sparkles"></i> Возможности лаунчера</div>
                     <div class="fl-features-grid">${cards}</div>`;
