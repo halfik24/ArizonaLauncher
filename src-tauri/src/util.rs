@@ -58,6 +58,14 @@ pub fn fail_message(msg: impl Into<String>) -> Result<serde_json::Value, String>
     Ok(serde_json::json!({"success": false, "message": msg.into()}))
 }
 
+/// Путь к диагностическому лог-файлу: `<Documents>/ArizonaLauncher/launcher.log`.
+pub fn log_file_path() -> PathBuf {
+    dirs::document_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join("ArizonaLauncher")
+        .join("launcher.log")
+}
+
 /// Один HTTP-запрос с таймаутом (замена копий `Client::builder` в `launcher.rs`).
 pub async fn http_request(
     method: reqwest::Method,

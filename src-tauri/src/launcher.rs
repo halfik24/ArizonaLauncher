@@ -92,6 +92,7 @@ const IPC_KEY_PAIRS: &[(&str, &str)] = &[
     ("bg_image", "bgImage"),
     ("window_title", "windowTitle"),
     ("window_size", "windowSize"),
+    ("window_frame", "windowFrame"),
     ("layout_order", "layoutOrder"),
 ];
 
@@ -645,15 +646,27 @@ pub async fn start_game(
     }
 }
 
+/// `consume_exit: false` — «съесть» edge выхода нельзя (так опрашивает
+/// статус-бар); edge тогда останется для GTA-watcher'а, который по нему
+/// разворачивает окно лаунчера после закрытия игры.
 #[tauri::command]
-pub fn is_gta_running() -> Result<serde_json::Value, String> {
+pub fn is_gta_running(consume_exit: Option<bool>) -> Result<serde_json::Value, String> {
+    static GTA_WAS_RUNNING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
     let mut sys = sysinfo::System::new();
     sys.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
     let running = sys
         .processes()
         .values()
         .any(|p| p.name().to_string_lossy().eq_ignore_ascii_case("gta_sa.exe"));
-    Ok(serde_json::json!({"running": running, "was_running": false}))
+    // was_running: игра была запущена на прошлый вызов, а сейчас вышла —
+    // фронт по этому флагу возвращает окно лаунчера после выхода из GTA.
+    if consume_exit.unwrap_or(true) {
+        let was_running = GTA_WAS_RUNNING.swap(running, std::sync::atomic::Ordering::Relaxed);
+        Ok(serde_json::json!({"running": running, "was_running": was_running && !running}))
+    } else {
+        let was_running = GTA_WAS_RUNNING.load(std::sync::atomic::Ordering::Relaxed);
+        Ok(serde_json::json!({"running": running, "was_running": was_running && !running}))
+    }
 }
 
 // ==================== Server / News ====================
@@ -1153,9 +1166,9 @@ pub async fn get_servers_and_news(app: tauri::AppHandle, state: State<'_, AppSta
 /// Тело `get_launcher_news`: 3 fallback URL на GitHub, utf-8 → windows-1251.
 async fn fetch_launcher_news() -> serde_json::Value {
     let urls = [
-        "https://raw.githubusercontent.com/worteng/ArizonaLauncher/main/updatenews.txt",
-        "https://raw.githubusercontent.com/worteng/ArizonaLauncher/refs/heads/main/updatenews.txt",
-        "https://github.com/worteng/ArizonaLauncher/raw/main/updatenews.txt",
+        "https://raw.githubusercontent.com/halfik24/ArzLaunchRepo/main/updatenews.txt",
+        "https://raw.githubusercontent.com/halfik24/ArzLaunchRepo/refs/heads/main/updatenews.txt",
+        "https://github.com/halfik24/ArzLaunchRepo/raw/main/updatenews.txt",
     ];
 
     for url in urls {
@@ -1379,7 +1392,7 @@ pub fn get_debug_info(state: State<'_, AppState>) -> Result<serde_json::Value, S
             "docs_path": state.documents_path.to_string_lossy(),
             "game_path": cfg.game_path,
             "launcher_path": cfg.launcher_path,
-            "app_version": "v2.0.0 dev",
+            "app_version": format!("v{}", env!("CARGO_PKG_VERSION")),
             "launcher_version": "v8",
             "last_nickname": cfg.last_nickname,
             "last_server": cfg.last_server,
@@ -1440,8 +1453,12 @@ pub fn open_data_folder(state: State<'_, AppState>) -> Result<serde_json::Value,
 
 #[tauri::command]
 pub fn open_log_file() -> Result<serde_json::Value, String> {
-    // TODO: find log path
-    Ok(serde_json::json!({"success": false, "message": "Not implemented"}))
+    let path = util::log_file_path();
+    if !path.exists() {
+        return util::fail_message("Лог-файл ещё не создан — запустите лаунчер и повторите");
+    }
+    open::that(&path).map_err(|e| e.to_string())?;
+    util::ok_true()
 }
 
 /// Открыть ссылку во внешнем браузере (новости, релизы, Telegram).
@@ -1500,6 +1517,174 @@ pub fn get_window_size(state: State<'_, AppState>) -> Result<serde_json::Value, 
     Ok(serde_json::json!(size))
 }
 
+// ==================== Рамка окна (system / custom) ====================
+
+/// Windows 11: скруглить углы окна (DWMWA_WINDOW_CORNER_PREFERENCE = 33,
+/// DWMWCP_ROUND = 2). На Windows 10 вызов молча не сработает — ок.
+#[cfg(windows)]
+pub fn apply_rounded_corners(window: &tauri::WebviewWindow) {
+    use winapi::shared::minwindef::DWORD;
+    use winapi::um::dwmapi::DwmSetWindowAttribute;
+    if let Ok(hwnd) = window.hwnd() {
+        let preference: DWORD = 2; // DWMWCP_ROUND
+        unsafe {
+            DwmSetWindowAttribute(
+                hwnd.0 as _,
+                33, // DWMWA_WINDOW_CORNER_PREFERENCE
+                &preference as *const _ as *const _,
+                std::mem::size_of::<DWORD>() as u32,
+            );
+        }
+    }
+}
+
+#[cfg(not(windows))]
+pub fn apply_rounded_corners(_window: &tauri::WebviewWindow) {}
+
+/// Добавить окну стиль WS_THICKFRAME (как у обычных окон Windows).
+/// Без него frameless-окно при перетаскивании рисует мусор/чёрные полосы
+/// (WebView2 не перерисовывается в стандартном drag-loop), а с ним —
+/// всё перерисовывается нормально + бесплатно даёт нативный ресайз
+/// по краям и снап к краям экрана.
+#[cfg(windows)]
+pub fn add_thick_frame(window: &tauri::WebviewWindow) {
+    use winapi::um::winuser::{
+        SetWindowLongPtrW, SetWindowPos, GetWindowLongPtrW, GWL_STYLE, SWP_FRAMECHANGED,
+        SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, WS_THICKFRAME,
+    };
+    if let Ok(hwnd) = window.hwnd() {
+        unsafe {
+            let hwnd = hwnd.0 as _;
+            let style = GetWindowLongPtrW(hwnd, GWL_STYLE);
+            SetWindowLongPtrW(hwnd, GWL_STYLE, style | WS_THICKFRAME as isize);
+            SetWindowPos(
+                hwnd,
+                std::ptr::null_mut(),
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED,
+            );
+        }
+    }
+}
+
+#[cfg(not(windows))]
+pub fn add_thick_frame(_window: &tauri::WebviewWindow) {}
+
+/// Применить режим рамки к окну: custom = без системной рамки + скруглённые
+/// углы + WS_THICKFRAME (против чёрных полос при drag), system = стандартная
+/// рамка Windows (углы её own).
+pub fn apply_window_frame(window: &tauri::WebviewWindow, mode: &str) {
+    let custom = mode == "custom";
+    let _ = window.set_decorations(!custom);
+    if custom {
+        apply_rounded_corners(window);
+        add_thick_frame(window);
+    }
+}
+
+#[tauri::command]
+pub fn get_window_frame(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
+    let cfg = util::lock_config(&state)?;
+    let mode = cfg
+        .launcher_settings
+        .window_frame
+        .clone()
+        .unwrap_or_else(|| "system".to_string());
+    Ok(serde_json::json!({"success": true, "mode": mode}))
+}
+
+/// Переключить рамку окна на лету (без перезапуска) и сохранить выбор.
+#[tauri::command]
+pub fn set_window_frame(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    mode: String,
+) -> Result<serde_json::Value, String> {
+    let mode = if mode == "custom" { "custom" } else { "system" };
+    {
+        let mut cfg = util::lock_config(&state)?;
+        cfg.launcher_settings.window_frame = Some(mode.to_string());
+    }
+    state.save_config()?;
+    if let Some(window) = app.get_webview_window("main") {
+        apply_window_frame(&window, mode);
+    }
+    util::ok_true()
+}
+
+#[tauri::command]
+pub fn toggle_maximize(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
+    if let Some(window) = app.get_webview_window("main") {
+        if window.is_maximized().unwrap_or(false) {
+            window.unmaximize().map_err(|e| e.to_string())?;
+        } else {
+            window.maximize().map_err(|e| e.to_string())?;
+        }
+    }
+    util::ok_true()
+}
+
+#[tauri::command]
+pub fn is_maximized(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
+    let maximized = app
+        .get_webview_window("main")
+        .and_then(|w| w.is_maximized().ok())
+        .unwrap_or(false);
+    Ok(serde_json::json!({"success": true, "maximized": maximized}))
+}
+
+/// Перетаскивание окна из JS (вызывается по mousedown на фоне).
+/// JS-вызов window.startDragging() блокируется capabilities, а Rust — нет.
+#[tauri::command]
+pub fn start_dragging(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
+    if let Some(window) = app.get_webview_window("main") {
+        window.start_dragging().map_err(|e| e.to_string())?;
+    }
+    util::ok_true()
+}
+
+/// Резайз frameless-окна по краю/углу: edge = left|right|top|bottom|
+/// top-left|top-right|bottom-left|bottom-right. Windows сама ловит
+/// WM_NCLBUTTONDOWN с кодом HT* и уходит в режим ресайза.
+#[tauri::command]
+pub fn start_resize(app: tauri::AppHandle, edge: String) -> Result<serde_json::Value, String> {
+    #[cfg(windows)]
+    {
+        use winapi::shared::minwindef::LPARAM;
+        use winapi::shared::minwindef::WPARAM;
+        use winapi::um::winuser::{
+            ReleaseCapture, SendMessageW, HTBOTTOM, HTBOTTOMLEFT, HTBOTTOMRIGHT, HTLEFT, HTRIGHT,
+            HTTOP, HTTOPLEFT, HTTOPRIGHT, WM_NCLBUTTONDOWN,
+        };
+        let Some(window) = app.get_webview_window("main") else {
+            return util::ok_true();
+        };
+        let Ok(hwnd) = window.hwnd() else {
+            return util::ok_true();
+        };
+        let ht = match edge.as_str() {
+            "left" => HTLEFT,
+            "right" => HTRIGHT,
+            "top" => HTTOP,
+            "bottom" => HTBOTTOM,
+            "top-left" => HTTOPLEFT,
+            "top-right" => HTTOPRIGHT,
+            "bottom-left" => HTBOTTOMLEFT,
+            _ => HTBOTTOMRIGHT,
+        };
+        unsafe {
+            ReleaseCapture();
+            SendMessageW(hwnd.0 as _, WM_NCLBUTTONDOWN, ht as WPARAM, 0 as LPARAM);
+        }
+    }
+    #[cfg(not(windows))]
+    let _ = (app, edge);
+    util::ok_true()
+}
+
 #[tauri::command]
 pub fn save_layout_order(state: State<'_, AppState>, order: Vec<String>) -> Result<serde_json::Value, String> {
     {
@@ -1530,11 +1715,11 @@ pub fn get_profiles(state: State<'_, AppState>) -> Result<serde_json::Value, Str
 }
 
 #[tauri::command]
-pub fn save_profiles(state: State<'_, AppState>, profiles: Vec<serde_json::Value>, active_id: String) -> Result<serde_json::Value, String> {
+pub fn save_profiles(state: State<'_, AppState>, profiles: Vec<serde_json::Value>, active_id: Option<String>) -> Result<serde_json::Value, String> {
     {
         let mut cfg = util::lock_config(&state)?;
         cfg.profiles = Some(profiles);
-        cfg.active_profile_id = Some(active_id);
+        cfg.active_profile_id = active_id.filter(|s| !s.is_empty());
     }
     state.save_config()?;
     util::ok_true()
@@ -1848,7 +2033,7 @@ fn disable_old_dll(dll_path: &std::path::Path) -> Option<PathBuf> {
 
 fn patches_download_url(version: &str) -> String {
     format!(
-        "https://raw.githubusercontent.com/worteng/ArizonaLauncher/main/patches/arizonapatches_{}.zip",
+        "https://raw.githubusercontent.com/halfik24/ArzLaunchRepo/main/patches/arizonapatches_{}.zip",
         version
     )
 }
@@ -2151,7 +2336,7 @@ pub async fn download_and_install_patches(version: Option<String>) -> Result<ser
 #[tauri::command]
 pub async fn get_patches_latest_version() -> Result<serde_json::Value, String> {
     // Python: чтение patches/version.txt с GitHub
-    let url = "https://raw.githubusercontent.com/worteng/ArizonaLauncher/main/patches/version.txt";
+    let url = "https://raw.githubusercontent.com/halfik24/ArzLaunchRepo/main/patches/version.txt";
     let mut headers = reqwest::header::HeaderMap::new();
     headers.insert(
         reqwest::header::USER_AGENT,
@@ -2220,7 +2405,7 @@ pub async fn check_patches_available(version: Option<String>) -> Result<serde_js
 #[tauri::command]
 pub async fn check_patches_update_status() -> Result<serde_json::Value, String> {
     // Python: манифест updates/patches.json на GitHub
-    let url = "https://raw.githubusercontent.com/worteng/ArizonaLauncher/main/updates/patches.json";
+    let url = "https://raw.githubusercontent.com/halfik24/ArzLaunchRepo/main/updates/patches.json";
     let resp = match util::http_request(
         reqwest::Method::GET,
         url,

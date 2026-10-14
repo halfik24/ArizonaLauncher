@@ -184,6 +184,19 @@ invoke('start_game', { nickname: 'Nick', serverData: {...}, launchParams: {...} 
 18. `is_gta_running` — проверка процесса gta_sa.exe
 19. `get_debug_info` — расширить
 
+**Бэклог (договорено с halfik24, НЕ реализовано):**
+20. **Форма «Сообщить об ошибке / предложить идею»** — пользовательский фидбэк прямо из лаунчера.
+    - Зачем: rc-релиз без подписи кода и без логов — жалобы «не работает» приходят без данных.
+    - **Выбран вариант: Google Forms** (обсуждение 14.10.2026, одобрено halfik24).
+      * Одна форма, две ветки вопроса («Ошибка» / «Идея») + поле типа (ошибка/идея).
+      * Поля: тип, текст, версия (из get_debug_info), OS, путь к игре, ник, email/Telegram для ответа.
+      * Заполнение встроенным в лаунчер WebView (Tauri webview window / встроенная ссылка),
+        URL с prefill через `viewform?entry.XXXX=...` — авто-подстановка debug-данных.
+      * Или надёжнее: Apps Script как doPost-эндпоинт → пишет в Google Sheet И шлёт письмо на почту;
+        лаунчер шлёт JSON POST (не зависит от воркера формы).
+      * Ответы собирать в Google Sheet, отсюда «как собирать что и как» — всё в одной таблице с фильтрами.
+    - Важно: прикладывать config.json БЕЗ приватных данных (ник можно оставить, пути — ок).
+
 ### Шаг 7: Сборка релиза
 ```powershell
 npm run build
@@ -199,19 +212,22 @@ npm run build
 - Уже реализовано в `config.rs`
 
 ### API endpoint'ы
+Все файлы лаунчера живут в **`halfik24/ArzLaunchRepo`** (старые репо `worteng`/`halfik24/ArizonaLauncher` умрут — файлы перенесены 14.10.2026, коммиты `c45f380`, `aff7013`).
+
 | Что | URL |
 |-----|-----|
 | Серверы | `https://arizona-ping.react.group/desktop/ping/Arizona/ping.json` |
-| Новости | `https://raw.githubusercontent.com/worteng/ArizonaLauncher/main/updatenews.txt` |
-| Патчи version | `https://raw.githubusercontent.com/worteng/ArizonaLauncher/main/patches/version.txt` |
-| Патчи zip | `https://raw.githubusercontent.com/worteng/ArizonaLauncher/main/patches/arizonapatches_{ver}.zip` |
-| Patches manifest | `https://raw.githubusercontent.com/worteng/ArizonaLauncher/main/updates/patches.json` |
-| Air v8 zip | `https://raw.githubusercontent.com/worteng/ArizonaLauncher/refs/heads/main/others/ArizonaLauncher8.0_byAIR.zip` (пароль: `1111`) |
-| Presets catalog | `https://raw.githubusercontent.com/worteng/ArizonaLauncher/main/configs.txt` |
-| Moonloader catalog | `https://raw.githubusercontent.com/worteng/ArzLaunchRepo/main/Lua/lua.txt` (fallback: moonloader.txt) |
-| Libraries catalog | `https://raw.githubusercontent.com/worteng/ArizonaLauncher/main/libraries.txt` |
-| Others catalog | `https://raw.githubusercontent.com/worteng/ArizonaLauncher/main/others.txt` |
-| Patches schema | `https://raw.githubusercontent.com/worteng/ArizonaLauncher/main/patches_schema.json` |
+| Новости | `https://raw.githubusercontent.com/halfik24/ArzLaunchRepo/main/updatenews.txt` |
+| Патчи version | `https://raw.githubusercontent.com/halfik24/ArzLaunchRepo/main/patches/version.txt` (ещё нет в репо — ArizonaPatches v2 не выпущен) |
+| Патчи zip | `https://raw.githubusercontent.com/halfik24/ArzLaunchRepo/main/patches/arizonapatches_{ver}.zip` (там же, на будущее) |
+| Patches manifest | `https://raw.githubusercontent.com/halfik24/ArzLaunchRepo/main/updates/patches.json` |
+| Air v8 zip | `https://raw.githubusercontent.com/halfik24/ArzLaunchRepo/main/others/ArizonaLauncher8.0_byAIR.zip` (пароль: `1111`) |
+| preloading_plugins | `https://raw.githubusercontent.com/halfik24/ArzLaunchRepo/main/others/preloading_plugins.zip` |
+| Presets catalog | `https://raw.githubusercontent.com/halfik24/ArzLaunchRepo/main/configs.txt` (пресеты в `presets/` того же репо) |
+| Moonloader catalog | `https://raw.githubusercontent.com/halfik24/ArzLaunchRepo/main/Lua/lua.txt` |
+| Libraries catalog | `https://raw.githubusercontent.com/halfik24/ArzLaunchRepo/main/libraries.txt` |
+| Others catalog | `https://raw.githubusercontent.com/halfik24/ArzLaunchRepo/main/others.txt` (d3d9.dll в `others/` того же репо) |
+| Patches schema | `https://raw.githubusercontent.com/halfik24/ArzLaunchRepo/main/patches_schema.json` |
 
 ### Игровые пути
 - Auto-detect: `~/AppData/Local/Programs/Arizona Games Launcher/bin/arizona/gta_sa.exe`
