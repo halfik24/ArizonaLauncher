@@ -5512,6 +5512,18 @@
             color: rgba(255,255,255,0.3);
         }
 
+        .profile-launch-badge {
+            font-family: 'Montserrat Alternates', sans-serif;
+            font-size: 9px;
+            color: rgba(var(--accent2-rgb), 0.95);
+            background: rgba(var(--accent2-rgb), 0.12);
+            border: 1px solid rgba(var(--accent2-rgb), 0.3);
+            border-radius: 4px;
+            padding: 1px 6px;
+            margin-left: 2px;
+            white-space: nowrap;
+        }
+
         .profile-active-badge {
             font-family: 'Montserrat Alternates', sans-serif;
             font-size: 9px;
@@ -6191,6 +6203,75 @@
             line-height: 1.45;
         }
 
+        /* Step 2: Способ запуска */
+        .fl-lm-grid {
+            display: flex;
+            flex-direction: column;
+            gap: 7px;
+        }
+        .fl-lm-card {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 13px;
+            padding: 11px 13px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            cursor: pointer;
+            transition: background 0.18s, border-color 0.18s, transform 0.18s;
+            animation: flFeatIn 0.34s cubic-bezier(0.34, 1.2, 0.64, 1) backwards;
+        }
+        .fl-lm-card:nth-child(2) { animation-delay: 0.07s; }
+        .fl-lm-card:hover {
+            background: rgba(var(--accent-rgb),0.1);
+            border-color: rgba(var(--accent-rgb),0.32);
+            transform: translateY(-1px);
+        }
+        .fl-lm-card.active {
+            background: rgba(var(--accent-rgb),0.12);
+            border-color: rgba(var(--accent-rgb),0.5);
+        }
+        .fl-lm-card-ico {
+            width: 36px; height: 36px;
+            flex-shrink: 0;
+            border-radius: 11px;
+            background: rgba(var(--accent-rgb),0.14);
+            border: 1px solid rgba(var(--accent-rgb),0.24);
+            display: flex; align-items: center; justify-content: center;
+            color: rgba(var(--accent-rgb),1);
+        }
+        .fl-lm-card-ico svg { width: 18px; height: 18px; }
+        .fl-lm-card-text { min-width: 0; }
+        .fl-lm-card-name {
+            font-family: 'Montserrat Alternates', sans-serif;
+            font-size: 12.5px; font-weight: 600;
+            color: rgba(255,255,255,0.95);
+            margin-bottom: 2px;
+        }
+        .fl-lm-card-desc {
+            font-family: 'Montserrat Alternates', sans-serif;
+            font-size: 10.5px; color: rgba(255,255,255,0.5);
+            line-height: 1.45;
+        }
+        .fl-lm-check {
+            margin-left: auto;
+            width: 20px; height: 20px;
+            flex-shrink: 0;
+            border-radius: 50%;
+            background: rgba(var(--accent-rgb),0.95);
+            color: #fff;
+            display: none;
+            align-items: center; justify-content: center;
+        }
+        .fl-lm-check svg { width: 12px; height: 12px; }
+        .fl-lm-card.active .fl-lm-check { display: flex; }
+        .fl-lm-hint {
+            font-family: 'Montserrat Alternates', sans-serif;
+            font-size: 10.5px; color: rgba(255,255,255,0.4);
+            margin-top: 10px;
+            line-height: 1.45;
+        }
+
         /* Step 3: Wallpapers */
         .fl-wp-hint {
             font-family: 'Montserrat Alternates', sans-serif;
@@ -6775,7 +6856,7 @@
                 </div>
 
                 <!-- ── Patch handle tab (below news handle) ── -->
-                <div id="updateLauncherWrap" class="patch-handle" style="display:none;" onclick="startDownloadUpdate()" title="Требуется установка патчей">
+                <div id="updateLauncherWrap" class="patch-handle" style="display:none;" onclick="patchHandleClick()" title="Требуется установка патчей">
                     <span class="patch-handle-icon" id="patchHandleIcon"><i data-lucide="download"></i></span>
                     <span class="patch-handle-label" id="updateBtnText">Установка</span>
                 </div>
@@ -8178,6 +8259,10 @@
                 const metaParts = [];
                 if (p.launch_params) metaParts.push(`Память: ${p.launch_params.memory || 4096} МБ`);
                 metaParts.push(`Lua: ${luaCount} скр.`);
+                // Режим запуска из профиля; старые профили без поля — без бейджа
+                if (p.launch_method === 'native' || p.launch_method === 'air') {
+                    metaParts.push(`<span class="profile-launch-badge">${p.launch_method === 'air' ? 'Air' : 'Нативный'}</span>`);
+                }
                 const meta = metaParts.join(' · ');
 
                 const item = document.createElement('div');
@@ -8205,6 +8290,7 @@
             let patches = {};
             let launchParams = {};
             let luaEnabled = [];
+            let launchMethod = null;
             try {
                 if (window.pywebview) {
                     if (window.pywebview.api.read_patches) {
@@ -8220,6 +8306,12 @@
                             luaEnabled = (mr.scripts || []).filter(s => s.enabled).map(s => s.name);
                         }
                     }
+                    if (window.pywebview.api.get_launch_method) {
+                        const lm = await window.pywebview.api.get_launch_method();
+                        if (lm && lm.success && (lm.method === 'native' || lm.method === 'air')) {
+                            launchMethod = lm.method;
+                        }
+                    }
                 }
             } catch (e) { console.error('createProfile snapshot error:', e); }
 
@@ -8232,6 +8324,9 @@
                 launch_params: launchParams,
                 lua_enabled: luaEnabled
             };
+            // Режим запуска (native/air); поле пишем только при успехе,
+            // чтобы старые фронтовые ветки его не видели
+            if (launchMethod) profile.launch_method = launchMethod;
 
             _profiles.push(profile);
             await _saveProfiles();
@@ -8285,6 +8380,29 @@
                                 }
                             }
                             if (typeof _sbRefreshScripts === 'function') _sbRefreshScripts();
+                        }
+                    }
+                    // Применяем режим запуска (native/air). Старые профили
+                    // без поля — не трогаем.
+                    if (p.launch_method === 'native' || p.launch_method === 'air') {
+                        if (!window.pywebview.api.set_launch_method) {
+                            errors.push('режим запуска: API недоступен');
+                        } else {
+                            try {
+                                const lmRes = await window.pywebview.api.set_launch_method(p.launch_method);
+                                if (!lmRes || !lmRes.success) {
+                                    errors.push('режим запуска: ' + ((lmRes && lmRes.message) || 'не записался'));
+                                } else {
+                                    // Переключатель в настройках + баннер статуса патчей
+                                    const lmAir = document.getElementById('lmAir');
+                                    const lmNative = document.getElementById('lmNative');
+                                    if (lmAir && lmNative) {
+                                        lmAir.checked = (p.launch_method === 'air');
+                                        lmNative.checked = !lmAir.checked;
+                                    }
+                                    if (typeof checkPatchesStatus === 'function') checkPatchesStatus();
+                                }
+                            } catch (e) { errors.push('режим запуска: ' + e); }
                         }
                     }
                 }
@@ -8538,23 +8656,52 @@
             } catch (e) {}
         }
 
+        // ── Кнопка «Установить» / «Обновить» в правой панели (patch-handle) ──
+        // null — установка не нужна; 'no-path' — путь к игре не настроен;
+        // {folder, info} — нужна установка лаунчера/preloading: клик откроет
+        // модалку установки (install_info из get_install_action_api).
+        let _installActionBtn = null;
+
+        function _renderInstallHandle() {
+            const wrap = document.getElementById('updateLauncherWrap');
+            if (!wrap) return;
+            const icon = document.getElementById('patchHandleIcon');
+            const label = document.getElementById('updateBtnText');
+            icon.style.display = '';
+            icon.innerHTML = '<i data-lucide="download"></i>';
+            label.textContent = 'Установить';
+            label.style.display = '';
+            wrap.style.display = 'flex';
+            wrap.classList.add('pulse');
+            wrap.style.opacity = '1';
+            wrap.style.pointerEvents = '';
+            wrap.title = (_installActionBtn && _installActionBtn !== 'no-path' && _installActionBtn.info.message)
+                || 'Требуется установка лаунчера';
+            if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
+        }
+
+        // Клик по patch-handle: нужна установка лаунчера — открываем модалку
+        // установки, иначе прежний inline-флоу обновления патчей.
+        async function patchHandleClick() {
+            if (_installActionBtn && _installActionBtn !== 'no-path') {
+                openInstallModalWithAction(_installActionBtn.folder, _installActionBtn.info);
+                return;
+            }
+            if (_installActionBtn === 'no-path') {
+                // Путь не настроен — модалка сама предложит выбрать папку
+                openInstallLauncherFlow();
+                return;
+            }
+            startDownloadUpdate();
+        }
+
         function checkLauncherInstallationUI(pathsConfigured, gamePath, update) {
             const wrap = document.getElementById('updateLauncherWrap');
             if (!wrap) return;
 
             if (!pathsConfigured) {
-                const icon = document.getElementById('patchHandleIcon');
-                const label = document.getElementById('updateBtnText');
-                icon.style.display = '';
-                icon.innerHTML = '<i data-lucide="download"></i>';
-                label.textContent = 'Установить';
-                label.style.display = '';
-                wrap.style.display = 'flex';
-                wrap.classList.add('pulse');
-                wrap.style.opacity = '1';
-                wrap.style.pointerEvents = '';
-                wrap.title = 'Требуется установка лаунчера';
-                if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
+                _installActionBtn = 'no-path';
+                _renderInstallHandle();
                 return;
             }
 
@@ -8571,6 +8718,13 @@
                 wrap.style.pointerEvents = '';
                 wrap.title = update.message || 'Требуется установка патчей';
                 if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
+                return;
+            }
+
+            // Установка лаунчера всё ещё нужна — кнопку не прячем
+            // (не даём параллельной проверке затереть её)
+            if (_installActionBtn) {
+                _renderInstallHandle();
                 return;
             }
 
@@ -8936,24 +9090,29 @@
         async function checkLauncherInstallation(pathsConfigured, gamePath) {
             const wrap = document.getElementById('updateLauncherWrap');
             if (!wrap) return;
+            _installActionBtn = null;
 
             if (!pathsConfigured) {
-                const icon = document.getElementById('patchHandleIcon');
-                const label = document.getElementById('updateBtnText');
-                icon.style.display = '';
-                icon.innerHTML = '<i data-lucide="download"></i>';
-                label.textContent = 'Установить';
-                label.style.display = '';
-                wrap.style.display = 'flex';
-                wrap.classList.add('pulse');
-                wrap.style.opacity = '1';
-                wrap.style.pointerEvents = '';
-                wrap.title = 'Требуется установка лаунчера';
-                if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
+                _installActionBtn = 'no-path';
+                _renderInstallHandle();
                 return;
             }
 
             try {
+                // Лаунчер/preloading не установлены — кнопка «Установить»
+                // (по клику откроется модалка установки)
+                if (gamePath && window.pywebview && window.pywebview.api.get_install_action_api) {
+                    const sep = gamePath.lastIndexOf('\\') >= 0 ? '\\' : '/';
+                    const folderPath = gamePath.substring(0, gamePath.lastIndexOf(sep));
+                    const actionResult = await window.pywebview.api.get_install_action_api(folderPath);
+                    const info = (actionResult && actionResult.success) ? actionResult.install_info : null;
+                    if (info && info.action && info.action !== 'none' && info.action !== 'error') {
+                        _installActionBtn = { folder: folderPath, info };
+                        _renderInstallHandle();
+                        return;
+                    }
+                }
+
                 if (window.pywebview && window.pywebview.api.check_update_api) {
                     const result = await window.pywebview.api.check_update_api(gamePath);
                     if (result.success && result.needs_update) {
@@ -11372,12 +11531,17 @@
                 if (window.pywebview && window.pywebview.api.select_game_path) {
                     const result = await window.pywebview.api.select_game_path();
                     if (result.success) {
-                        showNotification('Путь к игре установлен', 'success');
                         closeFolderModal();
+                        // Обновляет путь и кнопку в правой панели
+                        // (checkLauncherInstallation увидит install_info)
                         await loadSavedData();
-                        
-                        if (result.install_info && result.install_info.action !== 'none') {
-                            openInstallModalWithAction(result.folder, result.install_info);
+                        const info = result.install_info;
+                        if (info && info.action && info.action !== 'none') {
+                            // Модалку установки не открываем сами — установка
+                            // только по явному клику на кнопку в правой панели
+                            showNotification('Путь к игре установлен. Лаунчер не установлен — нажмите «Установить» в правой панели', 'info');
+                        } else {
+                            showNotification('Путь к игре установлен', 'success');
                         }
                     } else if (result.needs_install) {
                         // Нужна установка — показываем модал
@@ -14839,7 +15003,8 @@
         let _flStep = 0;
         let _flData = null;
         let _flInstallPending = false;
-        const FL_TOTAL = 4;
+        let _flLaunchMethod = 'native'; // выбранный в онбординге способ запуска
+        const FL_TOTAL = 5;
 
         const FL_FEATURES = [
             { icon: '<i data-lucide="user"></i>', name: 'Профили',    desc: 'Создайте свой профиль, который запоминает включённые скрипты' },
@@ -14871,6 +15036,13 @@
             _flStep = 0;
             // Грузим обои заранее чтобы шаг выбора обоев был готов
             if (_wallpapers.length === 0) await loadWallpapers();
+            // Текущий способ запуска — для шага выбора (по умолчанию native)
+            try {
+                if (window.pywebview && window.pywebview.api.get_launch_method) {
+                    const lm = await window.pywebview.api.get_launch_method();
+                    if (lm && lm.success && lm.method) _flLaunchMethod = lm.method;
+                }
+            } catch (e) { /* первый запуск — метод ещё не задан */ }
             _flRender();
             _flHideMain();
             document.getElementById('flOverlay').classList.add('open');
@@ -14907,7 +15079,7 @@
             window._flStart(data);
         }
 
-        function openFirstLaunch() {
+        async function openFirstLaunch() {
             if (!_flData) {
                 _flData = { auto_found: false, check_status: 'not_found', game_path: '', folder: '', missing: [] };
             }
@@ -14915,6 +15087,12 @@
             // чтобы онбординг не оказался под ней
             if (typeof closeSettings === 'function') closeSettings();
             _flStep = 0;
+            try {
+                if (window.pywebview && window.pywebview.api.get_launch_method) {
+                    const lm = await window.pywebview.api.get_launch_method();
+                    if (lm && lm.success && lm.method) _flLaunchMethod = lm.method;
+                }
+            } catch (e) {}
             _flRender();
             _flHideMain();
             document.getElementById('flOverlay').classList.add('open');
@@ -14991,6 +15169,31 @@
             }
 
             if (_flStep === 2) {
+                const m = _flLaunchMethod;
+                return `<div class="fl-features-title"><i data-lucide="rocket"></i> Способ запуска игры</div>
+                    <div class="fl-lm-grid">
+                        <div class="fl-lm-card${m === 'native' ? ' active' : ''}" onclick="_flSetLaunchMethod('native')">
+                            <div class="fl-lm-card-ico"><i data-lucide="rocket"></i></div>
+                            <div class="fl-lm-card-text">
+                                <div class="fl-lm-card-name">Нативный</div>
+                                <div class="fl-lm-card-desc">Запускает gta_sa.exe напрямую, минуя лаунчер Air</div>
+                            </div>
+                            <div class="fl-lm-check"><i data-lucide="check" stroke-width="3"></i></div>
+                        </div>
+                        <div class="fl-lm-card${m === 'air' ? ' active' : ''}" onclick="_flSetLaunchMethod('air')">
+                            <div class="fl-lm-card-ico"><i data-lucide="wind"></i></div>
+                            <div class="fl-lm-card-text">
+                                <div class="fl-lm-card-name">Через лаунчер Air</div>
+                                <div class="fl-lm-card-desc">Требуется установленный ArizonaLauncher 8.0 (Air)</div>
+                            </div>
+                            <div class="fl-lm-check"><i data-lucide="check" stroke-width="3"></i></div>
+                        </div>
+                    </div>
+                    <div class="fl-lm-hint">Плагины из preloading_plugins при нативном запуске пока не внедряются.
+                        Способ можно поменять позже в настройках, раздел «Запуск».</div>`;
+            }
+
+            if (_flStep === 3) {
                 const cards = FL_FEATURES.map(f => `
                     <div class="fl-feature-card">
                         <div class="fl-feature-icon">${f.icon}</div>
@@ -15003,7 +15206,7 @@
                     <div class="fl-features-grid">${cards}</div>`;
             }
 
-            if (_flStep === 3) {
+            if (_flStep === 4) {
                 // Build wallpaper grid HTML
                 let wpCards = '';
                 if (_wallpapers && _wallpapers.length > 0) {
@@ -15039,13 +15242,6 @@
                     <button class="fl-manual-btn" style="margin-top:10px;" onclick="_flPickCustomWallpaper()"><i data-lucide="folder-open"></i> Выбрать своё фото</button>`;
             }
 
-            if (_flStep === 4) {
-                return `<div class="fl-done">
-                    <div class="fl-done-icon"><i data-lucide="party-popper"></i></div>
-                    <div class="fl-done-title">Всё готово!</div>
-                    <div class="fl-done-sub">Лаунчер настроен и готов к работе. Приятной игры на Arizona RP!</div>
-                </div>`;
-            }
             return '';
         }
 
@@ -15092,6 +15288,17 @@
                     showNotification('Доступно только в приложении', 'error');
                 }
             } catch(e) { showNotification('Ошибка', 'error'); }
+        }
+
+        // Выбор способа запуска на шаге онбординга
+        async function _flSetLaunchMethod(method) {
+            _flLaunchMethod = method;
+            _flRender(); // перерисовать: подсветка выбранной карточки
+            try {
+                if (window.pywebview && window.pywebview.api.set_launch_method) {
+                    await window.pywebview.api.set_launch_method(method);
+                }
+            } catch (e) { console.warn('set_launch_method failed:', e); }
         }
 
         function _flApplyWallpaper(idx) {

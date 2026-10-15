@@ -2590,9 +2590,371 @@ pub async fn download_update_api() -> Result<serde_json::Value, String> {
     Ok(serde_json::json!({"success": false, "message": "Not implemented"}))
 }
 
+// ==================== Установка лаунчера Air v8 ====================
+//
+// Архив лаунчера: единственный ArizonaLauncher8.0_byAIR.exe, метод Store,
+// шифрование ZipCrypto (пароль 1111) — распаковка через
+// `ZipArchive::by_index_decrypt` (crate zip 2.x, ZipCrypto не требует
+// фичи aes-crypto). Отдельный архив preloading_plugins.zip — без пароля.
+
+/// Архив лаунчера Air v8 (ZipCrypto, пароль `LAUNCHER_V8_ZIP_PASSWORD`).
+const LAUNCHER_V8_ZIP_URL: &str =
+    "https://raw.githubusercontent.com/halfik24/ArzLaunchRepo/main/others/ArizonaLauncher8.0_byAIR.zip";
+const LAUNCHER_V8_ZIP_PASSWORD: &[u8] = b"1111";
+/// Архив папки прелоадинга (без пароля, содержит `preloading_plugins/...`).
+const PRELOADING_ZIP_URL: &str =
+    "https://raw.githubusercontent.com/halfik24/ArzLaunchRepo/main/others/preloading_plugins.zip";
+/// Максимум файлов в архиве (аналог `_MAX_ZIP_FILES` в Python).
+const MAX_ZIP_FILES: usize = 5000;
+
+/// Прогресс для фронта: событие `launcher-install-progress` →
+/// `window._onLauncherInstallProgress` (слушатель в src/tauri-bridge.js).
+/// stage: 'dl' | 'extract' | 'install' | 'done' | 'error', progress 0-100.
+fn emit_install_progress(app: &tauri::AppHandle, stage: &str, progress: u32, message: &str) {
+    use tauri::Emitter;
+    if let Err(e) = app.emit(
+        "launcher-install-progress",
+        serde_json::json!({
+            "stage": stage,
+            "progress": progress,
+            "message": message,
+        }),
+    ) {
+        log::warn!("emit_install_progress({stage}): {e}");
+    }
+}
+
+/// Скачивает URL во временный zip-файл, эмитя прогресс `pct_from..=pct_to`
+/// не чаще раза в ~200мс. HTTP-таймауты: connect 15с, весь запрос 600с.
+async fn download_to_temp(
+    app: &tauri::AppHandle,
+    url: &str,
+    pct_from: u32,
+    pct_to: u32,
+    message: &str,
+) -> Result<tempfile::NamedTempFile, String> {
+    let client = reqwest::Client::builder()
+        .connect_timeout(std::time::Duration::from_secs(15))
+        .timeout(std::time::Duration::from_secs(600))
+        .user_agent("Mozilla/5.0")
+        .build()
+        .map_err(|e| format!("Не удалось создать HTTP-клиент: {e}"))?;
+
+    let mut resp = client
+        .get(url)
+        .send()
+        .await
+        .map_err(|e| format!("Ошибка загрузки: {e}"))?;
+    if !resp.status().is_success() {
+        return Err(format!("Ошибка загрузки: HTTP {}", resp.status()));
+    }
+    let total = resp.content_length().unwrap_or(0);
+
+    let mut tmp = tempfile::Builder::new()
+        .prefix("arizona_launcher_install_")
+        .suffix(".zip")
+        .tempfile()
+        .map_err(|e| format!("Не удалось создать временный файл: {e}"))?;
+
+    emit_install_progress(app, "dl", pct_from, message);
+
+    let span = (pct_to - pct_from) as u64;
+    let mut downloaded: u64 = 0;
+    let mut last_emit = std::time::Instant::now();
+    loop {
+        match resp.chunk().await {
+            Ok(Some(chunk)) => {
+                use std::io::Write;
+                tmp.write_all(&chunk)
+                    .map_err(|e| format!("Не удалось записать временный файл: {e}"))?;
+                downloaded += chunk.len() as u64;
+                if last_emit.elapsed() >= std::time::Duration::from_millis(200) {
+                    last_emit = std::time::Instant::now();
+                    let mb = downloaded as f64 / 1_048_576.0;
+                    let pct = if total > 0 {
+                        (pct_from + (downloaded * span / total) as u32).min(pct_to)
+                    } else {
+                        pct_from
+                    };
+                    emit_install_progress(app, "dl", pct, &format!("Скачано {mb:.1} МБ..."));
+                }
+            }
+            Ok(None) => break,
+            Err(e) => return Err(format!("Ошибка загрузки: {e}")),
+        }
+    }
+    log::info!("download_to_temp: {url} → {downloaded} байт");
+    emit_install_progress(app, "dl", pct_to, message);
+    Ok(tmp)
+}
+
+/// Что распаковывать из архива лаунчера.
+enum ZipExtractMode {
+    /// Полная установка — все файлы.
+    All,
+    /// Только exe (установка/обновление лаунчера).
+    ExeOnly,
+    /// Только записи внутри preloading_plugins/ (сохранением структуры).
+    PreloadingOnly,
+}
+
+/// Распаковка zip во folder_path. `password` — Some для ZipCrypto-архива
+/// (для незашифрованных записей пароль игнорируется). Защита от zip-slip:
+/// в путях архива не бывает "..", итоговый путь обязан быть внутри folder.
+fn extract_launcher_zip(
+    zip_path: &std::path::Path,
+    folder: &std::path::Path,
+    password: Option<&[u8]>,
+    mode: ZipExtractMode,
+) -> Result<usize, String> {
+    let file =
+        std::fs::File::open(zip_path).map_err(|e| format!("Не удалось открыть архив: {e}"))?;
+    let mut archive =
+        zip::ZipArchive::new(file).map_err(|e| format!("Некорректный архив: {e}"))?;
+    if archive.len() > MAX_ZIP_FILES {
+        return Err(format!(
+            "Слишком много файлов в архиве: {} > {MAX_ZIP_FILES}",
+            archive.len()
+        ));
+    }
+    let folder_real = folder
+        .canonicalize()
+        .map_err(|e| format!("Папка игры недоступна: {e}"))?;
+
+    let mut extracted = 0usize;
+    for i in 0..archive.len() {
+        // Имя/тип записи — в отдельном блоке, чтобы не держить мут-заем архива
+        let (name, is_dir) = {
+            let f = archive
+                .by_index(i)
+                .map_err(|e| format!("Не удалось прочитать запись архива: {e}"))?;
+            (f.name().to_string(), f.is_dir())
+        };
+        if is_dir {
+            continue;
+        }
+        let norm = name.replace('\\', "/");
+        if norm.split('/').any(|seg| seg == "..") || norm.starts_with('/') {
+            return Err(format!("Недопустимый путь в архиве: {name}"));
+        }
+
+        let is_preloading = norm.contains("preloading_plugins");
+        let is_exe = norm.to_ascii_lowercase().ends_with(".exe");
+        let should = match mode {
+            ZipExtractMode::All => true,
+            ZipExtractMode::ExeOnly => is_exe,
+            ZipExtractMode::PreloadingOnly => is_preloading,
+        };
+        if !should {
+            continue;
+        }
+
+        // preloading_plugins — сохраняем структуру каталогов, остальное — basename
+        let rel = if is_preloading {
+            norm[norm.find("preloading_plugins").unwrap()..].to_string()
+        } else {
+            match std::path::Path::new(&norm).file_name() {
+                Some(base) => base.to_string_lossy().to_string(),
+                None => continue,
+            }
+        };
+        let dest = folder_real.join(&rel);
+        if !dest.starts_with(&folder_real) {
+            return Err(format!("Zip-slip обнаружен: {name}"));
+        }
+        if let Some(parent) = dest.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| format!("Не удалось создать папку: {e}"))?;
+        }
+        let mut src = match password {
+            Some(pw) => archive
+                .by_index_decrypt(i, pw)
+                .map_err(|e| format!("Не удалось распаковать '{name}': {e}"))?,
+            None => archive
+                .by_index(i)
+                .map_err(|e| format!("Не удалось распаковать '{name}': {e}"))?,
+        };
+        let mut dst =
+            std::fs::File::create(&dest).map_err(|e| format!("Не удалось записать файл: {e}"))?;
+        std::io::copy(&mut src, &mut dst)
+            .map_err(|e| format!("Ошибка распаковки '{name}': {e}"))?;
+        log::info!("extract_launcher_zip: {}", dest.display());
+        extracted += 1;
+    }
+    Ok(extracted)
+}
+
+/// Удаляет старые exe лаунчеров перед установкой v8: известные имена
+/// `ArizonaLauncher*.exe` и любые exe, распознанные по ресурсу версии как
+/// лаунчер Arizona со старой версией (<8). gta_sa.exe и переименованный v8
+/// не трогаются.
+fn remove_old_launcher_exes(folder: &std::path::Path) {
+    let Ok(entries) = std::fs::read_dir(folder) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Some(name_os) = path.file_name() else {
+            continue;
+        };
+        let name = name_os.to_string_lossy().to_lowercase();
+        if !name.ends_with(".exe") || name == "gta_sa.exe" {
+            continue;
+        }
+        let known_old_name = name.starts_with("arizonalauncher")
+            && name != "arizonalauncher8.0_byair.exe";
+        let renamed_old_launcher =
+            util::is_arizona_launcher(&path) && util::exe_major_version(&path) < 8;
+        if !known_old_name && !renamed_old_launcher {
+            continue;
+        }
+        match std::fs::remove_file(&path) {
+            Ok(()) => log::info!("remove_old_launcher_exes: удалён {name}"),
+            Err(e) => log::warn!("remove_old_launcher_exes: не удалось удалить {name}: {e}"),
+        }
+    }
+}
+
+/// Папка preloading_plugins существует и не пуста (как в get_install_action).
+fn has_preloading_plugins(folder: &std::path::Path) -> bool {
+    let plugins = folder.join("preloading_plugins");
+    plugins.is_dir()
+        && std::fs::read_dir(&plugins)
+            .map(|mut rd| rd.next().is_some())
+            .unwrap_or(false)
+}
+
+/// Тело установки: скачивание → распаковка → обновление launcher_path.
+/// Ошибка — текст для фронта (эмит 'error' делает вызывающая команда).
+async fn launcher_install_run(
+    app: &tauri::AppHandle,
+    state: &AppState,
+    folder_path: &str,
+    install_type: &str,
+) -> Result<(), String> {
+    let folder = std::path::Path::new(folder_path);
+    // preloading ставим при полной установке и по запросу; upgrade_to_v8 —
+    // только если папки вдруг нет (по action её быть не должно)
+    let install_launcher = install_type != "install_preloading_only";
+    let need_preloading = matches!(install_type, "choose_version" | "install_preloading_only")
+        || !has_preloading_plugins(folder);
+
+    if install_type == "upgrade_to_v8" {
+        // Старые процессы лаунчеров блокируют удаление их exe
+        kill_all_launchers();
+    }
+    if install_launcher {
+        remove_old_launcher_exes(folder);
+    }
+
+    // ── Этап 1: архив лаунчера (ZipCrypto, пароль) ──
+    if install_launcher {
+        emit_install_progress(app, "dl", 1, "Подключение к GitHub...");
+        let zip = download_to_temp(
+            app,
+            LAUNCHER_V8_ZIP_URL,
+            0,
+            80,
+            "Скачивание архива лаунчера...",
+        )
+        .await?;
+        emit_install_progress(app, "extract", 82, "Распаковка архива...");
+        let mode = if install_type == "choose_version" {
+            ZipExtractMode::All
+        } else {
+            ZipExtractMode::ExeOnly
+        };
+        let extracted = extract_launcher_zip(
+            zip.path(),
+            folder,
+            Some(LAUNCHER_V8_ZIP_PASSWORD),
+            mode,
+        )?;
+        log::info!("start_launcher_install: извлечено файлов лаунчера: {extracted}");
+        if extracted == 0 {
+            return Err("Исполняемый файл лаунчера не найден в архиве".to_string());
+        }
+    }
+
+    // ── Этап 2: preloading_plugins (без пароля), если его нет ──
+    if need_preloading {
+        emit_install_progress(app, "dl", 84, "Скачивание preloading_plugins...");
+        let zip =
+            download_to_temp(app, PRELOADING_ZIP_URL, 84, 92, "Скачивание preloading_plugins...")
+                .await?;
+        emit_install_progress(app, "extract", 94, "Распаковка preloading_plugins...");
+        let extracted =
+            extract_launcher_zip(zip.path(), folder, None, ZipExtractMode::PreloadingOnly)?;
+        log::info!("start_launcher_install: извлечено файлов preloading: {extracted}");
+        if extracted == 0 || !has_preloading_plugins(folder) {
+            return Err("Папка preloading_plugins не найдена после распаковки".to_string());
+        }
+    }
+
+    // ── Этап 3: финализация — путь к лаунчеру в конфиг ──
+    emit_install_progress(app, "install", 96, "Установка файлов...");
+    match find_launcher_exe(folder) {
+        Some((exe, _)) => {
+            let exe_str = exe.to_string_lossy().to_string();
+            log::info!("start_launcher_install: launcher_path = {exe_str}");
+            util::update_config(state, |cfg| {
+                cfg.launcher_path = exe_str.clone();
+                Ok(())
+            })?;
+        }
+        None => log::warn!("start_launcher_install: exe лаунчера не найден в {folder_path}"),
+    }
+    Ok(())
+}
+
 #[tauri::command]
-pub async fn start_launcher_install(folder_path: String, version: Option<String>, install_type: Option<String>) -> Result<serde_json::Value, String> {
-    Ok(serde_json::json!({"success": false, "message": "Not implemented"}))
+pub async fn start_launcher_install(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    folder_path: String,
+    version: Option<String>,
+    install_type: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let version = version.unwrap_or_else(|| "v8".to_string());
+    if version != "v8" {
+        return util::fail_message(format!("Поддерживается только версия v8 (получена: {version})"));
+    }
+    let install_type = install_type.unwrap_or_else(|| "choose_version".to_string());
+    const VALID_TYPES: [&str; 4] = [
+        "choose_version",
+        "install_launcher_only",
+        "install_preloading_only",
+        "upgrade_to_v8",
+    ];
+    if !VALID_TYPES.contains(&install_type.as_str()) {
+        return util::fail_message(format!("Установка не требуется (action: {install_type})"));
+    }
+
+    let folder = std::path::Path::new(&folder_path);
+    if !folder.is_dir() {
+        return util::fail_message("Папка игры не найдена");
+    }
+    // Дополнительная проверка: нужная версия уже стоит — не качаем
+    if let Ok(info) = get_install_action(folder_path.clone()) {
+        if info["action"] == "none" {
+            let msg = info["message"].as_str().unwrap_or("Лаунчер уже установлен");
+            return util::fail_message(msg);
+        }
+    }
+
+    log::info!("start_launcher_install: folder={folder_path} version={version} type={install_type}");
+    match launcher_install_run(&app, &state, &folder_path, &install_type).await {
+        Ok(()) => {
+            emit_install_progress(&app, "done", 100, "Установка завершена");
+            log::info!("start_launcher_install: УСТАНОВКА ЗАВЕРШЕНА УСПЕШНО ({folder_path})");
+            util::ok_true()
+        }
+        Err(e) => {
+            log::error!("start_launcher_install: {e}");
+            emit_install_progress(&app, "error", 0, &e);
+            util::fail_message(e)
+        }
+    }
 }
 
 // ==================== Moonloader ====================

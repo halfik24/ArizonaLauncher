@@ -220,9 +220,38 @@
 
   window.pywebview = { api: api };
 
+  // Прогресс установки лаунчера: Tauri-событие 'launcher-install-progress'
+  // (эмит из src-tauri/src/launcher.rs) → глобальный хаб
+  // window._onLauncherInstallProgress из index.html. Слушатель ставим до
+  // диспатча 'pywebviewready'; если __TAURI__ ещё не готов — ретраим.
+  function subscribeInstallProgress(attempt) {
+    if (window.__installProgressSubscribed) return;
+    var t = window.__TAURI__;
+    if (t && t.event && typeof t.event.listen === 'function') {
+      try {
+        t.event.listen('launcher-install-progress', function (e) {
+          if (typeof window._onLauncherInstallProgress === 'function') {
+            window._onLauncherInstallProgress(e.payload);
+          }
+        });
+        window.__installProgressSubscribed = true;
+        console.log('[tauri-bridge] подписка на launcher-install-progress установлена');
+        return;
+      } catch (err) {
+        console.warn('[tauri-bridge] подписка на launcher-install-progress не удалась:', err);
+      }
+    }
+    if (attempt < 40) {
+      setTimeout(function () { subscribeInstallProgress(attempt + 1); }, 250);
+    } else {
+      console.warn('[tauri-bridge] window.__TAURI__.event недоступен — прогресс установки не придёт');
+    }
+  }
+
   function fireReady() {
     if (window.__pywebviewReadyFired) return;
     window.__pywebviewReadyFired = true;
+    subscribeInstallProgress(0);
     console.log('[tauri-bridge] PyWebView готов (Tauri)');
     try {
       window.dispatchEvent(new Event('pywebviewready'));
