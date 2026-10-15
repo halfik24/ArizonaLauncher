@@ -14098,6 +14098,10 @@
                                 // ArizonaPatches) перерисуем сразу, чтобы не ждать
                                 // повторного открытия вкладки.
                                 checkPatchesStatus();
+                                // И кнопку «Установить» в правой панели: при
+                                // нативном запуске лаунчер Air не нужен — кнопка
+                                // исчезает; при Air — появляется, если не установлен.
+                                loadSavedData();
                             }
                         } catch (e) {
                             paramsOk = false;
@@ -15297,6 +15301,9 @@
             try {
                 if (window.pywebview && window.pywebview.api.set_launch_method) {
                     await window.pywebview.api.set_launch_method(method);
+                    // Кнопка «Установить» в правой панели зависит от метода:
+                    // при Air без установленного лаунчера — появится после онбординга
+                    loadSavedData();
                 }
             } catch (e) { console.warn('set_launch_method failed:', e); }
         }

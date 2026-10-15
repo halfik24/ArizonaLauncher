@@ -8,10 +8,10 @@ use tauri::{Manager, State};
 #[tauri::command]
 pub fn get_config(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
     let cfg = util::lock_config(&state)?;
+    // Достаточно папки игры: лаунчер Air не обязателен — при нативном запуске
+    // он не используется, а при Air его отсутствие покажет кнопка «Установить».
     let paths_ok = !cfg.game_path.is_empty()
-        && !cfg.launcher_path.is_empty()
-        && std::path::Path::new(&cfg.game_path).exists()
-        && std::path::Path::new(&cfg.launcher_path).exists();
+        && std::path::Path::new(&cfg.game_path).exists();
     Ok(serde_json::json!({
         "launcher_path": cfg.launcher_path,
         "game_path": cfg.game_path,
@@ -26,7 +26,9 @@ pub fn get_config(state: State<'_, AppState>) -> Result<serde_json::Value, Strin
 #[tauri::command]
 pub fn get_saved_data(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
     let cfg = util::lock_config(&state)?;
-    let paths_ok = !cfg.game_path.is_empty() && !cfg.launcher_path.is_empty();
+    // Достаточно папки игры: лаунчер Air не обязателен — при нативном запуске
+    // он не используется, а при Air его отсутствие покажет кнопка «Установить».
+    let paths_ok = !cfg.game_path.is_empty();
     Ok(serde_json::json!({
         "success": true,
         "nickname": cfg.last_nickname,
@@ -39,7 +41,8 @@ pub fn get_saved_data(state: State<'_, AppState>) -> Result<serde_json::Value, S
 #[tauri::command]
 pub fn get_init_data(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
     let cfg = util::lock_config(&state)?;
-    let paths_ok = !cfg.game_path.is_empty() && !cfg.launcher_path.is_empty();
+    // Достаточно папки игры (см. get_saved_data)
+    let paths_ok = !cfg.game_path.is_empty();
     Ok(serde_json::json!({
         "success": true,
         "saved": {
@@ -288,7 +291,7 @@ pub async fn select_game_path(
         Ok(())
     })?;
 
-    let install_info = get_install_action(folder_str.clone())?;
+    let install_info = get_install_action(state, folder_str.clone())?;
     Ok(serde_json::json!({
         "success": true,
         "message": format!("Путь установлен: {}", folder_str),
@@ -1259,9 +1262,11 @@ pub fn check_launcher_update(state: State<'_, AppState>) -> Result<serde_json::V
 /// всех exe папки (не по имени файла):
 /// - action: 'none' | 'choose_version' | 'install_launcher_only'
 ///           | 'install_preloading_only' | 'upgrade_to_v8' | 'error'
-#[tauri::command]
-pub fn get_install_action(folder_path: String) -> Result<serde_json::Value, String> {
-    let folder = std::path::Path::new(&folder_path);
+///
+/// Чистая файловая логика (без учёта способа запуска) — используется и
+/// `start_launcher_install` для проверки «уже установлен?».
+fn install_action_for_folder(folder_path: &str) -> Result<serde_json::Value, String> {
+    let folder = std::path::Path::new(folder_path);
     if !folder.join("gta_sa.exe").exists() {
         return Ok(serde_json::json!({"action": "error", "message": "gta_sa.exe не найден"}));
     }
@@ -1337,10 +1342,26 @@ pub fn get_install_action(folder_path: String) -> Result<serde_json::Value, Stri
     }))
 }
 
+/// Команда для фронта: какое действие по установке требуется с учётом
+/// способа запуска. При нативном запуске лаунчер Air и preloading не нужны —
+/// всегда 'none', чтобы не пилить «Установить» без причины.
+#[tauri::command]
+pub fn get_install_action(state: State<'_, AppState>, folder_path: String) -> Result<serde_json::Value, String> {
+    let method = { util::lock_config(&state)?.launch_method.clone() };
+    if method != "air" {
+        return Ok(serde_json::json!({
+            "action": "none",
+            "message": "Нативный запуск — лаунчер Air не требуется",
+            "launch_method": "native"
+        }));
+    }
+    install_action_for_folder(&folder_path)
+}
+
 /// API-обёртка для JS: {success, install_info} (как в Python get_install_action_api)
 #[tauri::command]
-pub fn get_install_action_api(folder_path: String) -> Result<serde_json::Value, String> {
-    match get_install_action(folder_path) {
+pub fn get_install_action_api(state: State<'_, AppState>, folder_path: String) -> Result<serde_json::Value, String> {
+    match get_install_action(state, folder_path) {
         Ok(install_info) => Ok(serde_json::json!({"success": true, "install_info": install_info})),
         Err(e) => Ok(serde_json::json!({"success": false, "message": e})),
     }
@@ -2935,7 +2956,8 @@ pub async fn start_launcher_install(
         return util::fail_message("Папка игры не найдена");
     }
     // Дополнительная проверка: нужная версия уже стоит — не качаем
-    if let Ok(info) = get_install_action(folder_path.clone()) {
+    // (чисто файловая проверка: установку вызывают явно, метод не важен)
+    if let Ok(info) = install_action_for_folder(&folder_path) {
         if info["action"] == "none" {
             let msg = info["message"].as_str().unwrap_or("Лаунчер уже установлен");
             return util::fail_message(msg);
