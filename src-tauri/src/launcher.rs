@@ -3148,14 +3148,174 @@ pub fn open_moonloader_folder(state: State<'_, AppState>) -> Result<serde_json::
     util::ok_true()
 }
 
-#[tauri::command]
-pub async fn fetch_moonloader_catalog() -> Result<serde_json::Value, String> {
-    Ok(serde_json::json!({"success": false, "message": "Not implemented"}))
+/// Парсер блоков `[секция]` с парами `key = value` — как `_parse_catalog_txt` в v1.
+/// Комментарии (`#`), пустые строки и строки без `=` пропускаются.
+fn parse_catalog_txt(text: &str) -> Vec<serde_json::Value> {
+    let mut blocks: Vec<serde_json::Value> = Vec::new();
+    let mut current: Option<serde_json::Map<String, serde_json::Value>> = None;
+    for raw_line in text.lines() {
+        let line = raw_line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        if line.starts_with('[') && line.ends_with(']') {
+            if let Some(block) = current.take() {
+                blocks.push(serde_json::Value::Object(block));
+            }
+            current = Some(serde_json::Map::new());
+            continue;
+        }
+        if let Some(block) = current.as_mut() {
+            if let Some(eq) = line.find('=') {
+                let key = line[..eq].trim().to_string();
+                let val = line[eq + 1..].trim().to_string();
+                block.insert(key, serde_json::Value::String(val));
+            }
+        }
+    }
+    if let Some(block) = current {
+        blocks.push(serde_json::Value::Object(block));
+    }
+    blocks
+}
+
+/// Безопасное имя файла — аналог `_safe_basename` из v1:
+/// только basename (без путей/`..`) и whitelist символов.
+fn safe_script_filename(name: &str) -> Result<String, String> {
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        return Err("Пустое имя файла".to_string());
+    }
+    let cleaned = trimmed.rsplit(['/', '\\']).next().unwrap_or("");
+    if cleaned.is_empty() || cleaned == "." || cleaned == ".." {
+        return Err(format!("Недопустимое имя файла: {name}"));
+    }
+    let ok = cleaned
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_' | ' ' | '(' | ')'));
+    if !ok {
+        return Err(format!("Недопустимые символы в имени файла: {cleaned}"));
+    }
+    Ok(cleaned.to_string())
 }
 
 #[tauri::command]
-pub async fn install_moonloader_script(url: String, filename: String) -> Result<serde_json::Value, String> {
-    Ok(serde_json::json!({"success": false, "message": "Not implemented"}))
+pub async fn fetch_moonloader_catalog() -> Result<serde_json::Value, String> {
+    let urls = [
+        "https://raw.githubusercontent.com/halfik24/ArzLaunchRepo/main/Lua/lua.txt",
+        "https://raw.githubusercontent.com/halfik24/ArzLaunchRepo/refs/heads/main/Lua/lua.txt",
+        "https://github.com/halfik24/ArzLaunchRepo/raw/main/Lua/lua.txt",
+        // Fallback из v1 (старый репо, теперь под halfik24)
+        "https://raw.githubusercontent.com/halfik24/ArizonaLauncher/main/moonloader.txt",
+    ];
+    let mut last_err = String::new();
+    for url in urls {
+        let mut headers = reqwest::header::HeaderMap::new();
+        headers.insert(
+            reqwest::header::CACHE_CONTROL,
+            reqwest::header::HeaderValue::from_static("no-cache"),
+        );
+        headers.insert(
+            reqwest::header::PRAGMA,
+            reqwest::header::HeaderValue::from_static("no-cache"),
+        );
+        headers.insert(
+            reqwest::header::USER_AGENT,
+            reqwest::header::HeaderValue::from_static("Mozilla/5.0"),
+        );
+        let resp = match util::http_request(
+            reqwest::Method::GET,
+            url,
+            headers,
+            std::time::Duration::from_secs(20),
+        )
+        .await
+        {
+            Ok(r) => r,
+            Err(e) => {
+                log::error!("fetch_moonloader_catalog: {url}: {e}");
+                last_err = e;
+                continue;
+            }
+        };
+        let status = resp.status();
+        let bytes = match resp.bytes().await {
+            Ok(b) => b,
+            Err(e) => {
+                last_err = e.to_string();
+                continue;
+            }
+        };
+        if status != reqwest::StatusCode::OK {
+            last_err = format!("HTTP {status}");
+            continue;
+        }
+        let text = util::decode_text_bytes(&bytes);
+        let data = parse_catalog_txt(&text);
+        if data.is_empty() {
+            last_err = "пустой каталог".to_string();
+            continue;
+        }
+        log::info!("fetch_moonloader_catalog: {} скриптов с {url}", data.len());
+        return Ok(serde_json::json!({"success": true, "data": data}));
+    }
+    Ok(serde_json::json!({
+        "success": false,
+        "message": if last_err.is_empty() {
+            "Каталог недоступен".to_string()
+        } else {
+            format!("Не удалось загрузить каталог: {last_err}")
+        }
+    }))
+}
+
+#[tauri::command]
+pub async fn install_moonloader_script(
+    state: State<'_, AppState>,
+    url: String,
+    filename: String,
+) -> Result<serde_json::Value, String> {
+    // Папка moonloader рядом с gta_sa.exe (та же логика, что в v1)
+    let ml_dir = match moonloader_dir(&state) {
+        Ok(d) => d,
+        Err(e) => return util::fail_message(e),
+    };
+    // Безопасное имя файла (whitelist как в v1)
+    let safe_name = match safe_script_filename(&filename) {
+        Ok(n) => n,
+        Err(e) => return util::fail_message(e),
+    };
+    // Скачиваем скрипт
+    let mut headers = reqwest::header::HeaderMap::new();
+    headers.insert(
+        reqwest::header::USER_AGENT,
+        reqwest::header::HeaderValue::from_static("Mozilla/5.0"),
+    );
+    let resp = match util::http_request(
+        reqwest::Method::GET,
+        &url,
+        headers,
+        std::time::Duration::from_secs(30),
+    )
+    .await
+    {
+        Ok(r) => r,
+        Err(e) => return util::fail_message(format!("Ошибка загрузки: {e}")),
+    };
+    let status = resp.status();
+    if status != reqwest::StatusCode::OK {
+        return util::fail_message(format!("Ошибка загрузки: HTTP {status}"));
+    }
+    let bytes = match resp.bytes().await {
+        Ok(b) => b,
+        Err(e) => return util::fail_message(format!("Ошибка загрузки: {e}")),
+    };
+    let dest = ml_dir.join(&safe_name);
+    if let Err(e) = std::fs::write(&dest, &bytes) {
+        return util::fail_message(format!("Не удалось записать файл: {e}"));
+    }
+    log::info!("Скрипт установлен: {}", dest.display());
+    Ok(serde_json::json!({"success": true, "message": format!("Установлен: {safe_name}")}))
 }
 
 #[tauri::command]
@@ -3165,24 +3325,418 @@ pub fn install_lua_file(filename: String, content_b64: String) -> Result<serde_j
 
 // ==================== Libraries ====================
 
+/// Каталог библиотек `libraries.txt`: ArzLaunchRepo, фолбэк — старый ArizonaLauncher (v1).
 #[tauri::command]
 pub async fn fetch_libraries_catalog() -> Result<serde_json::Value, String> {
-    Ok(serde_json::json!({"success": false, "message": "Not implemented"}))
+    let urls = [
+        "https://raw.githubusercontent.com/halfik24/ArzLaunchRepo/main/libraries.txt",
+        "https://raw.githubusercontent.com/halfik24/ArzLaunchRepo/refs/heads/main/libraries.txt",
+        "https://github.com/halfik24/ArzLaunchRepo/raw/main/libraries.txt",
+        // Fallback из v1
+        "https://raw.githubusercontent.com/halfik24/ArizonaLauncher/main/libraries.txt",
+    ];
+    let mut last_err = String::new();
+    for url in urls {
+        let mut headers = reqwest::header::HeaderMap::new();
+        headers.insert(
+            reqwest::header::CACHE_CONTROL,
+            reqwest::header::HeaderValue::from_static("no-cache"),
+        );
+        headers.insert(
+            reqwest::header::USER_AGENT,
+            reqwest::header::HeaderValue::from_static("Mozilla/5.0"),
+        );
+        let resp = match util::http_request(
+            reqwest::Method::GET,
+            url,
+            headers,
+            std::time::Duration::from_secs(20),
+        )
+        .await
+        {
+            Ok(r) => r,
+            Err(e) => {
+                log::error!("fetch_libraries_catalog: {url}: {e}");
+                last_err = e;
+                continue;
+            }
+        };
+        let status = resp.status();
+        let bytes = match resp.bytes().await {
+            Ok(b) => b,
+            Err(e) => {
+                last_err = e.to_string();
+                continue;
+            }
+        };
+        if status != reqwest::StatusCode::OK {
+            last_err = format!("HTTP {status}");
+            continue;
+        }
+        let text = util::decode_text_bytes(&bytes);
+        let data = parse_catalog_txt(&text);
+        if data.is_empty() {
+            last_err = "пустой каталог".to_string();
+            continue;
+        }
+        log::info!("fetch_libraries_catalog: {} библиотек с {url}", data.len());
+        return Ok(serde_json::json!({"success": true, "data": data}));
+    }
+    Ok(serde_json::json!({
+        "success": false,
+        "message": if last_err.is_empty() {
+            "Каталог библиотек недоступен".to_string()
+        } else {
+            format!("Не удалось загрузить каталог библиотек: {last_err}")
+        }
+    }))
+}
+
+/// Выбор канонической папки библиотек внутри `moonloader/`: существующая
+/// непустая `lib/` либо `libraries/`, иначе создаётся `lib/` (приоритет —
+/// 1-в-1 как `_get_lib_dir` в v1). Чистая функция — тестируется напрямую.
+fn moonloader_lib_dir_from(ml_dir: &std::path::Path) -> Result<PathBuf, String> {
+    for cand in ["lib", "libraries"] {
+        let p = ml_dir.join(cand);
+        if p.is_dir() {
+            let non_empty = std::fs::read_dir(&p)
+                .map(|mut it| it.next().is_some())
+                .unwrap_or(false);
+            if non_empty {
+                return Ok(p);
+            }
+        }
+    }
+    let canon = ml_dir.join("lib");
+    std::fs::create_dir_all(&canon)
+        .map_err(|e| format!("Не удалось создать {}: {e}", canon.display()))?;
+    Ok(canon)
+}
+
+/// Каноническая папка библиотек из состояния приложения.
+fn moonloader_lib_dir(state: &AppState) -> Result<PathBuf, String> {
+    let ml = moonloader_dir(state)?;
+    moonloader_lib_dir_from(&ml)
+}
+
+/// Расширения файлов-библиотек (прочие файлы при скане пропускаем).
+fn is_lib_file(path: &std::path::Path) -> bool {
+    matches!(
+        path.extension()
+            .and_then(|e| e.to_str())
+            .map(|e| e.to_ascii_lowercase())
+            .as_deref(),
+        Some("lua") | Some("luac") | Some("dll") | Some("so") | Some("cs") | Some("asi")
+    )
+}
+
+/// Имя библиотеки из имени файла: `mimgui.lua` → `mimgui`, `x.luac` → `x`,
+/// `GifPlayerLua.dll` → `GifPlayerLua` (иначе имя либы из dll не совпадёт с каталогом).
+fn lib_file_stem(fname: &str) -> String {
+    let lower = fname.to_ascii_lowercase();
+    for ext in [".luac", ".lua", ".dll", ".asi", ".cs", ".so"] {
+        if lower.ends_with(ext) && fname.len() > ext.len() {
+            return fname[..fname.len() - ext.len()].to_string();
+        }
+    }
+    fname.to_string()
+}
+
+/// Сканирует папку либ. Файлы в корне: `mimgui.lua` → «mimgui».
+/// Подпапки: `samp/events.lua` → «samp.events», а `mimgui/mimgui.lua` и
+/// `foo/init.lua` → «mimgui» / «foo» (чинит рассинхрон имён с каталогом).
+fn scan_installed_libs(lib_dir: &std::path::Path) -> Vec<serde_json::Value> {
+    use std::collections::BTreeMap;
+    let mut groups: BTreeMap<String, (Vec<String>, u64)> = BTreeMap::new();
+    let entries = match std::fs::read_dir(lib_dir) {
+        Ok(e) => e,
+        Err(_) => return Vec::new(),
+    };
+    for entry in entries.flatten() {
+        let fname = entry.file_name().to_string_lossy().to_string();
+        if fname.starts_with('.') {
+            continue;
+        }
+        let path = entry.path();
+        let Ok(ft) = entry.file_type() else { continue };
+        if ft.is_file() {
+            if !is_lib_file(&path) {
+                continue;
+            }
+            let size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+            let g = groups.entry(lib_file_stem(&fname)).or_default();
+            g.0.push(fname);
+            g.1 += size;
+        } else if ft.is_dir() {
+            let Ok(sub) = std::fs::read_dir(&path) else { continue };
+            for f in sub.flatten() {
+                let sfname = f.file_name().to_string_lossy().to_string();
+                if sfname.starts_with('.') {
+                    continue;
+                }
+                let spath = f.path();
+                if !spath.is_file() || !is_lib_file(&spath) {
+                    continue;
+                }
+                let stem = lib_file_stem(&sfname);
+                let key = if stem.eq_ignore_ascii_case(&fname) || stem == "init" {
+                    fname.clone()
+                } else {
+                    format!("{fname}.{stem}")
+                };
+                let size = std::fs::metadata(&spath).map(|m| m.len()).unwrap_or(0);
+                let g = groups.entry(key).or_default();
+                g.0.push(format!("{fname}/{sfname}"));
+                g.1 += size;
+            }
+        }
+    }
+    groups
+        .into_iter()
+        .map(|(name, (files, size))| serde_json::json!({"name": name, "files": files, "size": size}))
+        .collect()
 }
 
 #[tauri::command]
-pub fn list_installed_libraries() -> Result<serde_json::Value, String> {
-    Ok(serde_json::json!({"success": true, "data": []}))
+pub fn list_installed_libraries(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
+    let dir = match moonloader_lib_dir(&state) {
+        Ok(d) => d,
+        Err(e) => return util::fail_message(e),
+    };
+    Ok(serde_json::json!({"success": true, "data": scan_installed_libs(&dir)}))
+}
+
+/// Безопасная распаковка zip-библиотеки: ВСЁ кладётся в `lib/` с сохранением
+/// внутренних путей (префикс `moonloader/` отрезается — такие архивы
+/// упакованы под извлечение в корень игры). Пути с `..`, абсолютные и с
+/// диском пропускаются. Возвращает записанные относительные пути.
+fn extract_lib_zip(bytes: &[u8], lib_dir: &std::path::Path) -> Result<Vec<String>, String> {
+    const MAX_ENTRIES: usize = 2000;
+    const MAX_TOTAL: u64 = 500 * 1024 * 1024;
+    let cursor = std::io::Cursor::new(bytes);
+    let mut archive =
+        zip::ZipArchive::new(cursor).map_err(|e| format!("Некорректный архив: {e}"))?;
+    if archive.len() > MAX_ENTRIES {
+        return Err(format!("Слишком много файлов в архиве: {}", archive.len()));
+    }
+    let mut written: Vec<String> = Vec::new();
+    let mut total: u64 = 0;
+    for i in 0..archive.len() {
+        let mut entry = archive.by_index(i).map_err(|e| e.to_string())?;
+        if !entry.is_file() {
+            continue;
+        }
+        let raw = entry.name().replace('\\', "/");
+        // Защита от zip-slip
+        if raw.starts_with('/')
+            || raw.contains("..")
+            || raw.chars().take(2).any(|c| c == ':')
+        {
+            log::warn!("extract_lib_zip: пропущен небезопасный путь: {raw}");
+            continue;
+        }
+        total += entry.size();
+        if total > MAX_TOTAL {
+            return Err("Архив слишком большой".to_string());
+        }
+        // Архивы вида `moonloader/lib/x.lua` распаковываются как `lib/x.lua`,
+        // а `moonloader/x.lua` — как просто `x.lua` (архив упакован под корень игры)
+        let rel = raw
+            .strip_prefix("moonloader/lib/")
+            .or_else(|| raw.strip_prefix("moonloader/"))
+            .unwrap_or(&raw);
+        if rel.is_empty() || rel.ends_with('/') {
+            continue;
+        }
+        let dest = lib_dir.join(rel);
+        if let Some(parent) = dest.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        }
+        let mut out = std::fs::File::create(&dest)
+            .map_err(|e| format!("Не удалось записать {rel}: {e}"))?;
+        std::io::copy(&mut entry, &mut out).map_err(|e| format!("Ошибка записи {rel}: {e}"))?;
+        written.push(rel.to_string());
+    }
+    if written.is_empty() {
+        return Err("В архиве нет файлов".to_string());
+    }
+    Ok(written)
+}
+
+/// Уже ли установлен целевой файл одиночной либы (`path` относительно lib/).
+fn lib_path_is_installed(lib_dir: &std::path::Path, rel: &str) -> bool {
+    lib_dir.join(rel.replace('/', std::path::MAIN_SEPARATOR_STR))
+        .is_file()
 }
 
 #[tauri::command]
-pub async fn install_library(name: String, url: String) -> Result<serde_json::Value, String> {
-    Ok(serde_json::json!({"success": false, "message": "Not implemented"}))
+pub async fn install_library(
+    state: State<'_, AppState>,
+    name: String,
+    url: String,
+    path: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let name = name.trim();
+    if name.is_empty()
+        || name.contains('/')
+        || name.contains('\\')
+        || name.contains("..")
+    {
+        return util::fail_message("Недопустимое имя библиотеки");
+    }
+    let lib_dir = match moonloader_lib_dir(&state) {
+        Ok(d) => d,
+        Err(e) => return util::fail_message(e),
+    };
+    let rel_path = path.as_deref().map(str::trim).filter(|p| !p.is_empty());
+    if let Some(p) = rel_path {
+        if p.starts_with('/') || p.starts_with('\\') || p.contains("..") || p.contains(':') {
+            return util::fail_message(format!("Недопустимый путь: {p}"));
+        }
+    }
+    // Уже установлено? Сначала по целевому файлу (точно), затем по имени (как в v1).
+    if let Some(p) = rel_path {
+        if lib_path_is_installed(&lib_dir, p) {
+            return Ok(serde_json::json!({
+                "success": true, "skipped": true,
+                "message": format!("{name} уже установлена")
+            }));
+        }
+    } else if scan_installed_libs(&lib_dir)
+        .iter()
+        .any(|l| l["name"].as_str().map(|n| n.eq_ignore_ascii_case(name)).unwrap_or(false))
+    {
+        return Ok(serde_json::json!({
+            "success": true, "skipped": true,
+            "message": format!("{name} уже установлена")
+        }));
+    }
+    // Скачивание
+    let mut headers = reqwest::header::HeaderMap::new();
+    headers.insert(
+        reqwest::header::USER_AGENT,
+        reqwest::header::HeaderValue::from_static("Mozilla/5.0"),
+    );
+    let resp = match util::http_request(
+        reqwest::Method::GET,
+        &url,
+        headers,
+        std::time::Duration::from_secs(30),
+    )
+    .await
+    {
+        Ok(r) => r,
+        Err(e) => return util::fail_message(format!("Ошибка загрузки: {e}")),
+    };
+    let status = resp.status();
+    if status != reqwest::StatusCode::OK {
+        return util::fail_message(format!("Ошибка загрузки: HTTP {status}"));
+    }
+    let bytes = match resp.bytes().await {
+        Ok(b) => b,
+        Err(e) => return util::fail_message(format!("Ошибка загрузки: {e}")),
+    };
+    if bytes.is_empty() {
+        return util::fail_message("Пустой файл библиотеки");
+    }
+    let written: Vec<String> = if bytes.starts_with(b"PK") {
+        match extract_lib_zip(&bytes, &lib_dir) {
+            Ok(w) => w,
+            Err(e) => return util::fail_message(e),
+        }
+    } else {
+        // Одиночный файл: явный путь из каталога либо имя из url / имени библиотеки
+        let fname = match rel_path {
+            Some(p) => p.to_string(),
+            None => {
+                let from_url = url.rsplit(['/', '\\']).next().and_then(|b| {
+                    let s = b.split(['?', '#']).next().unwrap_or("");
+                    if s.is_empty() {
+                        None
+                    } else {
+                        safe_script_filename(s).ok()
+                    }
+                });
+                from_url.unwrap_or_else(|| format!("{name}.lua"))
+            }
+        };
+        let dest_path = lib_dir.join(fname.replace('/', std::path::MAIN_SEPARATOR_STR));
+        if let Some(parent) = dest_path.parent() {
+            if let Err(e) = std::fs::create_dir_all(parent) {
+                return util::fail_message(format!("Не удалось создать папку: {e}"));
+            }
+        }
+        if let Err(e) = std::fs::write(&dest_path, &bytes) {
+            return util::fail_message(format!("Не удалось записать файл: {e}"));
+        }
+        vec![fname]
+    };
+    log::info!("Библиотека {name} установлена: {}", written.join(", "));
+    Ok(serde_json::json!({
+        "success": true,
+        "message": format!("Установлено: {name} ({} файлов)", written.len()),
+        "files": written,
+    }))
 }
 
 #[tauri::command]
-pub fn uninstall_library(name: String) -> Result<serde_json::Value, String> {
-    Ok(serde_json::json!({"success": false, "message": "Not implemented"}))
+pub fn uninstall_library(
+    state: State<'_, AppState>,
+    name: String,
+) -> Result<serde_json::Value, String> {
+    let name = name.trim();
+    if name.is_empty() || name.contains('/') || name.contains('\\') || name.contains("..") {
+        return util::fail_message("Недопустимое имя библиотеки");
+    }
+    let lib_dir = match moonloader_lib_dir(&state) {
+        Ok(d) => d,
+        Err(e) => return util::fail_message(e),
+    };
+    let mut deleted: Vec<String> = Vec::new();
+    // 1) Файлы в корне lib: name / name.lua / name.luac
+    for cand in [name.to_string(), format!("{name}.lua"), format!("{name}.luac")] {
+        let p = lib_dir.join(&cand);
+        if p.is_file() {
+            if let Err(e) = std::fs::remove_file(&p) {
+                return util::fail_message(e.to_string());
+            }
+            deleted.push(cand);
+        }
+    }
+    // 2) Точечное имя: samp.events → lib/samp/events.lua(.luac), папка подметается
+    if let Some((dir, rest)) = name.split_once('.') {
+        if let Ok(dir_safe) = safe_script_name(dir) {
+            let sub = lib_dir.join(dir_safe);
+            if sub.is_dir() {
+                for cand in [format!("{rest}.lua"), format!("{rest}.luac")] {
+                    let p = sub.join(&cand);
+                    if p.is_file() {
+                        if let Err(e) = std::fs::remove_file(&p) {
+                            return util::fail_message(e.to_string());
+                        }
+                        deleted.push(format!("{dir_safe}/{cand}"));
+                    }
+                }
+                let _ = std::fs::remove_dir(&sub); // сработает только для пустой папки
+            }
+        }
+    }
+    // 3) Папка-библиотека (набор файлов)
+    let plain_dir = lib_dir.join(name);
+    if plain_dir.is_dir() {
+        if let Err(e) = std::fs::remove_dir_all(&plain_dir) {
+            return util::fail_message(e.to_string());
+        }
+        deleted.push(format!("{name}/"));
+    }
+    if deleted.is_empty() {
+        return util::fail_message(format!("Библиотека не найдена: {name}"));
+    }
+    Ok(serde_json::json!({
+        "success": true,
+        "message": format!("Удалено: {}", deleted.join(", ")),
+        "deleted": deleted,
+    }))
 }
 
 // ==================== Others ====================
@@ -3355,4 +3909,252 @@ pub fn get_wallpaper_full(filename: String) -> Result<serde_json::Value, String>
 #[tauri::command]
 pub fn select_bg_image() -> Result<serde_json::Value, String> {
     Ok(serde_json::json!({"success": false, "message": "Not implemented"}))
+}
+
+#[cfg(test)]
+mod catalog_tests {
+    use super::{parse_catalog_txt, safe_script_filename};
+
+    #[test]
+    fn parses_script_blocks_like_v1() {
+        let text = "\
+# комментарий пропускается
+
+[script]
+name        = Удаление надписи в ЦГ
+author      = halfik
+description = Убирает надпись.
+url         = https://example.com/delCG.lua
+file        = delCG.lua
+
+[script]
+name = Второй
+file = two.lua
+";
+        let blocks = parse_catalog_txt(text);
+        assert_eq!(blocks.len(), 2);
+        assert_eq!(blocks[0]["name"], "Удаление надписи в ЦГ");
+        assert_eq!(blocks[0]["author"], "halfik");
+        assert_eq!(blocks[0]["url"], "https://example.com/delCG.lua");
+        assert_eq!(blocks[1]["name"], "Второй");
+        // строки без `=` (продолжения описания) не ломают парсинг
+        assert!(blocks[0].get("description").is_some());
+    }
+
+    #[test]
+    fn parser_ignores_lines_before_first_block() {
+        let blocks = parse_catalog_txt("stray = line\n[file]\nname = x\n");
+        assert_eq!(blocks.len(), 1);
+        assert_eq!(blocks[0]["name"], "x");
+        assert!(blocks[0].get("stray").is_none());
+    }
+
+    #[test]
+    fn safe_filename_keeps_normal_names() {
+        assert_eq!(
+            safe_script_filename("Chat-Calculator v3.lua").unwrap(),
+            "Chat-Calculator v3.lua"
+        );
+        assert_eq!(safe_script_filename(" delCG.lua ").unwrap(), "delCG.lua");
+    }
+
+    #[test]
+    fn safe_filename_strips_paths_to_basename() {
+        // Как в v1 (os.path.basename): путь отбрасывается, пишем в корень moonloader
+        assert_eq!(safe_script_filename("../../evil.lua").unwrap(), "evil.lua");
+        assert_eq!(safe_script_filename("..\\..\\evil.lua").unwrap(), "evil.lua");
+        assert_eq!(safe_script_filename("C:\\Windows\\evil.lua").unwrap(), "evil.lua");
+        assert!(safe_script_filename("..").is_err());
+        assert!(safe_script_filename(".").is_err());
+        assert!(safe_script_filename("").is_err());
+        assert!(safe_script_filename("  ").is_err());
+    }
+
+    #[test]
+    fn safe_filename_whitelist_rejects_exotic_chars() {
+        assert!(safe_script_filename("#ArzMarket[3_57].lua").is_err());
+        assert!(safe_script_filename("a&b.lua").is_err());
+        assert!(safe_script_filename("lua\ninject.lua").is_err());
+    }
+}
+
+#[cfg(test)]
+mod library_tests {
+    use super::*;
+    use std::io::Write as _;
+
+    fn lib_file_stem_pub(f: &str) -> String {
+        lib_file_stem(f)
+    }
+
+    #[test]
+    fn stem_strips_lib_extensions() {
+        assert_eq!(lib_file_stem_pub("mimgui.lua"), "mimgui");
+        assert_eq!(lib_file_stem_pub("requests.luac"), "requests");
+        // dll/asi тоже отрезаются: имя либы должно совпадать с каталогом
+        assert_eq!(lib_file_stem_pub("GifPlayerLua.dll"), "GifPlayerLua");
+        assert_eq!(lib_file_stem_pub("mimgui.asi"), "mimgui");
+        assert_eq!(lib_file_stem_pub("noext"), "noext");
+        // короткие имена с точкой в конце не обрезаются в пустоту
+        assert_eq!(lib_file_stem_pub(".lua"), ".lua");
+    }
+
+    #[test]
+    fn lib_dir_creates_canon_when_none() {
+        // Нет ни lib, ни libraries → создаётся lib
+        let tmp = std::env::temp_dir().join(format!("arl_libtest_a_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        let d = moonloader_lib_dir_from(&tmp).unwrap();
+        assert!(d.ends_with("lib"));
+        assert!(d.is_dir());
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn lib_dir_prefers_existing_nonempty_libraries_over_empty_lib() {
+        let tmp = std::env::temp_dir().join(format!("arl_libtest_b_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(tmp.join("lib")).unwrap();
+        std::fs::create_dir_all(tmp.join("libraries")).unwrap();
+        std::fs::write(tmp.join("libraries/samp.lua"), "--x").unwrap();
+        let d = moonloader_lib_dir_from(&tmp).unwrap();
+        assert!(d.ends_with("libraries"));
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn lib_dir_prefers_nonempty_lib_over_libraries_when_both() {
+        let tmp = std::env::temp_dir().join(format!("arl_libtest_c_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(tmp.join("lib")).unwrap();
+        std::fs::create_dir_all(tmp.join("libraries")).unwrap();
+        std::fs::write(tmp.join("lib/mimgui.lua"), "--x").unwrap();
+        std::fs::write(tmp.join("libraries/old.lua"), "--y").unwrap();
+        let d = moonloader_lib_dir_from(&tmp).unwrap();
+        assert!(d.ends_with("lib"), "lib имеет приоритет: {:?}", d);
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn scan_names_flat_and_dotted() {
+        let tmp = std::env::temp_dir().join(format!("arl_scan_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(tmp.join("samp")).unwrap();
+        std::fs::create_dir_all(tmp.join("mimgui")).unwrap();
+        std::fs::write(tmp.join("requests.lua"), "--r").unwrap();
+        std::fs::write(tmp.join("samp/events.lua"), "--e").unwrap();
+        std::fs::write(tmp.join("mimgui/mimgui.lua"), "--m").unwrap();
+        std::fs::write(tmp.join("junk.txt"), "skip").unwrap();
+        let libs = scan_installed_libs(&tmp);
+        let names: Vec<&str> = libs
+            .iter()
+            .filter_map(|v| v["name"].as_str())
+            .collect();
+        assert!(names.contains(&"requests"), "flat файл: {names:?}");
+        assert!(names.contains(&"samp.events"), "подпапка: {names:?}");
+        assert!(names.contains(&"mimgui"), "папка==имя файла: {names:?}");
+        assert!(!names.contains(&"junk"), "не-lua файл пропускается: {names:?}");
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn zip_extracts_everything_into_lib_stripping_moonloader_prefix() {
+        let tmp = std::env::temp_dir().join(format!("arl_zip_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        let lib = tmp.join("lib");
+        std::fs::create_dir_all(&lib).unwrap();
+        // Собираем zip в памяти: раскладки mimgui, samp-lua и moon-imgui
+        let mut cursor = std::io::Cursor::new(Vec::new());
+        {
+            let mut zw = zip::ZipWriter::new(&mut cursor);
+            let opts: zip::write::SimpleFileOptions = zip::write::SimpleFileOptions::default();
+            zw.start_file("mimgui/init.lua", opts).unwrap();
+            zw.write_all(b"-- init").unwrap();
+            zw.start_file("mimgui/cimguidx9.dll", opts).unwrap();
+            zw.write_all(b"dll-bytes").unwrap();
+            zw.start_file("samp/events.lua", opts).unwrap();
+            zw.write_all(b"-- events").unwrap();
+            zw.start_file("moonloader/lib/imgui.lua", opts).unwrap();
+            zw.write_all(b"-- imgui").unwrap();
+            zw.start_file("moonloader/lib/MoonImGui.dll", opts).unwrap();
+            zw.write_all(b"dll2").unwrap();
+            zw.finish().unwrap();
+        }
+        let bytes = cursor.into_inner();
+        let written = extract_lib_zip(&bytes, &lib).unwrap();
+        assert_eq!(written.len(), 5);
+        // Всё живёт в lib/, раскладка архива сохраняется
+        assert!(lib.join("mimgui/init.lua").is_file());
+        assert!(lib.join("mimgui/cimguidx9.dll").is_file(), "dll остаётся в lib/mimgui/");
+        assert!(lib.join("samp/events.lua").is_file());
+        // Префикс moonloader/ отрезается (архив упакован под корень игры)
+        assert!(lib.join("imgui.lua").is_file());
+        assert!(lib.join("MoonImGui.dll").is_file());
+        assert!(!lib.join("moonloader").exists());
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn zip_rejects_path_traversal() {
+        let tmp = std::env::temp_dir().join(format!("arl_ziptrav_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        let lib = tmp.join("lib");
+        std::fs::create_dir_all(&lib).unwrap();
+        let mut cursor = std::io::Cursor::new(Vec::new());
+        {
+            let mut zw = zip::ZipWriter::new(&mut cursor);
+            let opts: zip::write::SimpleFileOptions = zip::write::SimpleFileOptions::default();
+            zw.start_file("../evil.lua", opts).unwrap();
+            zw.write_all(b"evil").unwrap();
+            zw.start_file("good.lua", opts).unwrap();
+            zw.write_all(b"ok").unwrap();
+            zw.finish().unwrap();
+        }
+        let bytes = cursor.into_inner();
+        let written = extract_lib_zip(&bytes, &lib).unwrap();
+        assert_eq!(written, vec!["good.lua".to_string()], "evil.lua пропущен");
+        assert!(!tmp.join("evil.lua").exists());
+        assert!(!lib.join("../evil.lua").exists());
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn lib_path_is_installed_checks_file() {
+        let tmp = std::env::temp_dir().join(format!("arl_chk_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        let lib = tmp.join("lib");
+        std::fs::create_dir_all(&lib).unwrap();
+        std::fs::write(lib.join("mimgui.lua"), "--x").unwrap();
+        assert!(lib_path_is_installed(&lib, "mimgui.lua"));
+        assert!(!lib_path_is_installed(&lib, "missing.lua"));
+        // путь с подпапкой (canary-файл из каталога)
+        std::fs::create_dir_all(lib.join("samp")).unwrap();
+        std::fs::write(lib.join("samp/events.lua"), "--e").unwrap();
+        assert!(lib_path_is_installed(&lib, "samp/events.lua"));
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn parse_libraries_catalog() {
+        let text = "\
+# комментарий
+[library]
+name = mimgui
+description = ImGui bindings.
+url = https://example.com/mimgui.zip
+version = 1.0.0
+path = mimgui/init.lua
+
+[library]
+name = samp.events
+url = https://example.com/samp/events.lua
+path = samp/events.lua
+";
+        let blocks = parse_catalog_txt(text);
+        assert_eq!(blocks.len(), 2);
+        assert_eq!(blocks[0]["name"], "mimgui");
+        assert_eq!(blocks[0]["path"], "mimgui/init.lua");
+        assert_eq!(blocks[1]["path"], "samp/events.lua");
+    }
 }

@@ -3485,6 +3485,57 @@
             color: var(--text-color);
         }
 
+        /* Модальное подтверждение (замена нативного confirm) */
+        .confirm-modal-backdrop {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(6px);
+            -webkit-backdrop-filter: blur(6px);
+            z-index: 1100;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            animation: settingsRise 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .confirm-modal {
+            width: 90%;
+            max-width: 380px;
+            background: rgba(var(--surface-rgb), 0.85);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            padding: 24px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(24px) saturate(1.2);
+            -webkit-backdrop-filter: blur(24px) saturate(1.2);
+        }
+        .confirm-modal-text {
+            font-size: 15px;
+            line-height: 1.5;
+            color: var(--text-color);
+            margin-bottom: 20px;
+            white-space: pre-line;
+        }
+        .confirm-modal-btns { display: flex; gap: 10px; }
+        .confirm-modal-btn {
+            flex: 1;
+            height: 46px;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            background: rgba(255, 255, 255, 0.05);
+            color: var(--text-color);
+            font-size: 14px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .confirm-modal-btn:hover { background: rgba(255, 255, 255, 0.1); }
+        .confirm-modal-btn.danger {
+            background: rgba(255, 80, 80, 0.15);
+            border-color: rgba(255, 80, 80, 0.3);
+            color: #ff9d9d;
+        }
+        .confirm-modal-btn.danger:hover { background: rgba(255, 80, 80, 0.28); }
+
         .folder-option-btn {
             width: 100%;
             height: 50px;
@@ -8420,7 +8471,8 @@
 
         async function deleteProfile(id) {
             const p = _profiles.find(x => x.id === id);
-            if (!p || !confirm(`Удалить профиль «${p.name}»?`)) return;
+            if (!p) return;
+            if (!(await confirmAction(`Удалить профиль «${p.name}»?`))) return;
             _profiles = _profiles.filter(x => x.id !== id);
             if (_activeProfileId === id) _activeProfileId = null;
             await _saveProfiles();
@@ -9723,7 +9775,7 @@
         }
 
         async function deleteMoonloaderScript(name, btn) {
-            if (!confirm(`Удалить скрипт "${name}"?`)) return;
+            if (!(await confirmAction(`Удалить скрипт "${name}"?`))) return;
             const item = btn.closest('.ml-installed-card');
             btn.disabled = true;
             btn.innerHTML = '<i data-lucide="loader"></i>';
@@ -10109,7 +10161,7 @@
                 const lib = catalog.find(l => l.name === r.name);
                 if (!lib) { err.push(`${r.name} (нет в каталоге)`); continue; }
                 try {
-                    const res = await window.pywebview.api.install_library(lib.name, lib.url);
+                    const res = await _installLibViaApi(lib);
                     if (res && res.success) {
                         if (res.skipped) skipped++; else ok++;
                     } else {
@@ -10241,6 +10293,46 @@
             if (window.lucide) refreshLucideIcons();
         }
 
+        // Единая установка библиотеки: тянет path из записи каталога.
+        // Возвращает {success, skipped?, message?}; бросает при ошибке загрузки.
+        async function _installLibViaApi(lib) {
+            if (!window.pywebview || !window.pywebview.api.install_library) {
+                throw new Error('API недоступен (не в приложении)');
+            }
+            return await window.pywebview.api.install_library(
+                lib.name, lib.url, lib.path || null
+            );
+        }
+
+        // Модальное подтверждение вместо нативного confirm() (правило проекта).
+        // Возвращает Promise<boolean>.
+        function confirmAction(message) {
+            return new Promise((resolve) => {
+                const wrap = document.createElement('div');
+                wrap.className = 'confirm-modal-backdrop';
+                wrap.innerHTML = `
+                    <div class="confirm-modal" role="dialog" aria-modal="true">
+                        <div class="confirm-modal-text"></div>
+                        <div class="confirm-modal-btns">
+                            <button class="confirm-modal-btn ghost" data-act="0">Отмена</button>
+                            <button class="confirm-modal-btn danger" data-act="1">Удалить</button>
+                        </div>
+                    </div>`;
+                wrap.querySelector('.confirm-modal-text').textContent = message;
+                const done = (val) => { wrap.remove(); resolve(val); };
+                wrap.addEventListener('click', (e) => {
+                    const btn = e.target.closest('.confirm-modal-btn');
+                    if (!btn) { if (e.target === wrap) done(false); return; }
+                    done(btn.dataset.act === '1');
+                });
+                document.body.appendChild(wrap);
+                const onKey = (e) => {
+                    if (e.key === 'Escape') { document.removeEventListener('keydown', onKey); done(false); }
+                };
+                document.addEventListener('keydown', onKey);
+            });
+        }
+
         async function installLibFromCatalog(name, btn) {
             if (!name) return;
             const lib = (window._libCatalog || []).find(l => l.name === name);
@@ -10250,7 +10342,7 @@
             btn.innerHTML = '<i data-lucide="loader"></i> Скачивается...';
             if (window.lucide) refreshLucideIcons();
             try {
-                const res = await window.pywebview.api.install_library(lib.name, lib.url);
+                const res = await _installLibViaApi(lib);
                 if (res && res.success) {
                     showNotification(res.skipped ? `${lib.name} уже установлена` : `Установлено: ${lib.name}`, 'success', 2000);
                 } else {
@@ -10269,7 +10361,7 @@
 
         async function uninstallLib(name, btn) {
             if (!name) return;
-            if (!confirm(`Удалить библиотеку "${name}"?\nСкрипты, использующие её, могут перестать работать.`)) return;
+            if (!(await confirmAction(`Удалить библиотеку "${name}"?\nСкрипты, использующие её, могут перестать работать.`))) return;
             const orig = btn.innerHTML;
             btn.disabled = true;
             btn.innerHTML = '<i data-lucide="loader"></i> Удаление...';
@@ -10366,7 +10458,7 @@
                         if (!lib) { libErr.push(`${libName} (нет в каталоге)`); continue; }
                         if (!lib.url) { libErr.push(`${libName} (нет url)`); continue; }
                         try {
-                            const lr = await window.pywebview.api.install_library(lib.name, lib.url);
+                            const lr = await _installLibViaApi(lib);
                             if (lr && lr.success) { if (lr.skipped) libSkipped++; else libOk++; }
                             else libErr.push(`${libName}: ${(lr && lr.message) || 'ошибка'}`);
                         } catch(e) { libErr.push(`${libName}: ${e.message || e}`); }
@@ -10885,7 +10977,7 @@
             }
             try {
                 if (window.pywebview && window.pywebview.api.install_library) {
-                    const result = await window.pywebview.api.install_library(lib.name, lib.url);
+                    const result = await _installLibViaApi(lib);
                     showNotification(result.success ? '<i data-lucide="check-circle"></i> ' + result.message : '<i data-lucide="x-circle"></i> ' + result.message, result.success ? 'success' : 'error');
                     if (result.success && btn) {
                         btn.className = 'done';
@@ -10935,7 +11027,7 @@
                         if (!lib) { libErr.push(`${libName} (нет в каталоге)`); continue; }
                         if (!lib.url) { libErr.push(`${libName} (нет url)`); continue; }
                         try {
-                            const lr = await window.pywebview.api.install_library(lib.name, lib.url);
+                            const lr = await _installLibViaApi(lib);
                             if (lr && lr.success) { if (lr.skipped) libSkipped++; else libOk++; }
                             else libErr.push(`${libName}: ${(lr && lr.message) || 'ошибка'}`);
                         } catch(e) { libErr.push(`${libName}: ${e.message || e}`); }

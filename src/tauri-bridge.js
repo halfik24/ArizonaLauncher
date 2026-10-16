@@ -54,7 +54,7 @@
   "delete_moonloader_script": ["filename"],
   "install_moonloader_script": ["url", "filename"],
   "install_lua_file": ["filename", "contentB64"],
-  "install_library": ["name", "url"],
+  "install_library": ["name", "url", "path"],
   "uninstall_library": ["name"],
   "install_other_file": ["url", "filename", "destination"],
   "remove_other_file": ["filename", "destination"],
