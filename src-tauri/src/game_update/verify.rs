@@ -40,13 +40,16 @@ pub struct Plan {
 
 /// repair=true — считать md5 у всех файлов (режим «Починить»).
 /// cache — rel -> md5 из прошлых прогонов (наш собственный кэш).
+/// on_scan — прогресс по хэшируемым файлам: (bytes_done, bytes_total, current).
 pub fn plan(
     flat: &Flat,
     target: &Path,
     repair: bool,
     cache: &HashMap<String, String>,
+    on_scan: Option<&(dyn Fn(u64, u64, &str) + Send + Sync)>,
 ) -> Plan {
     let mut p = Plan::default();
+    let mut scanned_bytes: u64 = 0;
 
     for e in &flat.entries {
         // res-записи лаунчер берёт только при починке
@@ -81,6 +84,10 @@ pub fn plan(
                 }
             }
             Kind::File | Kind::Check => {
+                if let Some(cb) = on_scan {
+                    cb(scanned_bytes, flat.bytes, &e.rel);
+                }
+                scanned_bytes += e.size;
                 let md = match fs::metadata(&path) {
                     Ok(m) if m.is_file() => m,
                     Ok(_) => {
@@ -214,7 +221,7 @@ mod tests {
             bytes: 18,
             ..Default::default()
         };
-        let p = plan(&flat, dir.path(), false, &HashMap::new());
+        let p = plan(&flat, dir.path(), false, &HashMap::new(), None);
         assert_eq!(p.download_count, 2);
         assert_eq!(p.download_bytes, 13);
         // ok.img: дата в манифесте 0 не новее локальной, локальная новее -> DateFix
@@ -232,7 +239,7 @@ mod tests {
         // date_change = 0 -> need_hash = false (дата манифеста не новее),
         // значит хэш не считается вовсе
         flat.entries.push(entry("a.img", 5, "whatever", 0));
-        let p = plan(&flat, dir.path(), false, &HashMap::new());
+        let p = plan(&flat, dir.path(), false, &HashMap::new(), None);
         assert_eq!(p.hashed, 0);
         assert_eq!(p.date_fix, 1); // mtime новее -> DateFix
 
@@ -240,12 +247,12 @@ mod tests {
         const FUTURE_DATE: i64 = 4_000_000_000;
         let mut flat2 = Flat::default();
         flat2.entries.push(entry("a.img", 5, &md5, FUTURE_DATE));
-        let p2 = plan(&flat2, dir.path(), false, &HashMap::new());
+        let p2 = plan(&flat2, dir.path(), false, &HashMap::new(), None);
         assert_eq!(p2.hashed, 1);
         assert_eq!(p2.ok, 1);
         assert_eq!(p2.date_fix, 1); // хэш верный, ставим дату
 
-        let p3 = plan(&flat2, dir.path(), false, &HashMap::from([("a.img".to_string(), md5.clone())]));
+        let p3 = plan(&flat2, dir.path(), false, &HashMap::from([("a.img".to_string(), md5.clone())]), None);
         assert_eq!(p3.hashed, 0); // из кэша
         assert_eq!(p3.ok, 1);
     }
@@ -258,9 +265,9 @@ mod tests {
             res_entries: 1,
             ..Default::default()
         };
-        let p = plan(&flat, dir.path(), false, &HashMap::new());
+        let p = plan(&flat, dir.path(), false, &HashMap::new(), None);
         assert_eq!(p.download_count, 0);
-        let p = plan(&flat, dir.path(), true, &HashMap::new());
+        let p = plan(&flat, dir.path(), true, &HashMap::new(), None);
         assert_eq!(p.download_count, 1); // нет файла + repair
     }
 
@@ -279,7 +286,7 @@ mod tests {
         let root: manifest::Root = serde_json::from_str(json).unwrap();
         let flat = manifest::flatten(&root, true);
         let dir = tempfile::tempdir().unwrap();
-        let p = plan(&flat, dir.path(), false, &HashMap::new());
+        let p = plan(&flat, dir.path(), false, &HashMap::new(), None);
         assert_eq!(p.download_count, 1);
     }
 }

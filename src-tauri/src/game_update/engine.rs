@@ -95,7 +95,17 @@ pub async fn build_plan(
         "Кэш хэшей: {} записей",
         cache.len()
     ));
-    let plan = verify::plan(&flat, &job.target, repair, &cache);
+    let plan = verify::plan(&flat, &job.target, repair, &cache, Some(&|bytes_done, bytes_total, current| {
+        // Прогресс стадии проверки: без скорости, чтобы фронту было ясно
+        on_event(Event::Progress {
+            files_done: 0,
+            files_total: 0,
+            bytes_done,
+            bytes_total,
+            current: format!("проверка: {current}"),
+            speed: 0,
+        });
+    }));
     log(format!(
         "Проверено: в порядке {}, md5 пересчитано {}",
         plan.ok, plan.hashed

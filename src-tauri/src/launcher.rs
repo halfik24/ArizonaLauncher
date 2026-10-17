@@ -2794,12 +2794,17 @@ fn spawn_game_job(
                     0
                 };
                 let speed_mb = speed as f64 / 1_048_576.0;
+                let message = if speed > 0 {
+                    format!("{current} — {speed_mb:.1} МБ/с")
+                } else {
+                    current.clone()
+                };
                 let _ = app.emit(
                     "launcher-install-progress",
                     serde_json::json!({
                         "stage": "dl",
                         "progress": pct.min(99),
-                        "message": format!("{} — {:.1} МБ/с", current, speed_mb),
+                        "message": message,
                     }),
                 );
             }
