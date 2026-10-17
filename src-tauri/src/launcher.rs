@@ -1,6 +1,7 @@
 use crate::config::{AppState, LauncherConfig};
 use crate::util;
-use std::path::PathBuf;
+use std::fs;
+use std::path::{Path, PathBuf};
 use tauri::{Emitter, Manager, State};
 
 // ==================== Config Commands ====================
@@ -198,7 +199,117 @@ fn major_to_version(major: u32) -> &'static str {
     }
 }
 
-fn auto_detect_game_paths_inner(cfg: &mut LauncherConfig) -> bool {
+/// gta_sa.exe в папке: сам корень либо bin\arizona (раскладки старого лаунчера и нашей установки).
+fn find_gta_in(dir: &Path) -> Option<PathBuf> {
+    let gta = dir.join("gta_sa.exe");
+    if gta.exists() {
+        return Some(gta);
+    }
+    let gta = dir.join("bin").join("arizona").join("gta_sa.exe");
+    if gta.exists() {
+        return Some(gta);
+    }
+    None
+}
+
+/// Папки установок из реестра: ключи Uninstall, у которых «Arizona» в имени
+/// ключа или DisplayName, берём InstallLocation.
+fn registry_install_locations() -> Vec<PathBuf> {
+    use winreg::RegKey;
+    use winreg::enums::{HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE};
+
+    let mut out = Vec::new();
+    for hive in [HKEY_LOCAL_MACHINE, HKEY_CURRENT_USER] {
+        for base in [
+            r"Software\Microsoft\Windows\CurrentVersion\Uninstall",
+            r"Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall",
+        ] {
+            let Ok(item) = RegKey::predef(hive).open_subkey(base) else {
+                continue;
+            };
+            for key in item.enum_keys().filter_map(|k| k.ok()) {
+                let sub = key.to_lowercase();
+                if !sub.contains("arizona") {
+                    // В имени ключа Arizona нет — проверяем DisplayName
+                    let Ok(k) = item.open_subkey(&key) else { continue };
+                    let display: String = k
+                        .get_value::<String, _>("DisplayName")
+                        .unwrap_or_default()
+                        .to_lowercase();
+                    if !display.contains("arizona") {
+                        continue;
+                    }
+                    if let Ok(loc) = k.get_value::<String, _>("InstallLocation") {
+                        if !loc.trim().is_empty() {
+                            out.push(PathBuf::from(loc.trim()));
+                        }
+                    }
+                    continue;
+                }
+                let Ok(k) = item.open_subkey(&key) else { continue };
+                if let Ok(loc) = k.get_value::<String, _>("InstallLocation") {
+                    if !loc.trim().is_empty() {
+                        out.push(PathBuf::from(loc.trim()));
+                    }
+                }
+            }
+        }
+    }
+    out
+}
+
+/// Корневые папки дисков A..Z.
+fn drive_roots() -> Vec<PathBuf> {
+    (b'A'..=b'Z')
+        .filter_map(|c| {
+            let root = PathBuf::from(format!("{}:\\", c as char));
+            root.is_dir().then_some(root)
+        })
+        .collect()
+}
+
+/// Скан корней дисков: папки первого уровня с «arizona» в имени (и подпапки
+/// на один уровень), с общим дедлайном, чтобы не морозить UI на больших дисках.
+fn scan_drive_roots(deadline: std::time::Instant) -> Option<PathBuf> {
+    for root in drive_roots() {
+        let Ok(entries) = fs::read_dir(&root) else { continue };
+        for e in entries.flatten() {
+            if std::time::Instant::now() > deadline {
+                return None;
+            }
+            if !e.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                continue;
+            }
+            let dir = e.path();
+            let name = e.file_name().to_string_lossy().to_lowercase();
+            if !name.contains("arizona") {
+                continue;
+            }
+            if let Some(g) = find_gta_in(&dir) {
+                return Some(g);
+            }
+            // Один уровень вглубь: G:\...\Arizona RP\...\gta_sa.exe
+            if let Ok(subs) = fs::read_dir(&dir) {
+                for s in subs.flatten() {
+                    if std::time::Instant::now() > deadline {
+                        return None;
+                    }
+                    if !s.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                        continue;
+                    }
+                    if let Some(g) = find_gta_in(&s.path()) {
+                        return Some(g);
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Ищет gta_sa.exe (старый лаунчер → реестр → корни дисков) без касания конфига,
+/// чтобы гонять в блокирующем потоке. Возвращает (gta_sa.exe, launcher-клиент).
+fn auto_detect_game_find() -> Option<(PathBuf, Option<PathBuf>)> {
     let home = dirs::home_dir().unwrap_or_default();
     let game_subpath = std::path::PathBuf::from("bin").join("arizona");
 
@@ -210,31 +321,56 @@ fn auto_detect_game_paths_inner(cfg: &mut LauncherConfig) -> bool {
 
     for base in &base_candidates {
         let game_dir = base.join(&game_subpath);
-        let gta = game_dir.join("gta_sa.exe");
-        if gta.exists() {
-            cfg.game_path = gta.to_string_lossy().to_string();
-            if let Some((launcher, _)) = find_launcher_exe(&game_dir) {
-                cfg.launcher_path = launcher.to_string_lossy().to_string();
-            }
-            return true;
+        if let Some(gta) = find_gta_in(&game_dir) {
+            return Some((gta.clone(), find_launcher_exe(&game_dir).map(|(p, _)| p)));
         }
     }
-    false
+
+    // Реестр: ключи Uninstall со словом Arizona → InstallLocation
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    for base in registry_install_locations() {
+        // InstallLocation может указывать до корня установки либо сразу до клиента
+        for dir in [base.join(&game_subpath), base] {
+            if let Some(gta) = find_gta_in(&dir) {
+                let dir = gta.parent().unwrap().to_path_buf();
+                return Some((gta, find_launcher_exe(&dir).map(|(p, _)| p)));
+            }
+            if std::time::Instant::now() > deadline {
+                return None;
+            }
+        }
+    }
+
+    // Корни дисков: G:\Arizona Games Launcher\... (у других игроков игра может лежать где угодно)
+    if let Some(gta) = scan_drive_roots(deadline) {
+        let dir = gta.parent().unwrap().to_path_buf();
+        return Some((gta, find_launcher_exe(&dir).map(|(p, _)| p)));
+    }
+    None
 }
 
 #[tauri::command]
-pub fn auto_detect_paths(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
-    let found = {
-        let mut cfg = util::lock_config(&state)?;
-        auto_detect_game_paths_inner(&mut cfg)
-    };
-    if found {
+pub async fn auto_detect_paths(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
+    // Реестр и корни дисков — IO в блокирующем потоке, UI не морозим
+    let found = tauri::async_runtime::spawn_blocking(auto_detect_game_find)
+        .await
+        .map_err(|e| format!("не удалось запустить поток поиска: {e}"))?;
+
+    if let Some((game, launcher)) = &found {
+        util::update_config(&state, |cfg| {
+            cfg.game_path = game.to_string_lossy().to_string();
+            if let Some(l) = launcher {
+                cfg.launcher_path = l.to_string_lossy().to_string();
+            }
+            Ok(())
+        })?;
         state.save_config()?;
     }
+
     let cfg = util::lock_config(&state)?;
     Ok(serde_json::json!({
-        "success": found,
-        "message": if found { "Found" } else { "Not found" },
+        "success": found.is_some(),
+        "message": if found.is_some() { "Found" } else { "Not found" },
         "game_path": cfg.game_path,
         "launcher_path": cfg.launcher_path
     }))

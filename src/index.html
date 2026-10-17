@@ -15433,20 +15433,40 @@
             } catch (e) {}
             if (gp) return; // путь уже есть — онбординг не открываем
 
-            // Пробуем авто-обнаружить игру, как это делал Python
-            const data = { auto_found: false, check_status: 'not_found', game_path: '', folder: '', missing: [] };
+            // Открываем онбординг сразу, поиск гоняем в фоне (spawn_blocking
+            // в бэкенде): карта шага «Обнаружение игры» сама обновится
+            const data = { auto_found: false, check_status: 'checking', game_path: '', folder: '', missing: [] };
+            window._flStart(data);
+            _flAutoSearch();
+        }
+
+        // Автопоиск игры в фоне + обновление карты онбординга
+        async function _flAutoSearch() {
             try {
                 if (window.pywebview && window.pywebview.api.auto_detect_paths) {
                     const res = await window.pywebview.api.auto_detect_paths();
                     if (res && res.success && res.game_path) {
-                        data.auto_found = true;
-                        data.game_path = res.game_path;
-                        data.folder = res.game_path.replace(/[\\/][^\\/]+$/, '');
-                        data.check_status = 'ok';
+                        _flData = {
+                            auto_found: true,
+                            check_status: 'ok',
+                            game_path: res.game_path,
+                            folder: res.game_path.replace(/[\\/][^\\/]+$/, ''),
+                            missing: []
+                        };
+                    } else if (_flData && _flData.check_status === 'checking') {
+                        _flData.check_status = 'not_found';
                     }
+                    _flRender();
+                } else if (_flData && _flData.check_status === 'checking') {
+                    _flData.check_status = 'not_found';
+                    _flRender();
                 }
-            } catch (e) {}
-            window._flStart(data);
+            } catch (e) {
+                if (_flData && _flData.check_status === 'checking') {
+                    _flData.check_status = 'not_found';
+                    _flRender();
+                }
+            }
         }
 
         async function openFirstLaunch() {
@@ -15524,17 +15544,28 @@
                             <div class="fl-game-card-sub">${d.folder || d.game_path || '—'}</div>
                         </div>
                     </div>`;
+                } else if (d.check_status === 'checking') {
+                    cardHtml = `<div class="fl-game-card">
+                        <div class="fl-game-card-icon"><i data-lucide="search"></i></div>
+                        <div class="fl-game-card-text">
+                            <div class="fl-game-card-head">Ищу игру...</div>
+                            <div class="fl-game-card-sub">Реестр, стандартные папки, корни дисков</div>
+                        </div>
+                    </div>`;
                 } else {
                     cardHtml = `<div class="fl-game-card error">
                         <div class="fl-game-card-icon"><i data-lucide="x-circle"></i></div>
                         <div class="fl-game-card-text">
                             <div class="fl-game-card-head">Игра не найдена автоматически</div>
-                            <div class="fl-game-card-sub">Укажи папку с gta_sa.exe вручную</div>
+                            <div class="fl-game-card-sub">Укажи папку с gta_sa.exe вручную или установи игру</div>
                         </div>
                     </div>`;
                 }
+                const searchBtn = d.check_status === 'checking' ? '' :
+                    `<button class="fl-manual-btn" onclick="_flAutoSearch()"><i data-lucide="search"></i> Искать снова</button>`;
                 return `<div class="fl-game-title"><i data-lucide="search"></i> Обнаружение игры</div>
                     ${cardHtml}
+                    ${searchBtn}
                     <button class="fl-manual-btn" onclick="_flSelectManual()"><i data-lucide="folder-open"></i> Указать путь вручную</button>`;
             }
 
