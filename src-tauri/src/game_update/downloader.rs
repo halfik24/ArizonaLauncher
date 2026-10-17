@@ -88,10 +88,12 @@ fn part_path(dest: &Path) -> PathBuf {
 }
 
 /// Качает url в dest через `.part`, сообщает прогресс (байт файла), умеет отменяться.
+/// rate_bytes — лимит скорости (байт/с); None — качаем без ограничения.
 pub async fn download_to(
     http: &reqwest::Client,
     url: &str,
     dest: &Path,
+    rate_bytes: u64,
     cancel: &AtomicBool,
     mut on_progress: impl FnMut(u64) + Send,
 ) -> anyhow::Result<u64> {
@@ -116,6 +118,12 @@ pub async fn download_to(
         .with_context(|| format!("создание {}", tmp.display()))?;
     let mut total: u64 = 0;
     use std::io::Write;
+    // Токен-ведро: копим «должны спать» по каждому байту и отдаём долг.
+    // Периодическую проверку cancel держим кусками ≤ 200 мс.
+    // Токен-ведро: базовая точка времени + total/rate = «когда позволено».
+    // Проседания сервера компенсируются (сервер отдал стоп — не досыпаем).
+    let rate = (rate_bytes >= 1_048_576).then_some(rate_bytes);
+    let mut due: Option<std::time::Instant> = None;
     let mut resp = resp;
     loop {
         let chunk = resp
@@ -133,6 +141,20 @@ pub async fn download_to(
         f.write_all(&chunk).context("запись файла")?;
         total += chunk.len() as u64;
         on_progress(total);
+        if let Some(rate) = rate {
+            let started = *due.get_or_insert(std::time::Instant::now());
+            let deadline =
+                started + Duration::from_secs_f64(total as f64 / rate as f64);
+            while deadline > std::time::Instant::now() {
+                let sleep = (deadline - std::time::Instant::now()).min(Duration::from_millis(200));
+                tokio::time::sleep(sleep).await;
+                if cancel.load(Ordering::Relaxed) {
+                    drop(f);
+                    let _ = fs::remove_file(&tmp);
+                    bail!("отменено");
+                }
+            }
+        }
     }
     f.flush().context("flush")?;
     drop(f);

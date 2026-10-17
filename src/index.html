@@ -7390,6 +7390,15 @@
                                 </div>
                             </label>
                             <div style="padding:8px 16px 4px; display:flex; gap:8px; flex-wrap:wrap;">
+                                <div style="flex:1; min-width:200px;">
+                                    <div style="display:flex; align-items:center; gap:8px;">
+                                        <label for="gameUpdateLimitInput" style="font-family:'Montserrat Alternates';font-size:11px;color:rgba(255,255,255,0.6);white-space:nowrap;">Лимит скорости, МБ/с</label>
+                                        <input type="number" id="gameUpdateLimitInput" min="0" max="1000" step="1"
+                                               style="width:80px; height:32px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); border-radius:8px; color:var(--text-color); font-family:'Montserrat Alternates'; font-size:12px; padding:0 8px; text-align:center;"
+                                               onchange="applyGameUpdateLimit(this.value)">
+                                    </div>
+                                    <div style="font-family:'Montserrat Alternates';font-size:10px;color:rgba(255,255,255,0.25);margin-top:4px;">0 — без лимита. Лимит нужен, если играешь или стримишь, пока идёт установка.</div>
+                                </div>
                                 <button class="s-btn" id="gameCheckBtn" onclick="checkGameUpdate()"
                                         style="width:auto; padding:0 14px; height:32px; font-size:11px;">
                                     <i data-lucide="search" style="width:14px;height:14px;"></i> Проверить обновления
@@ -13436,6 +13445,22 @@
         function applyGameUpdateFuture() {
             const cb = document.getElementById('gameUpdateFutureCheck');
             if (cb) cb.checked = gameUpdateFutureEnabled();
+            const lim = document.getElementById('gameUpdateLimitInput');
+            if (lim) lim.value = launcherSettings.game_update_limit_mb || 0;
+        }
+
+        /** Лимит скорости качки игры: МБ/с (0 — без лимита). Бэкенд читает
+            game_update_limit_mb из launcherSettings (складывается в config.json). */
+        function applyGameUpdateLimit(raw) {
+            let v = parseInt(raw, 10);
+            if (isNaN(v) || v < 0) v = 0;
+            launcherSettings.game_update_limit_mb = v;
+            if (window.pywebview && window.pywebview.api.save_launcher_settings) {
+                window.pywebview.api.save_launcher_settings(launcherSettings);
+            }
+            showNotification(v > 0
+                ? `Лимит качки: ${v} МБ/с`
+                : 'Лимит качки снят', 'info');
         }
 
         /** Прогресс починки/установки из настроек: переиспользуем хаб

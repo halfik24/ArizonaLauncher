@@ -2625,6 +2625,27 @@ fn game_update_future(state: &AppState) -> bool {
         .unwrap_or(true)
 }
 
+/// Лимит скорости качки в байтах/с из настроек («game_update_limit_mb»,
+/// МБ/с; 0/нет = без лимита). Меньше 1 МБ/с прижимаем к 1 МБ/с, чтобы
+/// ноль в поле не ложил качку вовсе.
+fn game_update_limit(state: &AppState) -> u64 {
+    let mb = state
+        .config
+        .lock()
+        .ok()
+        .and_then(|c| {
+            c.launcher_settings
+                .extra
+                .get("game_update_limit_mb")
+                .and_then(|v| v.as_u64())
+        })
+        .unwrap_or(0);
+    match mb {
+        0 => 0,
+        n => n.max(1) * 1_048_576,
+    }
+}
+
 /// Целевая папка игры: game_path в конфиге — путь до exe, файлы манифеста
 /// лежат рядом с ним. Если game_path — папка, используем её как есть.
 /// Если путь вообще не существует (файл переименовали/удалили), но он с
@@ -2692,6 +2713,7 @@ pub async fn check_update_api(
         // Вариант графики: ручной переключатель из настроек.
         future: game_update_future(&state),
         documents,
+        speed_limit: game_update_limit(&state),
     };
 
     let (_flat, plan) = crate::game_update::engine::build_plan(
@@ -2772,6 +2794,8 @@ fn spawn_game_job(
         target,
         future,
         documents: state.documents_path.clone(),
+        // Лимит качки из настроек (0 — без лимита).
+        speed_limit: game_update_limit(state),
     };
 
     tauri::async_runtime::spawn(async move {

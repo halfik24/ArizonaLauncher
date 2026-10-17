@@ -39,6 +39,8 @@ pub struct Job {
     pub future: bool,
     /// Папка Documents для кэша хэшей (game_update_state.json)
     pub documents: PathBuf,
+    /// Лимит скорости качки, байт/с. 0 — без лимита.
+    pub speed_limit: u64,
 }
 
 #[derive(Debug, Clone)]
@@ -230,7 +232,7 @@ pub async fn run(
                     ("резервном", &job.cdn_reserve),
                 ] {
                     let url = downloader::file_url(cdn, rel);
-                    let res = downloader::download_to(&http, &url, &path, cancel, |file_bytes| {
+                    let res = downloader::download_to(&http, &url, &path, job.speed_limit, cancel, |file_bytes| {
                         let total = base + file_bytes;
                         if let Some(s) = speed.tick(total) {
                             on_event(Event::Progress {
