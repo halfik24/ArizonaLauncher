@@ -3,7 +3,8 @@
 
 use std::collections::HashMap;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 
 use super::downloader::{md5_file_blocking, mtime_secs};
 use super::manifest::{Entry, Flat, Kind};
@@ -50,6 +51,15 @@ pub fn plan(
 ) -> Plan {
     let mut p = Plan::default();
     let mut scanned_bytes: u64 = 0;
+    /// Файлы, чей md5 ещё не посчитан (2-я фаза, параллельные воркеры).
+    struct Pending {
+        path: PathBuf,
+        expect: String,
+        size: u64,
+        mtime: i64,
+        entry: Entry,
+    }
+    let mut pending: Vec<Option<Pending>> = Vec::new();
 
     for e in &flat.entries {
         // res-записи лаунчер берёт только при починке
@@ -87,7 +97,6 @@ pub fn plan(
                 if let Some(cb) = on_scan {
                     cb(scanned_bytes, flat.bytes, &e.rel);
                 }
-                scanned_bytes += e.size;
                 let md = match fs::metadata(&path) {
                     Ok(m) if m.is_file() => m,
                     Ok(_) => {
@@ -132,23 +141,11 @@ pub fn plan(
                     || (e.kind == Kind::Check && mtime != e.date)
                     || (e.kind == Kind::File && e.date > mtime);
 
+                let mut queued_now = false;
                 if need_hash {
                     let cached_ok = cache.get(&e.rel).map(|h| h == &e.hash).unwrap_or(false);
-                    let hash_ok = if cached_ok {
-                        true
-                    } else {
-                        p.hashed += 1;
-                        md5_file_blocking(&path).map(|h| h == e.hash).unwrap_or(false)
-                    };
-                    if !hash_ok {
-                        p.download_count += 1;
-                        p.download_bytes += e.size;
-                        p.items.push(Item {
-                            entry: e.clone(),
-                            action: Action::Download,
-                            reason: "md5 не совпал".into(),
-                        });
-                    } else {
+                    if cached_ok {
+                        // кэш уже верит файлу (размер и дата не менялись)
                         p.ok += 1;
                         if mtime != e.date {
                             p.date_fix += 1;
@@ -158,6 +155,18 @@ pub fn plan(
                                 reason: "хэш верный, нужна только дата".into(),
                             });
                         }
+                    } else {
+                        // хэш посчитают воркеры параллельно ниже;
+                        // размер queued-файла вернём в прогресс на 2-й фазе
+                        p.hashed += 1;
+                        queued_now = true;
+                        pending.push(Some(Pending {
+                            path: path.clone(),
+                            expect: e.hash.clone(),
+                            size: e.size,
+                            mtime,
+                            entry: e.clone(),
+                        }));
                     }
                 } else if e.kind == Kind::File && mtime > e.date {
                     // файл новее манифеста: лаунчер только переставляет дату
@@ -169,6 +178,75 @@ pub fn plan(
                     });
                 } else {
                     p.ok += 1;
+                }
+                if !queued_now {
+                    scanned_bytes += e.size;
+                }
+            }
+        }
+    }
+
+    // 2-я фаза: md5 у queued-файлов считают параллельно.
+    // Воркеры забирают индексы из атомарного счётчика; результаты пишут
+    // в flags по своему индексу, план в конце собирается В ИСХОДНОМ
+    // порядке очереди — итог детерминированный и совпадает с однопотоком.
+    if pending.iter().any(|x| x.is_some()) {
+        let hash_total: u64 = pending.iter().filter_map(|x| x.as_ref().map(|y| y.size)).sum();
+        let workers = std::thread::available_parallelism()
+            .map(|v| v.get())
+            .unwrap_or(4)
+            .min(8)
+            .min(pending.len().max(1));
+        let next = AtomicUsize::new(0);
+        let bytes_done = AtomicU64::new(0);
+        let mut flags: Vec<bool> = Vec::with_capacity(pending.len());
+        flags.resize(pending.len(), false);
+        let flags = std::sync::Mutex::new(flags);
+        std::thread::scope(|s| {
+            for _ in 0..workers {
+                s.spawn(|| loop {
+                    let i = next.fetch_add(1, Ordering::Relaxed);
+                    if i >= pending.len() {
+                        break;
+                    }
+                    let Some(pw) = pending[i].as_ref() else { continue };
+                    let ok = md5_file_blocking(&pw.path).map(|h| h == pw.expect).unwrap_or(false);
+                    if let Ok(mut f) = flags.lock() {
+                        f[i] = ok;
+                    }
+                    if let Some(cb) = on_scan {
+                        let d = bytes_done.fetch_add(pw.size, Ordering::Relaxed) + pw.size;
+                        cb(
+                            scanned_bytes /* база без queued */ + d,
+                            flat.bytes,
+                            &pw.entry.rel,
+                        );
+                    }
+                });
+            }
+        });
+        let flags = flags.into_inner().unwrap_or_default();
+        for (i, pw) in pending.iter_mut().enumerate() {
+            let Some(item) = pw.take() else { continue };
+            let hash_ok = flags[i];
+            let e = &item.entry;
+            if !hash_ok {
+                p.download_count += 1;
+                p.download_bytes += e.size;
+                p.items.push(Item {
+                    entry: e.clone(),
+                    action: Action::Download,
+                    reason: "md5 не совпал".into(),
+                });
+            } else {
+                p.ok += 1;
+                if item.mtime != e.date {
+                    p.date_fix += 1;
+                    p.items.push(Item {
+                        entry: e.clone(),
+                        action: Action::DateFix,
+                        reason: "хэш верный, нужна только дата".into(),
+                    });
                 }
             }
         }
