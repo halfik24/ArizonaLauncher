@@ -7390,9 +7390,12 @@
                                 </div>
                             </label>
                             <div class="s-input-row">
-                                <span class="s-input-label">Лимит скорости, МБ/с (0 — без лимита; нужен, если играешь или стримишь, пока идёт установка)</span>
+                                <span class="s-input-label">Лимит скорости, МБ/с</span>
                                 <input type="number" id="gameUpdateLimitInput" class="s-input" min="0" max="1000" step="1"
                                        style="width:80px; text-align:center;" onchange="applyGameUpdateLimit(this.value)">
+                            </div>
+                            <div style="padding:0 16px 2px; font-family:'Montserrat Alternates', sans-serif; font-size:10px; color:rgba(255,255,255,0.45); line-height:1.4;">
+                                0 — без лимита. Нужен, если играешь или стримишь, пока идёт установка.
                             </div>
                             <div style="padding:8px 16px 4px; display:flex; gap:8px; flex-wrap:wrap;">
                                 <button class="s-btn" id="gameCheckBtn" onclick="checkGameUpdate()"
