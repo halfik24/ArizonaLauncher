@@ -3496,7 +3496,9 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            animation: settingsRise 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+            /* Своя анимация: settingsRise вшит translate(-50%,-50%) для
+               positioned-панели настроек и сдвигал фуллскрин-бэкдроп из угла. */
+            animation: modsRise 0.25s cubic-bezier(0.4, 0, 0.2, 1);
         }
         .confirm-modal {
             width: 90%;
