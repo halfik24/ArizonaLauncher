@@ -3500,6 +3500,9 @@
                positioned-панели настроек и сдвигал фуллскрин-бэкдроп из угла. */
             animation: modsRise 0.25s cubic-bezier(0.4, 0, 0.2, 1);
         }
+        .confirm-modal-backdrop.closing {
+            animation: modsSink 0.2s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+        }
         .confirm-modal {
             width: 90%;
             max-width: 380px;
@@ -10363,7 +10366,14 @@
                         </div>
                     </div>`;
                 wrap.querySelector('.confirm-modal-text').textContent = message;
-                const done = (val) => { wrap.remove(); resolve(val); };
+                const done = (val) => {
+                    if (wrap.__closing) return;
+                    wrap.__closing = true;
+                    document.removeEventListener('keydown', onKey);
+                    // анимация выхода, потом удалить из DOM
+                    wrap.classList.add('closing');
+                    setTimeout(() => { wrap.remove(); resolve(val); }, 180);
+                };
                 wrap.addEventListener('click', (e) => {
                     const btn = e.target.closest('.confirm-modal-btn');
                     if (!btn) { if (e.target === wrap) done(false); return; }
