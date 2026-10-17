@@ -2693,6 +2693,17 @@
             color: white;
         }
 
+        /* У number-полей нет.sys-стрелок — стиль лаунчера однородный */
+        input[type="number"] {
+            -moz-appearance: textfield;
+            appearance: textfield;
+        }
+        input[type="number"]::-webkit-outer-spin-button,
+        input[type="number"]::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+
         .s-input:focus {
             border-color: rgba(var(--accent2-rgb), 0.55);
             background: rgba(255,255,255,0.09);
@@ -7390,7 +7401,7 @@
                                 </div>
                             </label>
                             <div class="s-input-row" style="justify-content:flex-start; gap:10px;">
-                                <span class="s-input-label">Лимит скорости, МБ/с</span>
+                                <span class="s-input-label" style="flex:none;">Лимит скорости, МБ/с</span>
                                 <input type="number" id="gameUpdateLimitInput" class="s-input" min="0" max="1000" step="1"
                                        style="width:80px; text-align:center;" onchange="applyGameUpdateLimit(this.value)">
                             </div>
