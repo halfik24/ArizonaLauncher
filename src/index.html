@@ -3503,7 +3503,7 @@
             background: rgba(0, 0, 0, 0.5);
             backdrop-filter: blur(6px);
             -webkit-backdrop-filter: blur(6px);
-            z-index: 1100;
+            z-index: 1500;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -15474,7 +15474,11 @@
 
         /** Установка игры из онбординга: бэкенд сам откроет диалог выбора папки,
             прогресс идёт через общий хаб launcher-install-progress. */
-        async function _flInstallGame() {
+        async function _flInstallGame() { _flRunInstall(null); }
+
+        /** Общий запуск установки: folder=null → диалог выбора (install_game_api),
+            иначе install_game_to_folder без диалога. */
+        async function _flRunInstall(folder) {
             if (_flInstalling) return;
             try {
                 if (window.pywebview && window.pywebview.api.game_update_status) {
@@ -15486,9 +15490,10 @@
                 }
                 _flInstalling = true;
                 _flRender();
-                const res = await window.pywebview.api.install_game_api(
-                    typeof gameUpdateFutureEnabled === 'function' ? gameUpdateFutureEnabled() : undefined
-                );
+                const future = typeof gameUpdateFutureEnabled === 'function' ? gameUpdateFutureEnabled() : undefined;
+                const res = folder
+                    ? await window.pywebview.api.install_game_to_folder(folder, future)
+                    : await window.pywebview.api.install_game_api(future);
                 if (!(res && res.success)) {
                     _flInstalling = false;
                     _flRender();
@@ -15760,6 +15765,11 @@
             try {
                 if (window.pywebview && window.pywebview.api.select_game_path) {
                     const r = await window.pywebview.api.select_game_path();
+                    if (r.code === 'EMPTY_FOLDER') {
+                        const ok = await confirmAction(`В папке нет gta_sa.exe.\nУстановить игру сюда?\n${r.folder}`, 'Установить');
+                        if (ok) _flRunInstall(r.folder);
+                        return;
+                    }
                     if (r.success) {
                         _flData = { auto_found: true, check_status: 'ok', game_path: r.message, folder: r.folder, missing: [] };
                         _flRender();

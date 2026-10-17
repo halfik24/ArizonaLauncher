@@ -414,7 +414,13 @@ pub async fn select_game_path(
 
     let game_exe = folder.join("gta_sa.exe");
     if !game_exe.exists() {
-        return util::fail_message("gta_sa.exe не найден в выбранной папке");
+        // Папка без игры: маркер для фронта — подтверждение и установка сюда.
+        return Ok(serde_json::json!({
+            "success": false,
+            "code": "EMPTY_FOLDER",
+            "folder": folder_str,
+            "message": "В выбранной папке нет gta_sa.exe"
+        }));
     }
 
     // Сохраняем пути: лаунчер ищем по ресурсу версии среди всех exe папки
@@ -3084,6 +3090,33 @@ pub async fn install_game_api(
     };
     let future = future.unwrap_or_else(|| game_update_future(&state));
     log::info!("game_update: выбрана папка установки {}", target.display());
+    spawn_game_job(app, &state, Mode::Apply, future, Some(target))
+}
+
+/// Установка игры в конкретную папку без диалога выбора
+/// (для «Указать путь вручную» → пустая папка → подтверждение).
+#[tauri::command]
+pub async fn install_game_to_folder(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    folder: String,
+    future: Option<bool>,
+) -> Result<serde_json::Value, String> {
+    let busy = state
+        .game_update_cancel
+        .lock()
+        .map(|g| g.is_some())
+        .unwrap_or(false);
+    if busy {
+        return util::fail_message("Установка/обновление уже выполняется");
+    }
+
+    let target = PathBuf::from(&folder);
+    if !target.is_dir() {
+        return util::fail_message("Папка не существует");
+    }
+    let future = future.unwrap_or_else(|| game_update_future(&state));
+    log::info!("game_update: установка в указанную папку {}", target.display());
     spawn_game_job(app, &state, Mode::Apply, future, Some(target))
 }
 

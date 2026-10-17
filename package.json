@@ -1,6 +1,6 @@
 {
   "name": "arizona-launcher",
-  "version": "2.0.0-rc1",
+  "version": "2.0.0-rc1-new",
   "private": true,
   "scripts": {
     "tauri": "tauri",
