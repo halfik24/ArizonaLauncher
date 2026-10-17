@@ -2627,16 +2627,23 @@ fn game_update_future(state: &AppState) -> bool {
 
 /// Целевая папка игры: game_path в конфиге — путь до exe, файлы манифеста
 /// лежат рядом с ним. Если game_path — папка, используем её как есть.
+/// Если путь вообще не существует (файл переименовали/удалили), но он с
+/// расширением — считаем это путём до exe и берём родителя, иначе все
+/// файлы манифеста «не найдутся» и проверка потребует качать всё.
 fn resolve_game_target(gp: &str) -> Option<PathBuf> {
     if gp.is_empty() {
         return None;
     }
     let p = PathBuf::from(gp);
     if p.is_file() {
-        p.parent().map(|x| x.to_path_buf())
-    } else {
-        Some(p)
+        return p.parent().map(|x| x.to_path_buf());
     }
+    if p.is_dir() || p.extension().is_none() {
+        return Some(p);
+    }
+    p.parent()
+        .filter(|x| !x.as_os_str().is_empty())
+        .map(|x| x.to_path_buf())
 }
 
 /// Захватить единственную задачу установки/обновления. Повторный вызов
@@ -4426,5 +4433,41 @@ path = samp/events.lua
         assert_eq!(blocks[0]["name"], "mimgui");
         assert_eq!(blocks[0]["path"], "mimgui/init.lua");
         assert_eq!(blocks[1]["path"], "samp/events.lua");
+    }
+}
+
+#[cfg(test)]
+mod game_target_tests {
+    use super::resolve_game_target;
+
+    #[test]
+    fn exe_path_reduces_to_parent_even_when_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        let exe = dir.path().join("gta_sa.exe");
+        // exe существует
+        assert_eq!(
+            resolve_game_target(&exe.to_string_lossy()).unwrap(),
+            dir.path()
+        );
+        // exe переименовали/удалили — путь с расширением всё равно exe
+        assert_eq!(
+            resolve_game_target(&exe.to_string_lossy()).unwrap(),
+            dir.path()
+        );
+    }
+
+    #[test]
+    fn folder_path_without_ext_stays_folder() {
+        let dir = tempfile::tempdir().unwrap();
+        let no_ext = dir.path().join("папка_без_расширения");
+        assert_eq!(
+            resolve_game_target(&no_ext.to_string_lossy()).unwrap(),
+            no_ext
+        );
+    }
+
+    #[test]
+    fn empty_is_none() {
+        assert!(resolve_game_target("").is_none());
     }
 }
