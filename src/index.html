@@ -7389,16 +7389,12 @@
                                     <span class="launch-item-name">Новая графика (future)</span>
                                 </div>
                             </label>
+                            <div class="s-input-row">
+                                <span class="s-input-label">Лимит скорости, МБ/с (0 — без лимита; нужен, если играешь или стримишь, пока идёт установка)</span>
+                                <input type="number" id="gameUpdateLimitInput" class="s-input" min="0" max="1000" step="1"
+                                       style="width:80px; text-align:center;" onchange="applyGameUpdateLimit(this.value)">
+                            </div>
                             <div style="padding:8px 16px 4px; display:flex; gap:8px; flex-wrap:wrap;">
-                                <div style="flex:1; min-width:200px;">
-                                    <div style="display:flex; align-items:center; gap:8px;">
-                                        <label for="gameUpdateLimitInput" style="font-family:'Montserrat Alternates';font-size:11px;color:rgba(255,255,255,0.6);white-space:nowrap;">Лимит скорости, МБ/с</label>
-                                        <input type="number" id="gameUpdateLimitInput" min="0" max="1000" step="1"
-                                               style="width:80px; height:32px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); border-radius:8px; color:var(--text-color); font-family:'Montserrat Alternates'; font-size:12px; padding:0 8px; text-align:center;"
-                                               onchange="applyGameUpdateLimit(this.value)">
-                                    </div>
-                                    <div style="font-family:'Montserrat Alternates';font-size:10px;color:rgba(255,255,255,0.25);margin-top:4px;">0 — без лимита. Лимит нужен, если играешь или стримишь, пока идёт установка.</div>
-                                </div>
                                 <button class="s-btn" id="gameCheckBtn" onclick="checkGameUpdate()"
                                         style="width:auto; padding:0 14px; height:32px; font-size:11px;">
                                     <i data-lucide="search" style="width:14px;height:14px;"></i> Проверить обновления
@@ -13458,9 +13454,6 @@
             if (window.pywebview && window.pywebview.api.save_launcher_settings) {
                 window.pywebview.api.save_launcher_settings(launcherSettings);
             }
-            showNotification(v > 0
-                ? `Лимит качки: ${v} МБ/с`
-                : 'Лимит качки снят', 'info');
         }
 
         /** Прогресс починки/установки из настроек: переиспользуем хаб
