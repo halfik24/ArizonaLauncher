@@ -10202,19 +10202,19 @@
             const pane = document.getElementById('libPaneInstalled');
             if (!pane) return;
             const q = _libSearchQuery;
-            const all = window._libInstalled || [];
+            // Показываем ТОЛЬКО управляемые библиотеки из каталога лаунчера.
+            // Системные либы moonloader (encoding, vkeys, socket, md5, cjson...)
+            // и прочее, поставленное вручную, не показываем: ставить/удалять их
+            // из лаунчера нельзя. window._libInstalled остаётся полным — баннер
+            // зависимостей и чипы в карточке скрипта продолжают их видеть.
+            const catalogNames = new Set((window._libCatalog || []).map(l => String(l.name).toLowerCase()));
+            const all = (window._libInstalled || []).filter(l => catalogNames.has(String(l.name).toLowerCase()));
             const filtered = !q ? all : all.filter(l => {
                 const hay = `${l.name} ${(l.files || []).join(' ')}`.toLowerCase();
                 return hay.includes(q);
             });
-            // Сортировка: сначала либы из каталога, потом по числу файлов
-            const catalogNames = new Set((window._libCatalog || []).map(l => l.name));
-            filtered.sort((a, b) => {
-                const aCat = catalogNames.has(a.name) ? 0 : 1;
-                const bCat = catalogNames.has(b.name) ? 0 : 1;
-                if (aCat !== bCat) return aCat - bCat;
-                return (b.files || []).length - (a.files || []).length;
-            });
+            // Сортировка: по числу файлов библиотеки
+            filtered.sort((a, b) => (b.files || []).length - (a.files || []).length);
             const SHOW_LIMIT = 20;
             const showAll = q || window._libShowAll;
             const visible = showAll ? filtered : filtered.slice(0, SHOW_LIMIT);
@@ -10233,7 +10233,7 @@
             }
             for (const lib of visible) {
                 const card = document.createElement('div');
-                card.className = 'lib-card is-installed' + (catalogNames.has(lib.name) ? ' is-catalog' : '');
+                card.className = 'lib-card is-installed' + (catalogNames.has(String(lib.name).toLowerCase()) ? ' is-catalog' : '');
                 const fileCount = (lib.files || []).length;
                 const sizeStr = lib.size > 1024 * 1024 ? `${(lib.size / (1024 * 1024)).toFixed(1)} МБ` : `${Math.max(1, Math.round(lib.size / 1024))} КБ`;
                 card.innerHTML = `${_libCard(lib.name, `${fileCount} файл · ${sizeStr}`, null, null)}

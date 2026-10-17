@@ -307,3 +307,33 @@ src-tauri/gen/
 - **Референс:** `old_python/main.py` (3422 строки) — **главный источник истины**
 - **Frontend:** `src/index.html` (12446 строк) — переносится БЕЗ изменений логики, только API вызовы
 - **Принятые решения:** фронт как есть (не разбивать), Tauri v2, структура old_python/ + src/ + src-tauri/
+
+---
+
+## 8. Сессии 15–16.10.2026: каталог скриптов + вкладка «Библиотеки»
+
+### Каталог скриптов (ArzLaunchRepo, `903099f`)
+- 24 одиночных .lua с blast.hk в `Lua/` + 20 превью в `Images/`; `Lua/lua.txt` = 30 записей (6 старых + 24 новые). raw-URL проверены (200).
+- Отбор вручную под правила Arizona RP #13, паттерн-скан безопасности, автор + ссылка на тему в описании.
+
+### Вкладка «Библиотеки» (коммиты `9157096` в ArzLaunchRepo и `2a3ebd8` в rust-rewrite)
+- **Правило маршрутизации (пользователь, 16.10): ВСЁ содержимое библиотек кладётся в `moonloader/lib\`**, префикс `moonloader/` (и `moonloader/lib/`) в путях архива отрезается; параметр `dest` из API удалён. `.asi` в корень игры НЕ уходит.
+- **Rust (`launcher.rs`)**: `fetch_libraries_catalog` (4-URL фолбэк), `moonloader_lib_dir_from` (непустой `lib`/`libraries`, иначе создаёт `lib`), `scan_installed_libs` (умные имена: `samp/events.lua`→«samp.events», `mimgui/init.lua`→«mimgui»; `lib_file_stem` отрезает и `.dll`/`.asi` — иначе GifPlayerLua.dll не матчится с каталогом), `extract_lib_zip` (zip-slip-защита, лимиты 2000 файлов/500MB), `install_library(name, url, path?)` (skip-if-installed: по целевому файлу, затем по имени; zip по сигнатуре PK), `uninstall_library`. **19/19 cargo-тестов** (`cargo test`, бинарный крейт).
+- **ArzLaunchRepo**: папка `Libs/` — 8 файлов (mimgui-v1.7.1.zip, moon-imgui-1.1.6.zip, samp-lua-v2.3.0.zip, GifPlayerLua.zip, carbJsonConfig.lua, requests.lua, imgui_addons.lua, hooks.lua); `libraries.txt` переписан (8 записей, все raw-ссылки 200; старые ссылки IMRLUA были 404); `lua.txt` — поле `libraries = ...` в 22 записях.
+- **Источники:** 7 файлов скачал пользователь с blast.hk, `hooks.lua` взят из его же установленного `moonloader\lib\` (автор RTD). Сканы чистые: паттерн-скан + Defender QuickScan (угроз нет). Прошли: requests (штатные require: socket/ssl/cjson/md5/base64/xml — всё есть в moonloader), carbJsonConfig = Corenale v240620, imgui_addons = DonHomka (сам требует `imgui` — поэтому у ArzResHelper в списке `requests, imgui_addons, imgui`).
+- **Фронтенд (`index.html`)**: `_installLibViaApi(lib)` (name, url, path), `confirmAction(message)` — промис-модалка вместо нативного `confirm()` (3 сайта: deleteProfile/deleteMoonloaderScript/uninstallLib); автодоставка либ при установке скрипта и баннер «Нужны библиотеки» уже были — теперь получают реальные данные.
+- **Зависимости по записям:** база (SalaryV2, PodarkiMAP, ClavaRaces, ModloaderSettings, bp_dock, arzinv, referenz, RpMappod, RestoreDialog, oldhudmoney) — ничего не нужно; `arizona-events` у oldhudmoney — внешняя либа Arizona, в каталог не входит.
+
+### Ожидает проверки пользователем
+- **Dev-сборка** (`npm run tauri dev`): вкладка «Библиотеки» — 8 либ в каталоге, установка mimgui (zip → `lib/mimgui/*`), samp.events (→ `lib/samp/*`), карточка скрипта с чипами либ, баннер отсутствующих, модалка подтверждения вместо confirm().
+- ВАЖНО: путь к игре теперь `G:\Arizona Games Launcher\gta_sa.exe` (H: пуст) — в тестовой игре уже стоят mimgui/imgui/samp.events/hooks/requests/imgui_addons, НЕТ carbJsonConfig и GifPlayerLua — на них проверить skip-if-installed и свежую установку.
+- **Установщик НЕ собирать без явного «собери».**
+
+### Базовые библиотеки MoonLoader (изучено 17.10.2026)
+- `setup-moonloader-026.exe` (NSIS; распакован 7z в Temp, НЕ запускался): штатный `lib/` — всего **17 файлов**: encoding.lua, vkeys.lua, iconv.dll + `iconv/` (3 файла-документа), bitex.lua, matrix3x3.lua, vector3d.lua, moonloader.lua, sampfuncs.lua, `game/` (globals, keys, models, weapons), `windows/` (init, message). В дистрибутив **не входят**: samp.events, requests, mimgui, socket, ssl, md5, cjson, lfs, base64 — т.е. всё, что нужно скриптам каталога, — «народное».
+- moonloader.log подтвердил схему путей: `package.path` = `lib\?.lua; lib\?\init.lua; ...`, `package.cpath` = `lib\?.dll` (GifPlayerLua.dll → `lib/` — верно). В игре v026.5-beta, moonloader один: `G:\Arizona Games Launcher\moonloader`; socket/ssl/md5 в игре существуют только в `moonloader/lib` (Arizona поставляет moonloader с раздутым lib — отдельной эталонной копии в игре нет).
+- **Решение (пользователь): системные либы не показывать.** `renderLibInstalled` фильтрует «Установленные» по каталогу лаунчера (только 8 управляемых либ) — удалить скрытое неоткуда. Полный скан остаётся в `window._libInstalled` для баннера зависимостей и чипов карточки скрипта.
+
+### Осталось после «Библиотек»
+- Заглушки backend: Others/Patches (`launcher.rs`, ~3348+).
+- Отклонённые скрипты (miminv, referenz.pics) — не нужны; `fAwesome6` в каталог не входит.
