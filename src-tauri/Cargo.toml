@@ -24,9 +24,12 @@ tempfile = "3"
 winreg = "0.52"
 sysinfo = "0.33"
 open = "5"
+md-5 = "0.10"
+anyhow = "1"
 
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3", features = ["winver", "winuser", "windef", "minwindef", "dwmapi"] }
+windows-sys = { version = "0.59", features = ["Win32_Storage_FileSystem"] }
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

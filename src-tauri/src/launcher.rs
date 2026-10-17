@@ -1,7 +1,7 @@
 use crate::config::{AppState, LauncherConfig};
 use crate::util;
 use std::path::PathBuf;
-use tauri::{Manager, State};
+use tauri::{Emitter, Manager, State};
 
 // ==================== Config Commands ====================
 
@@ -2601,14 +2601,251 @@ pub async fn fetch_patches_schema() -> Result<serde_json::Value, String> {
 
 // ==================== Update ====================
 
+// ==================== Установка / обновление / починка игры ====================
+//
+// Ядро — модуль game_update (порт az-proto): манифест game.json с CDN,
+// правила проверки официального лаунчера (нет файла / размер / mtime /
+// md5 с кэшем), качка по одному файлу с фоллбэком на резервный CDN.
+
+use crate::game_update::engine::{self, Event, Job, Mode};
+
+/// Целевая папка игры: game_path в конфиге — путь до exe, файлы манифеста
+/// лежат рядом с ним. Если game_path — папка, используем её как есть.
+fn resolve_game_target(gp: &str) -> Option<PathBuf> {
+    if gp.is_empty() {
+        return None;
+    }
+    let p = PathBuf::from(gp);
+    if p.is_file() {
+        p.parent().map(|x| x.to_path_buf())
+    } else {
+        Some(p)
+    }
+}
+
+/// Захватить единственную задачу установки/обновления. Повторный вызов
+/// до завершения — ошибка.
+fn claim_game_job(
+    state: &AppState,
+) -> Result<std::sync::Arc<std::sync::atomic::AtomicBool>, String> {
+    use std::sync::atomic::AtomicBool;
+    let mut g = state
+        .game_update_cancel
+        .lock()
+        .map_err(|e| e.to_string())?;
+    if g.is_some() {
+        return Err("Установка/обновление игры уже выполняется".into());
+    }
+    let flag = std::sync::Arc::new(AtomicBool::new(false));
+    *g = Some(flag.clone());
+    Ok(flag)
+}
+
+fn release_game_job(state: &AppState) {
+    if let Ok(mut g) = state.game_update_cancel.lock() {
+        *g = None;
+    }
+}
+
+/// Проверка: манифест + план (только чтение). Фронт ждёт ответ синхронно
+/// и показывает кнопку «Обновить» при needs_update.
 #[tauri::command]
-pub async fn check_update_api(game_path: Option<String>) -> Result<serde_json::Value, String> {
-    Ok(serde_json::json!({"success": true, "needs_update": false}))
+pub async fn check_update_api(
+    state: State<'_, AppState>,
+    game_path: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let gp = game_path
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| util::game_path(&state));
+    let target = resolve_game_target(&gp)
+        .ok_or_else(|| "game_path не установлен".to_string())?;
+    let documents = state.documents_path.clone();
+
+    let job = Job {
+        mode: Mode::Check,
+        cdn_main: engine::DEFAULT_CDN_MAIN.into(),
+        cdn_reserve: engine::DEFAULT_CDN_RESERVE.into(),
+        target,
+        // Вариант графики: ручной переключатель появится в настройках,
+        // до тех пор — future (как у большинства игроков).
+        future: true,
+        documents,
+    };
+
+    let (_flat, plan) = crate::game_update::engine::build_plan(
+        &job,
+        &crate::game_update::downloader::client(),
+        &|ev| {
+            if let Event::Log(m) = ev {
+                log::info!("[game-check] {m}");
+            }
+        },
+        &std::sync::atomic::AtomicBool::new(false),
+    )
+    .await
+    .map_err(|e| format!("{e:#}"))?;
+
+    let needs_update = plan.download_count > 0;
+    let message = if needs_update {
+        format!(
+            "Требуется обновление: {} файлов ({:.2} ГБ)",
+            plan.download_count,
+            engine::gb(plan.download_bytes)
+        )
+    } else {
+        "Игра в актуальном состоянии".to_string()
+    };
+    log::info!(
+        "check_update_api: {message} (дат поправить {}, папок создать {})",
+        plan.date_fix,
+        plan.mkdir_count
+    );
+
+    Ok(serde_json::json!({
+        "success": true,
+        "needs_update": needs_update,
+        "message": message,
+        "files": plan.download_count,
+        "bytes": plan.download_bytes,
+        "date_fix": plan.date_fix,
+        "mkdir": plan.mkdir_count,
+        "deletes": plan.delete_count,
+    }))
+}
+
+/// Запуск Apply/Repair в фоне. События — `launcher-install-progress`
+/// (stage: 'dl' | 'done' | 'error'), фронт уже слушает этот хаб.
+fn spawn_game_job(
+    app: tauri::AppHandle,
+    state: &AppState,
+    mode: Mode,
+    future: bool,
+) -> Result<serde_json::Value, String> {
+    let gp = util::game_path(state);
+    let target = resolve_game_target(&gp)
+        .ok_or_else(|| "game_path не установлен".to_string())?;
+    let cancel = claim_game_job(state)?;
+
+    let job = Job {
+        mode,
+        cdn_main: engine::DEFAULT_CDN_MAIN.into(),
+        cdn_reserve: engine::DEFAULT_CDN_RESERVE.into(),
+        target,
+        future,
+        documents: state.documents_path.clone(),
+    };
+
+    tauri::async_runtime::spawn(async move {
+        let state = app.state::<AppState>();
+        let started = std::time::Instant::now();
+        log::info!("game_update: старт ({})", job.mode.title());
+
+        let on_event = |ev: Event| match ev {
+            Event::Log(m) => log::info!("[game] {m}"),
+            Event::Progress {
+                bytes_done,
+                bytes_total,
+                current,
+                speed,
+                ..
+            } => {
+                let pct = if bytes_total > 0 {
+                    ((bytes_done as f64 / bytes_total as f64) * 100.0) as u32
+                } else {
+                    0
+                };
+                let speed_mb = speed as f64 / 1_048_576.0;
+                let _ = app.emit(
+                    "launcher-install-progress",
+                    serde_json::json!({
+                        "stage": "dl",
+                        "progress": pct.min(99),
+                        "message": format!("{} — {:.1} МБ/с", current, speed_mb),
+                    }),
+                );
+            }
+            Event::Finished { ok, text } => {
+                let _ = app.emit(
+                    "launcher-install-progress",
+                    serde_json::json!({
+                        "stage": if ok { "done" } else { "error" },
+                        "progress": if ok { 100 } else { 0 },
+                        "message": text,
+                    }),
+                );
+            }
+        };
+
+        let result = engine::run(&job, &on_event, &cancel).await;
+        let (ok, text) = match &result {
+            Ok(text) => {
+                log::info!(
+                    "game_update: готово за {:.1} с — {text}",
+                    started.elapsed().as_secs_f64()
+                );
+                (true, text.clone())
+            }
+            Err(e) => {
+                let msg = format!("{e:#}");
+                log::warn!(
+                    "game_update: ошибка за {:.1} с — {msg}",
+                    started.elapsed().as_secs_f64()
+                );
+                (false, msg)
+            }
+        };
+        on_event(Event::Finished { ok, text });
+        release_game_job(&state);
+    });
+
+    Ok(serde_json::json!({"success": true, "started": true}))
 }
 
 #[tauri::command]
-pub async fn download_update_api() -> Result<serde_json::Value, String> {
-    Ok(serde_json::json!({"success": false, "message": "Not implemented"}))
+pub async fn download_update_api(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    spawn_game_job(app, &state, Mode::Apply, true)
+}
+
+/// Починка: MD5 у всех файлов + res-записи.
+#[tauri::command]
+pub async fn repair_game_api(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    future: Option<bool>,
+) -> Result<serde_json::Value, String> {
+    spawn_game_job(app, &state, Mode::Repair, future.unwrap_or(true))
+}
+
+/// Отмена активной установки/обновления/починки.
+#[tauri::command]
+pub fn cancel_game_update(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
+    let flag = state
+        .game_update_cancel
+        .lock()
+        .map_err(|e| e.to_string())?
+        .clone();
+    match flag {
+        Some(f) => {
+            f.store(true, std::sync::atomic::Ordering::Relaxed);
+            log::info!("game_update: запрошена отмена");
+            Ok(serde_json::json!({"success": true}))
+        }
+        None => Ok(serde_json::json!({"success": false, "message": "Нечего отменять"})),
+    }
+}
+
+/// Статус: выполняется ли сейчас установка/обновление игры.
+#[tauri::command]
+pub fn game_update_status(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
+    let busy = state
+        .game_update_cancel
+        .lock()
+        .map(|g| g.is_some())
+        .unwrap_or(false);
+    Ok(serde_json::json!({"busy": busy}))
 }
 
 // ==================== Установка лаунчера Air v8 ====================

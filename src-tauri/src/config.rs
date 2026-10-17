@@ -252,6 +252,9 @@ pub struct AppState {
     pub servers_revalidating: std::sync::atomic::AtomicBool,
     /// Фоновое обновление новостей уже запущено (stale-while-revalidate).
     pub news_revalidating: std::sync::atomic::AtomicBool,
+    /// Активная задача установки/обновления/починки игры: флаг отмены.
+    /// None — задач нет; Some — задача идёт (флаг=true => отмена).
+    pub game_update_cancel: Mutex<Option<std::sync::Arc<std::sync::atomic::AtomicBool>>>,
 }
 
 impl AppState {
@@ -271,6 +274,7 @@ impl AppState {
             servers_cache: Mutex::new(None),
             servers_revalidating: std::sync::atomic::AtomicBool::new(false),
             news_revalidating: std::sync::atomic::AtomicBool::new(false),
+            game_update_cancel: Mutex::new(None),
         }
     }
 

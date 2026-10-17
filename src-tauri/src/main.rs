@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod config;
+mod game_update;
 mod launcher;
 mod util;
 
@@ -188,6 +189,9 @@ fn main() {
             launcher::install_patches_file,
             launcher::check_update_api,
             launcher::download_update_api,
+            launcher::repair_game_api,
+            launcher::cancel_game_update,
+            launcher::game_update_status,
             launcher::start_launcher_install,
             launcher::get_moonloader_scripts,
             launcher::toggle_moonloader_script,
