@@ -4594,23 +4594,33 @@
         .notification {
             position: relative;
             padding: 15px 20px;
-            background: rgba(var(--accent-rgb), 0.92);
-            color: white;
+            /* тёмное стекло вместо accent-подложки (accent бежевый на светлых
+               темах — белый текст на нём читался плохо) */
+            background: rgba(24, 26, 34, 0.94);
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            border-left: 3px solid rgba(140, 170, 255, 0.9);
+            color: rgba(255, 255, 255, 0.95);
             border-radius: 8px;
             font-family: 'Montserrat Alternates', sans-serif;
             font-size: 14px;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+            box-shadow: 0 6px 22px rgba(0, 0, 0, 0.45);
+            backdrop-filter: blur(14px);
+            -webkit-backdrop-filter: blur(14px);
             animation: slideIn 0.3s ease-out;
             pointer-events: auto;
             cursor: pointer;
         }
 
         .notification.error {
-            background: rgba(212, 0, 0, 0.95);
+            background: rgba(46, 18, 22, 0.95);
+            border-color: rgba(255, 90, 90, 0.45);
+            border-left-color: rgba(255, 80, 80, 0.95);
         }
 
         .notification.success {
-            background: rgba(0, 170, 0, 0.95);
+            background: rgba(16, 34, 24, 0.95);
+            border-color: rgba(90, 220, 140, 0.4);
+            border-left-color: rgba(110, 230, 150, 0.95);
         }
 
         @keyframes slideIn {
@@ -7400,6 +7410,14 @@
                                     <span class="launch-item-name">Новая графика (future)</span>
                                 </div>
                             </label>
+                            <label class="launch-item" style="margin:8px 16px;"
+                                   onclick="event.preventDefault(); toggleGameUpdateCheckOnStart()">
+                                <input type="checkbox" id="gameCheckOnStartCheck">
+                                <div class="s-toggle"></div>
+                                <div class="launch-item-text">
+                                    <span class="launch-item-name">Проверять обновления при запуске</span>
+                                </div>
+                            </label>
                             <div class="s-input-row" style="justify-content:flex-start; gap:10px;">
                                 <span class="s-input-label" style="flex:none;">Лимит скорости, МБ/с</span>
                                 <input type="number" id="gameUpdateLimitInput" class="s-input" min="0" max="1000" step="1"
@@ -8728,7 +8746,10 @@
 
             perfMark('all done');
 
-            checkLauncherUpdate();
+            if (gameUpdateCheckOnStartEnabled()) {
+                checkLauncherUpdate();
+                setTimeout(gameCheckOnStart, 1500);
+            }
             setTimeout(() => checkPatchesStatus(), 500);
             // Первый запуск: путь к игре не настроен — открываем онбординг
             // (в Python это делал main.py:3371 через evaluate_js)
@@ -13459,8 +13480,27 @@
         function applyGameUpdateFuture() {
             const cb = document.getElementById('gameUpdateFutureCheck');
             if (cb) cb.checked = gameUpdateFutureEnabled();
+            applyGameUpdateCheckOnStart();
             const lim = document.getElementById('gameUpdateLimitInput');
             if (lim) lim.value = launcherSettings.game_update_limit_mb || 0;
+        }
+
+        /** Проверка обновлений игры при старте лаунчера (по умолчанию вкл). */
+        function gameUpdateCheckOnStartEnabled() {
+            return launcherSettings.game_update_check_on_start !== false;
+        }
+
+        function toggleGameUpdateCheckOnStart() {
+            launcherSettings.game_update_check_on_start = !gameUpdateCheckOnStartEnabled();
+            applyGameUpdateCheckOnStart();
+            if (window.pywebview && window.pywebview.api.save_launcher_settings) {
+                window.pywebview.api.save_launcher_settings(launcherSettings);
+            }
+        }
+
+        function applyGameUpdateCheckOnStart() {
+            const cb = document.getElementById('gameCheckOnStartCheck');
+            if (cb) cb.checked = gameUpdateCheckOnStartEnabled();
         }
 
         /** Лимит скорости качки игры: МБ/с (0 — без лимита). Бэкенд читает
@@ -13533,6 +13573,24 @@
             } finally {
                 if (btn) btn.disabled = false;
             }
+        }
+
+        /** Стартовая проверка обновлений игры: тихо, если всё актуально,
+            при найденных обновлениях — уведомление с деталями (что и сколько). */
+        async function gameCheckOnStart() {
+            try {
+                if (!(window.pywebview && window.pywebview.api.check_update_api)) return;
+                const sd = await window.pywebview.api.get_saved_data();
+                const gamePath = (sd && sd.success && sd.game_path) || '';
+                if (!gamePath) return; // путь не настроен — этим занимается онбординг
+                const r = await window.pywebview.api.check_update_api(gamePath);
+                if (r && r.success && r.needs_update) {
+                    const gb = ((r.bytes || 0) / 1073741824).toFixed(2);
+                    const n = r.files != null ? r.files : '?';
+                    showNotification('<i data-lucide="download"></i> Вышло обновление игры: ' + n + ' файлов (' + gb + ' ГБ). Нажми «Обновить» на главном.', 'info');
+                    if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
+                }
+            } catch (e) { /* тихо: падение стартовой проверки не должно мешать */ }
         }
 
         async function repairGame() {
