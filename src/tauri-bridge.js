@@ -235,11 +235,23 @@
     var t = window.__TAURI__;
     if (t && t.event && typeof t.event.listen === 'function') {
       try {
-        t.event.listen('launcher-install-progress', function (e) {
+        // listen() возвращает Promise — учтём возможное отклонение прав
+        // (event.listen blocked по ACL) и перетянемся позже.
+        var p = t.event.listen('launcher-install-progress', function (e) {
           if (typeof window._onLauncherInstallProgress === 'function') {
             window._onLauncherInstallProgress(e.payload);
           }
         });
+        if (p && typeof p.then === 'function') {
+          p.then(function () {
+            window.__installProgressSubscribed = true;
+            console.log('[tauri-bridge] подписка на launcher-install-progress установлена');
+          }).catch(function (err) {
+            console.warn('[tauri-bridge] подписка на launcher-install-progress отклонена:', err);
+            if (attempt < 40) setTimeout(function () { subscribeInstallProgress(attempt + 1); }, 250);
+          });
+          return;
+        }
         window.__installProgressSubscribed = true;
         console.log('[tauri-bridge] подписка на launcher-install-progress установлена');
         return;

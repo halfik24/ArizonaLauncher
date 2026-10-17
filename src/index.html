@@ -10348,7 +10348,7 @@
 
         // Модальное подтверждение вместо нативного confirm() (правило проекта).
         // Возвращает Promise<boolean>.
-        function confirmAction(message) {
+        function confirmAction(message, confirmLabel) {
             return new Promise((resolve) => {
                 const wrap = document.createElement('div');
                 wrap.className = 'confirm-modal-backdrop';
@@ -10357,7 +10357,7 @@
                         <div class="confirm-modal-text"></div>
                         <div class="confirm-modal-btns">
                             <button class="confirm-modal-btn ghost" data-act="0">Отмена</button>
-                            <button class="confirm-modal-btn danger" data-act="1">Удалить</button>
+                            <button class="confirm-modal-btn danger" data-act="1">${confirmLabel || 'Удалить'}</button>
                         </div>
                     </div>`;
                 wrap.querySelector('.confirm-modal-text').textContent = message;
@@ -13495,7 +13495,7 @@
                     return;
                 }
             }
-            if (!(await confirmAction('Починить игру? Проверим MD5 всех файлов и заново скачаем битые. Это может занять время.'))) return;
+            if (!(await confirmAction('Починить игру? Проверим MD5 всех файлов и заново скачаем битые. Это может занять время.', 'Починить'))) return;
             const res = await window.pywebview.api.repair_game_api(gameUpdateFutureEnabled());
             if (res && res.success) {
                 _gameProgressStart('Починка');

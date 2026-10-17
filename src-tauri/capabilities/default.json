@@ -1,0 +1,9 @@
+{
+  "$schema": "https://raw.githubusercontent.com/tauri-apps/tauri/dev/crates/tauri-config-schema/schema.json",
+  "identifier": "default",
+  "description": "Права главного окна: только события Tauri (прогресс установки игры). Держим минимум, чтобы не менять поведение остального UI.",
+  "windows": ["main"],
+  "permissions": [
+    "core:event:default"
+  ]
+}
