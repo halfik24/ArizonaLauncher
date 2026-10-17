@@ -6206,16 +6206,18 @@
             border-color: rgba(var(--accent-rgb),0.3);
         }
         .fl-install-btn {
-            width: 100%; height: 38px;
+            width: 100%; height: 40px;
             background: rgba(255,165,0,0.12);
             border: 1px solid rgba(255,165,0,0.3);
             border-radius: 12px;
             color: rgba(255,200,80,0.9);
             font-family: 'Montserrat Alternates', sans-serif;
             font-size: 12px; cursor: pointer;
-            transition: all 0.18s; margin-top: 8px;
+            transition: all 0.18s; margin-top: 4px;
+            display: flex; align-items: center; justify-content: center; gap: 8px;
         }
-        .fl-install-btn:hover { background: rgba(255,165,0,0.2); }
+        .fl-install-btn svg { width: 15px; height: 15px; }
+        .fl-install-btn:hover { background: rgba(255,165,0,0.2); color: rgba(255,220,140,1); }
 
         /* Step 2: Features grid */
         .fl-features-title {
@@ -15373,6 +15375,7 @@
         let _flStep = 0;
         let _flData = null;
         let _flInstallPending = false;
+        let _flInstalling = false; // идёт установка из онбординга — кнопки убраны, виден прогресс
         let _flLaunchMethod = 'native'; // выбранный в онбординге способ запуска
         const FL_TOTAL = 5;
 
@@ -15469,6 +15472,80 @@
             }
         }
 
+        /** Установка игры из онбординга: бэкенд сам откроет диалог выбора папки,
+            прогресс идёт через общий хаб launcher-install-progress. */
+        async function _flInstallGame() {
+            if (_flInstalling) return;
+            try {
+                if (window.pywebview && window.pywebview.api.game_update_status) {
+                    const st = await window.pywebview.api.game_update_status();
+                    if (st && st.busy) {
+                        showNotification('Установка/обновление уже выполняется', 'error');
+                        return;
+                    }
+                }
+                _flInstalling = true;
+                _flRender();
+                const res = await window.pywebview.api.install_game_api(
+                    typeof gameUpdateFutureEnabled === 'function' ? gameUpdateFutureEnabled() : undefined
+                );
+                if (!(res && res.success)) {
+                    _flInstalling = false;
+                    _flRender();
+                    showNotification((res && res.message) || 'Установка не запущена', 'error');
+                    return;
+                }
+                showNotification('<i data-lucide="folder-down"></i> Установка запущена', 'info');
+                if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
+                _installModalProgressCb = function(data) {
+                    // Элементы ищем каждый раз: _flRender перерисовывает тело шага
+                    const msg = document.getElementById('flInstMsg');
+                    const pctEl = document.getElementById('flInstPct');
+                    const bar = document.getElementById('flInstBar');
+                    if (data.stage === 'dl') {
+                        if (msg) msg.textContent = 'Установка: ' + (data.message || '...');
+                        if (pctEl) pctEl.textContent = (data.progress || 0) + '%';
+                        if (bar) bar.style.width = Math.min(100, data.progress || 0) + '%';
+                    } else if (data.stage === 'done') {
+                        _installModalProgressCb = null;
+                        _flInstalling = false;
+                        showNotification('<i data-lucide="check-circle"></i> ' + (data.message || 'Игра установлена'), 'success');
+                        if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
+                        _flRefreshGameCard();
+                    } else if (data.stage === 'error') {
+                        _installModalProgressCb = null;
+                        _flInstalling = false;
+                        showNotification('Ошибка: ' + (data.message || 'неизвестно'), 'error');
+                        _flRefreshGameCard();
+                    }
+                };
+            } catch (e) {
+                _flInstalling = false;
+                _flRender();
+                showNotification('Установка: ' + e, 'error');
+            }
+        }
+
+        /** Перечитать путь игры после установки/починки и обновить карточку онбординга. */
+        async function _flRefreshGameCard() {
+            try {
+                const sd = await window.pywebview.api.get_saved_data();
+                const gp = (sd && sd.game_path) || '';
+                if (gp) {
+                    _flData = {
+                        auto_found: true,
+                        check_status: 'ok',
+                        game_path: gp,
+                        folder: gp.replace(/[\\/][^\\/]+$/, ''),
+                        missing: []
+                    };
+                } else if (_flData && _flData.check_status !== 'checking') {
+                    _flData.check_status = 'not_found';
+                }
+            } catch (e) {}
+            _flRender();
+        }
+
         async function openFirstLaunch() {
             if (!_flData) {
                 _flData = { auto_found: false, check_status: 'not_found', game_path: '', folder: '', missing: [] };
@@ -15561,12 +15638,29 @@
                         </div>
                     </div>`;
                 }
+                // Кнопки уходят, пока идёт установка — остаётся карточка прогресса
+                if (_flInstalling) {
+                    return `<div class="fl-game-title"><i data-lucide="search"></i> Обнаружение игры</div>
+                        <div class="fl-game-card">
+                            <div class="fl-game-card-icon"><i data-lucide="folder-down"></i></div>
+                            <div class="fl-game-card-text">
+                                <div class="fl-game-card-head" id="flInstMsg">Выбери папку для установки...</div>
+                                <div class="fl-game-card-sub" style="display:flex;align-items:center;justify-content:space-between;">
+                                    <span id="flInstPct" style="font-weight:600;color:rgba(130,220,150,1);">0%</span>
+                                </div>
+                                <div style="height:5px;background:rgba(255,255,255,0.1);border-radius:3px;overflow:hidden;margin-top:6px;">
+                                    <div id="flInstBar" style="height:100%;width:0%;background:linear-gradient(90deg,rgba(130,220,150,0.65),rgba(130,220,150,1));border-radius:3px;transition:width .2s;"></div>
+                                </div>
+                            </div>
+                        </div>`;
+                }
                 const searchBtn = d.check_status === 'checking' ? '' :
                     `<button class="fl-manual-btn" onclick="_flAutoSearch()"><i data-lucide="search"></i> Искать снова</button>`;
                 return `<div class="fl-game-title"><i data-lucide="search"></i> Обнаружение игры</div>
                     ${cardHtml}
                     ${searchBtn}
-                    <button class="fl-manual-btn" onclick="_flSelectManual()"><i data-lucide="folder-open"></i> Указать путь вручную</button>`;
+                    <button class="fl-manual-btn" onclick="_flSelectManual()"><i data-lucide="folder-open"></i> Указать путь вручную</button>
+                    <button class="fl-install-btn" onclick="_flInstallGame()"><i data-lucide="folder-down"></i> Установить игру</button>`;
             }
 
             if (_flStep === 2) {
