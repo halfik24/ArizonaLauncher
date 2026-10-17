@@ -102,24 +102,58 @@ pub async fn download_to(
             .with_context(|| format!("создание папки {}", parent.display()))?;
     }
     let tmp = part_path(dest);
-    if tmp.exists() {
+
+    // Докачка с места обрыва: если .part уже есть — просим Range и
+    // дописываем хвост; сервер проигнорировал (200) или битый Range (416) —
+    // начинаем с нуля. Валидность конечного файла всё равно решает MD5.
+    let mut existing = fs::metadata(&tmp).map(|m| m.len()).unwrap_or(0);
+    let mut want_range = existing > 0;
+    let mut attempts = 0u8;
+    let (resp, base, append) = loop {
+        attempts += 1;
+        if attempts > 3 {
+            bail!("не удалось открыть {url}: более 3 попыток запроса");
+        }
+        let mut req = http.get(url);
+        if want_range {
+            req = req.header(reqwest::header::RANGE, format!("bytes={existing}-"));
+        }
+        let r = req
+            .send()
+            .await
+            .with_context(|| format!("GET {url}"))?;
+        let st = r.status().as_u16();
+        if st == 206 && existing > 0 {
+            break (r, existing, true);
+        }
+        if st == 416 && existing > 0 {
+            // .part оказался длиннее файла или битый — чистим, пробуем заново
+            let _ = fs::remove_file(&tmp);
+            existing = 0;
+            want_range = false;
+            continue;
+        }
+        if st >= 400 {
+            bail!("GET {url} — статус ответа {st}");
+        }
+        // 200 (сервер проигнорировал Range, либо файла раньше не было)
         let _ = fs::remove_file(&tmp);
-    }
+        break (r, 0u64, false);
+    };
 
-    let resp = http
-        .get(url)
-        .send()
-        .await
-        .with_context(|| format!("GET {url}"))?
-        .error_for_status()
-        .with_context(|| format!("GET {url} — статус ответа"))?;
-
-    let mut f = fs::File::create(&tmp)
-        .with_context(|| format!("создание {}", tmp.display()))?;
-    let mut total: u64 = 0;
     use std::io::Write;
-    // Токен-ведро: копим «должны спать» по каждому байту и отдаём долг.
-    // Периодическую проверку cancel держим кусками ≤ 200 мс.
+    let mut f = if append {
+        fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&tmp)
+            .with_context(|| format!("дописывание {}", tmp.display()))?
+    } else {
+        fs::File::create(&tmp)
+            .with_context(|| format!("создание {}", tmp.display()))?
+    };
+    let mut total: u64 = base;
+    on_progress(total);
     // Токен-ведро: базовая точка времени + total/rate = «когда позволено».
     // Проседания сервера компенсируются (сервер отдал стоп — не досыпаем).
     let rate = (rate_bytes >= 1_048_576).then_some(rate_bytes);
@@ -135,7 +169,7 @@ pub async fn download_to(
         };
         if cancel.load(Ordering::Relaxed) {
             drop(f);
-            let _ = fs::remove_file(&tmp);
+            // .part НЕ трогаем — при повторном запуске допишем с места обрыва
             bail!("отменено");
         }
         f.write_all(&chunk).context("запись файла")?;
@@ -150,7 +184,6 @@ pub async fn download_to(
                 tokio::time::sleep(sleep).await;
                 if cancel.load(Ordering::Relaxed) {
                     drop(f);
-                    let _ = fs::remove_file(&tmp);
                     bail!("отменено");
                 }
             }
