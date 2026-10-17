@@ -2770,15 +2770,23 @@ fn gta_process_running() -> bool {
 
 /// Запуск Apply/Repair в фоне. События — `launcher-install-progress`
 /// (stage: 'dl' | 'done' | 'error'), фронт уже слушает этот хаб.
+/// `target_override` — установка в выбранную папку (не из game_path);
+/// после успеха путь пишется в конфиг.
 fn spawn_game_job(
     app: tauri::AppHandle,
     state: &AppState,
     mode: Mode,
     future: bool,
+    target_override: Option<PathBuf>,
 ) -> Result<serde_json::Value, String> {
-    let gp = util::game_path(state);
-    let target = resolve_game_target(&gp)
-        .ok_or_else(|| "game_path не установлен".to_string())?;
+    let target = match &target_override {
+        Some(t) => t.clone(),
+        None => {
+            let gp = util::game_path(state);
+            resolve_game_target(&gp)
+                .ok_or_else(|| "game_path не установлен".to_string())?
+        }
+    };
     if gta_process_running() {
         return Ok(serde_json::json!({
             "success": false,
@@ -2791,12 +2799,13 @@ fn spawn_game_job(
         mode,
         cdn_main: engine::DEFAULT_CDN_MAIN.into(),
         cdn_reserve: engine::DEFAULT_CDN_RESERVE.into(),
-        target,
+        target: target.clone(),
         future,
         documents: state.documents_path.clone(),
         // Лимит качки из настроек (0 — без лимита).
         speed_limit: game_update_limit(state),
     };
+    let write_path_target = target_override.is_some();
 
     tauri::async_runtime::spawn(async move {
         let state = app.state::<AppState>();
@@ -2862,6 +2871,20 @@ fn spawn_game_job(
                 (false, msg)
             }
         };
+        // Свежая установка: путь до exe пишем в конфиг, чтобы лаунчер
+        // «ожил» (проверка, кнопка Обновить, запуск).
+        if ok && write_path_target {
+            let exe = job.target.join("gta_sa.exe");
+            if exe.is_file() {
+                let st = app.state::<AppState>();
+                let p = exe.to_string_lossy().to_string();
+                let _ = util::update_config(&st, |cfg| {
+                    cfg.game_path = p.clone();
+                    Ok(())
+                });
+                log::info!("game_update: game_path записан → {p}");
+            }
+        }
         on_event(Event::Finished { ok, text });
         release_game_job(&state);
     });
@@ -2874,7 +2897,7 @@ pub async fn download_update_api(
     app: tauri::AppHandle,
     state: State<'_, AppState>,
 ) -> Result<serde_json::Value, String> {
-    spawn_game_job(app, &state, Mode::Apply, game_update_future(&state))
+    spawn_game_job(app, &state, Mode::Apply, game_update_future(&state), None)
 }
 
 /// Починка: MD5 у всех файлов + res-записи.
@@ -2885,7 +2908,47 @@ pub async fn repair_game_api(
     future: Option<bool>,
 ) -> Result<serde_json::Value, String> {
     let future = future.unwrap_or_else(|| game_update_future(&state));
-    spawn_game_job(app, &state, Mode::Repair, future)
+    spawn_game_job(app, &state, Mode::Repair, future, None)
+}
+
+/// Установка игры в выбранную папку: системный диалог выбора папки,
+/// затем тот же движок Apply (создаёт папки + качает все файлы манифеста).
+/// После успеха game_path пишется в конфиг (см. spawn_game_job).
+#[tauri::command]
+pub async fn install_game_api(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    future: Option<bool>,
+) -> Result<serde_json::Value, String> {
+    use tauri_plugin_dialog::DialogExt;
+
+    let busy = state
+        .game_update_cancel
+        .lock()
+        .map(|g| g.is_some())
+        .unwrap_or(false);
+    if busy {
+        return util::fail_message("Установка/обновление уже выполняется");
+    }
+
+    let picked = app
+        .dialog()
+        .file()
+        .set_title("Куда установить игру? Выбери папку")
+        .blocking_pick_folder();
+
+    let Some(picked) = picked else {
+        return util::fail_message("Папка не выбрана");
+    };
+    let target = match picked {
+        tauri_plugin_dialog::FilePath::Path(p) => p,
+        tauri_plugin_dialog::FilePath::Url(u) => u
+            .to_file_path()
+            .map_err(|_| "Некорректный путь".to_string())?,
+    };
+    let future = future.unwrap_or_else(|| game_update_future(&state));
+    log::info!("game_update: выбрана папка установки {}", target.display());
+    spawn_game_job(app, &state, Mode::Apply, future, Some(target))
 }
 
 /// Отмена активной установки/обновления/починки.

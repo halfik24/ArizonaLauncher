@@ -189,6 +189,7 @@ fn main() {
             launcher::install_patches_file,
             launcher::check_update_api,
             launcher::download_update_api,
+            launcher::install_game_api,
             launcher::repair_game_api,
             launcher::cancel_game_update,
             launcher::game_update_status,

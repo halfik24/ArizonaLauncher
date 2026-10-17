@@ -7417,6 +7417,10 @@
                                         style="width:auto; padding:0 14px; height:32px; font-size:11px;">
                                     <i data-lucide="wrench" style="width:14px;height:14px;"></i> Починить игру
                                 </button>
+                                <button class="s-btn" id="gameInstallBtn" onclick="installGame()"
+                                        style="width:auto; padding:0 14px; height:32px; font-size:11px;">
+                                    <i data-lucide="folder-down" style="width:14px;height:14px;"></i> Установить игру...
+                                </button>
                             </div>
                             <div id="gameUpdateProgress" style="display:none; margin:8px 16px 4px;">
                                 <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
@@ -13547,6 +13551,27 @@
                 if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
             } else {
                 showNotification((res && res.message) || 'Не удалось запустить починку', 'error');
+            }
+        }
+
+        /** Установка игры в выбранную папку: бэкенд открывает системный
+            диалог выбора папки, потом качает манифест целиком.
+            game_path пишется в конфиг только после успешной установки. */
+        async function installGame() {
+            if (window.pywebview.api.game_update_status) {
+                const st = await window.pywebview.api.game_update_status();
+                if (st && st.busy) {
+                    showNotification('Установка/обновление уже выполняется', 'error');
+                    return;
+                }
+            }
+            const res = await window.pywebview.api.install_game_api(gameUpdateFutureEnabled());
+            if (res && res.success) {
+                _gameProgressStart('Установка');
+                showNotification('<i data-lucide="folder-down"></i> Установка запущена', 'info');
+                if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
+            } else {
+                showNotification((res && res.message) || 'Установка не запущена', 'error');
             }
         }
 
