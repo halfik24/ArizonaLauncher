@@ -2609,6 +2609,22 @@ pub async fn fetch_patches_schema() -> Result<serde_json::Value, String> {
 
 use crate::game_update::engine::{self, Event, Job, Mode};
 
+/// Вариант графики из настроек (`game_update_future` в launcher_settings,
+/// default true) — ручной переключатель пользователя.
+fn game_update_future(state: &AppState) -> bool {
+    state
+        .config
+        .lock()
+        .ok()
+        .and_then(|c| {
+            c.launcher_settings
+                .extra
+                .get("game_update_future")
+                .and_then(|v| v.as_bool())
+        })
+        .unwrap_or(true)
+}
+
 /// Целевая папка игры: game_path в конфиге — путь до exe, файлы манифеста
 /// лежат рядом с ним. Если game_path — папка, используем её как есть.
 fn resolve_game_target(gp: &str) -> Option<PathBuf> {
@@ -2666,9 +2682,8 @@ pub async fn check_update_api(
         cdn_main: engine::DEFAULT_CDN_MAIN.into(),
         cdn_reserve: engine::DEFAULT_CDN_RESERVE.into(),
         target,
-        // Вариант графики: ручной переключатель появится в настройках,
-        // до тех пор — future (как у большинства игроков).
-        future: true,
+        // Вариант графики: ручной переключатель из настроек.
+        future: game_update_future(&state),
         documents,
     };
 
@@ -2713,6 +2728,17 @@ pub async fn check_update_api(
     }))
 }
 
+/// Игра запущена? (независимая проверка — не трогает edge выхода
+/// was_running из is_gta_running, чтобы watcher статуса-строки
+/// по-прежнему увидел «игра вышла» сам).
+fn gta_process_running() -> bool {
+    let mut sys = sysinfo::System::new();
+    sys.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
+    sys.processes()
+        .values()
+        .any(|p| p.name().to_string_lossy().eq_ignore_ascii_case("gta_sa.exe"))
+}
+
 /// Запуск Apply/Repair в фоне. События — `launcher-install-progress`
 /// (stage: 'dl' | 'done' | 'error'), фронт уже слушает этот хаб.
 fn spawn_game_job(
@@ -2724,6 +2750,12 @@ fn spawn_game_job(
     let gp = util::game_path(state);
     let target = resolve_game_target(&gp)
         .ok_or_else(|| "game_path не установлен".to_string())?;
+    if gta_process_running() {
+        return Ok(serde_json::json!({
+            "success": false,
+            "message": "Игра запущена — закрой её перед установкой/обновлением"
+        }));
+    }
     let cancel = claim_game_job(state)?;
 
     let job = Job {
@@ -2806,7 +2838,7 @@ pub async fn download_update_api(
     app: tauri::AppHandle,
     state: State<'_, AppState>,
 ) -> Result<serde_json::Value, String> {
-    spawn_game_job(app, &state, Mode::Apply, true)
+    spawn_game_job(app, &state, Mode::Apply, game_update_future(&state))
 }
 
 /// Починка: MD5 у всех файлов + res-записи.
@@ -2816,7 +2848,8 @@ pub async fn repair_game_api(
     state: State<'_, AppState>,
     future: Option<bool>,
 ) -> Result<serde_json::Value, String> {
-    spawn_game_job(app, &state, Mode::Repair, future.unwrap_or(true))
+    let future = future.unwrap_or_else(|| game_update_future(&state));
+    spawn_game_job(app, &state, Mode::Repair, future)
 }
 
 /// Отмена активной установки/обновления/починки.

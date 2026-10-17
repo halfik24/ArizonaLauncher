@@ -7369,6 +7369,48 @@
 
                 <!-- Лаунчер -->
                 <div id="launcherTab" class="settings-tab-content">
+
+                    <div class="s-section" style="flex-shrink:0;">
+                        <div class="s-section-head">
+                            <span class="s-section-head-icon"><i data-lucide="hard-drive-download"></i></span>
+                            <span class="s-section-title">Установка игры</span>
+                        </div>
+                        <div class="s-section-body">
+                            <label class="launch-item" style="margin:8px 16px;"
+                                   onclick="event.preventDefault(); toggleGameUpdateFuture()">
+                                <input type="checkbox" id="gameUpdateFutureCheck">
+                                <div class="s-toggle"></div>
+                                <div class="launch-item-text">
+                                    <span class="launch-item-name">Новая графика (future)</span>
+                                </div>
+                            </label>
+                            <div style="padding:8px 16px 4px; display:flex; gap:8px; flex-wrap:wrap;">
+                                <button class="s-btn" id="gameCheckBtn" onclick="checkGameUpdate()"
+                                        style="width:auto; padding:0 14px; height:32px; font-size:11px;">
+                                    <i data-lucide="search" style="width:14px;height:14px;"></i> Проверить обновления
+                                </button>
+                                <button class="s-btn" id="gameRepairBtn" onclick="repairGame()"
+                                        style="width:auto; padding:0 14px; height:32px; font-size:11px;">
+                                    <i data-lucide="wrench" style="width:14px;height:14px;"></i> Починить игру
+                                </button>
+                            </div>
+                            <div id="gameUpdateProgress" style="display:none; margin:8px 16px 4px;">
+                                <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
+                                    <span id="gameUpdateProgressMsg" style="font-family:'Montserrat Alternates';font-size:11px;color:rgba(255,255,255,0.8);">...</span>
+                                    <span id="gameUpdateProgressPct" style="font-family:'Montserrat Alternates';font-size:11px;font-weight:600;color:rgba(130,220,150,1);">0%</span>
+                                </div>
+                                <div style="height:6px;background:rgba(255,255,255,0.1);border-radius:3px;overflow:hidden;">
+                                    <div id="gameUpdateProgressBar" style="height:100%;width:0%;background:linear-gradient(90deg,rgba(130,220,150,0.65),rgba(130,220,150,1));border-radius:3px;transition:width .2s;"></div>
+                                </div>
+                            </div>
+                            <div style="padding:4px 16px 10px;font-family:'Montserrat Alternates';font-size:10px;color:rgba(255,255,255,0.25);line-height:1.5;">
+                                «Новая графика» должна совпадать с тем, что стоит в игре: выберешь не тот вариант —
+                                файлы будут заново скачиваться. Починка проверяет MD5 всех файлов и заново ставит
+                                битые. Не запускай одновременно с официальным лаунчером.
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="s-section" style="flex-shrink:0;">
                         <div class="s-section-head">
                             <span class="s-section-head-icon"><i data-lucide="file-pen-line"></i></span>
@@ -12228,6 +12270,7 @@
                 if (tabName === 'debug')  loadDebugInfo();
                 if (tabName === 'patches') checkPatchesStatus();
                 if (tabName === 'about')  _renderAboutBug();
+                if (tabName === 'launcher') applyGameUpdateFuture();
             }
         }
 
@@ -13357,6 +13400,110 @@
         function applyHideProfiles() {
             const widget = document.getElementById('profilesHoverWidget');
             if (widget) widget.style.display = launcherSettings.hide_profiles ? 'none' : '';
+        }
+
+        // ══════════════════════════════════════════════
+        //  УСТАНОВКА ИГРЫ: проверка / починка / вариант графики
+        // ══════════════════════════════════════════════
+
+        function gameUpdateFutureEnabled() {
+            return launcherSettings.game_update_future !== false;
+        }
+
+        function toggleGameUpdateFuture() {
+            launcherSettings.game_update_future = !gameUpdateFutureEnabled();
+            applyGameUpdateFuture();
+            if (window.pywebview && window.pywebview.api.save_launcher_settings) {
+                window.pywebview.api.save_launcher_settings(launcherSettings);
+            }
+            showNotification(gameUpdateFutureEnabled()
+                ? 'Игровые файлы: новая графика (future)'
+                : 'Игровые файлы: обычная графика (default)', 'info');
+        }
+
+        function applyGameUpdateFuture() {
+            const cb = document.getElementById('gameUpdateFutureCheck');
+            if (cb) cb.checked = gameUpdateFutureEnabled();
+        }
+
+        /** Прогресс починки/установки из настроек: переиспользуем хаб
+            _onLauncherInstallProgress через свободный слот _installModalProgressCb. */
+        function _gameProgressStart(label) {
+            const wrap = document.getElementById('gameUpdateProgress');
+            if (!wrap) return;
+            wrap.style.display = '';
+            const msg = document.getElementById('gameUpdateProgressMsg');
+            const pctEl = document.getElementById('gameUpdateProgressPct');
+            const bar = document.getElementById('gameUpdateProgressBar');
+            if (msg) msg.textContent = label + '...';
+            if (pctEl) pctEl.textContent = '0%';
+            if (bar) bar.style.width = '0%';
+            _installModalProgressCb = function(data) {
+                if (data.stage === 'dl') {
+                    if (msg) msg.textContent = label + ': ' + (data.message || '...');
+                    if (pctEl) pctEl.textContent = (data.progress || 0) + '%';
+                    if (bar) bar.style.width = Math.min(100, data.progress || 0) + '%';
+                } else if (data.stage === 'done') {
+                    showNotification('<i data-lucide="check-circle"></i> ' + (data.message || 'Готово'), 'success');
+                    wrap.style.display = 'none';
+                    if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
+                    _installModalProgressCb = null;
+                } else if (data.stage === 'error') {
+                    showNotification('Ошибка: ' + (data.message || 'неизвестно'), 'error');
+                    wrap.style.display = 'none';
+                    _installModalProgressCb = null;
+                }
+            };
+        }
+
+        async function checkGameUpdate() {
+            const btn = document.getElementById('gameCheckBtn');
+            if (btn && btn.disabled) return;
+            if (btn) btn.disabled = true;
+            try {
+                const sd = await window.pywebview.api.get_saved_data();
+                const gamePath = (sd && sd.success && sd.game_path) || '';
+                if (!gamePath) {
+                    showNotification('Сначала укажи папку игры', 'error');
+                    return;
+                }
+                const r = await window.pywebview.api.check_update_api(gamePath);
+                if (r && r.success) {
+                    if (r.needs_update) {
+                        showNotification('<i data-lucide="download"></i> ' + (r.message || 'Требуется обновление'), 'info');
+                        // Тот же поток, что и у кнопки «Обновить» на главной
+                        if (typeof checkLauncherInstallation === 'function') checkLauncherInstallation(true, gamePath);
+                    } else {
+                        showNotification('<i data-lucide="check-circle"></i> ' + (r.message || 'Игра в актуальном состоянии'), 'success');
+                    }
+                    if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
+                } else {
+                    showNotification('Ошибка проверки: ' + ((r && r.message) || 'неизвестно'), 'error');
+                }
+            } catch (e) {
+                showNotification('Ошибка проверки: ' + e, 'error');
+            } finally {
+                if (btn) btn.disabled = false;
+            }
+        }
+
+        async function repairGame() {
+            if (window.pywebview.api.game_update_status) {
+                const st = await window.pywebview.api.game_update_status();
+                if (st && st.busy) {
+                    showNotification('Установка/обновление уже выполняется', 'error');
+                    return;
+                }
+            }
+            if (!(await confirmAction('Починить игру? Проверим MD5 всех файлов и заново скачаем битые. Это может занять время.'))) return;
+            const res = await window.pywebview.api.repair_game_api(gameUpdateFutureEnabled());
+            if (res && res.success) {
+                _gameProgressStart('Починка');
+                showNotification('<i data-lucide="wrench"></i> Починка запущена', 'info');
+                if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
+            } else {
+                showNotification((res && res.message) || 'Не удалось запустить починку', 'error');
+            }
         }
 
         // ══════════════════════════════════════════════
