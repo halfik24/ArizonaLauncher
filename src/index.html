@@ -4751,6 +4751,35 @@
             }
         }
 
+        /* ── Кастомные тултипы (замена дефолтных title) ──
+           Тёмное стекло в стиле уведомлений, акцентный левый край. */
+        #uiTip {
+            position: fixed;
+            z-index: 9999;
+            max-width: 280px;
+            padding: 7px 11px;
+            background: rgba(24, 26, 34, 0.94);
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            border-left: 3px solid rgba(140, 170, 255, 0.9);
+            color: rgba(255, 255, 255, 0.95);
+            border-radius: 8px;
+            font-family: 'Montserrat Alternates', sans-serif;
+            font-size: 12px;
+            line-height: 1.45;
+            white-space: pre-line;
+            box-shadow: 0 6px 22px rgba(0, 0, 0, 0.45);
+            backdrop-filter: blur(14px);
+            -webkit-backdrop-filter: blur(14px);
+            pointer-events: none;
+            opacity: 0;
+            transform: translateY(4px);
+            transition: opacity 0.16s ease, transform 0.16s ease;
+        }
+        #uiTip.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
         /* ── Skeleton лоадеры (шиммер) ── */
         @keyframes skeletonShimmer {
             0%   { background-position: 200% 0; }
@@ -9056,11 +9085,98 @@
             } catch (e) { /* не критично */ }
         }
 
+        // ══════════════════════════════════════════════
+        //  КАСТОМНЫЕ ТУЛТИПЫ (замена дефолтных title)
+        //  Наведение → читаем title, прячем нативный (переносим в data-tt),
+        //  показываем свой стеклянный бейдж. Работает и для динамических
+        //  элементов (делегирование на document).
+        // ══════════════════════════════════════════════
+        let _ttEl = null, _ttTimer = null, _ttHost = null, _ttInited = false;
+
+        function _ttEnsure() {
+            if (_ttEl) return _ttEl;
+            _ttEl = document.createElement('div');
+            _ttEl.id = 'uiTip';
+            document.body.appendChild(_ttEl);
+            return _ttEl;
+        }
+
+        /** Скрыть тултип; restore=true — вернуть title обратно в элемент. */
+        function _ttHide(restore) {
+            clearTimeout(_ttTimer);
+            _ttTimer = null;
+            if (_ttEl) _ttEl.classList.remove('show');
+            if (restore && _ttHost) {
+                if (_ttHost.dataset.tt) {
+                    _ttHost.title = _ttHost.dataset.tt;
+                    delete _ttHost.dataset.tt;
+                }
+                _ttHost = null;
+            }
+        }
+
+        function _ttShow(host, text) {
+            const el = _ttEnsure();
+            el.textContent = text;
+            // Замер + позиция: под элементом по центру, иначе над ним;
+            // в пределах вьюпорта с отступом 8px.
+            const r = host.getBoundingClientRect();
+            el.style.left = '0px';
+            el.style.top = '0px';
+            el.classList.add('show');
+            const tw = el.offsetWidth, th = el.offsetHeight;
+            let x = r.left + r.width / 2 - tw / 2;
+            let y = r.bottom + 8;
+            if (y + th > window.innerHeight - 8) y = r.top - th - 8;
+            if (y < 8) y = 8;
+            x = Math.max(8, Math.min(x, window.innerWidth - tw - 8));
+            el.style.left = Math.round(x) + 'px';
+            el.style.top = Math.round(y) + 'px';
+        }
+
+        function initCustomTooltips() {
+            if (_ttInited) return;
+            _ttInited = true;
+
+            document.addEventListener('mouseover', (e) => {
+                const host = e.target instanceof Element
+                    ? e.target.closest('[title], [data-tt]')
+                    : null;
+                if (!host) return;
+                if (_ttHost === host) return;   // уже под ним
+                _ttHide(true);                  // ушли с прошлого — вернуть ему title
+                const text = host.title || host.dataset.tt || '';
+                if (!text.trim()) return;
+                host.dataset.tt = text;
+                host.removeAttribute('title');  // гасим нативный тултип
+                _ttHost = host;
+                _ttTimer = setTimeout(() => {
+                    if (_ttHost === host && document.contains(host)) _ttShow(host, text);
+                }, 280);
+            });
+
+            document.addEventListener('mouseout', (e) => {
+                if (!_ttHost) return;
+                const from = e.target instanceof Element ? e.target : null;
+                if (from && _ttHost.contains(from)) {
+                    const to = e.relatedTarget instanceof Element ? e.relatedTarget : null;
+                    if (to && _ttHost.contains(to)) return; // всё ещё внутри
+                }
+                _ttHide(true);
+            });
+
+            // Скролл/клик/ресайз — гасим сразу (элемент мог сместиться/исчезнуть).
+            window.addEventListener('scroll', () => _ttHide(true), true);
+            window.addEventListener('resize', () => _ttHide(true));
+            document.addEventListener('mousedown', () => _ttHide(true), true);
+        }
+
         async function init() {
             try {
             perfMark('init start');
 
             startBtn.addEventListener('click', handleStartGame);
+            initCustomTooltips();   // кастомные тултипы вместо дефолтных title
             settingsBtn.addEventListener('click', openSettings);
             folderBtn.addEventListener('click', openFolderModal);
             nicknameInput.addEventListener('input', debounce(saveNickname, 500));
