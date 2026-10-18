@@ -1290,6 +1290,8 @@
         .gp-wrap.error .gp-fill {
             background: linear-gradient(135deg, rgba(220, 70, 70, 0.85), rgba(160, 40, 40, 0.85));
         }
+        /* Пауза: заливка замирает (без анимации волны), всё слегка гаснет. */
+        .gp-wrap.paused .gp-fill { animation-play-state: paused; filter: saturate(0.55) brightness(0.85); }
 
         .gp-label {
             position: relative;
@@ -1336,6 +1338,12 @@
         }
         .gp-stage-chip.done::before { background: rgba(60, 200, 110, 0.95); animation: none; }
         .gp-stage-chip.error::before { background: rgba(220, 70, 70, 0.95); animation: none; }
+        .gp-stage-chip.paused::before { background: rgba(255, 190, 60, 0.95); animation: none; }
+        .gp-stage-chip.paused {
+            background: rgba(255, 190, 60, 0.12);
+            border-color: rgba(255, 190, 60, 0.4);
+            color: rgba(255, 220, 150, 0.95);
+        }
         @keyframes gpPulse {
             0%, 100% { opacity: 1; transform: scale(1); }
             50% { opacity: 0.35; transform: scale(0.75); }
@@ -8075,6 +8083,7 @@
                 </div>
 
                 <div class="install-footer">
+                    <button class="s-btn" id="gpPauseBtn" onclick="gpTogglePause()"><i data-lucide="pause"></i> Пауза</button>
                     <button class="s-btn" id="gpCancelBtn" onclick="gpCancelUpdate()"><i data-lucide="x-circle"></i> Отменить установку</button>
                     <button class="s-btn" onclick="closeGpOverlay()"><i data-lucide="chevron-down"></i> Свернуть</button>
                 </div>
@@ -8883,11 +8892,13 @@
             bar.classList.remove('done', 'error');
 
             if (stage === 'done') {
+                _gpPaused = false;
                 _gpFillTo(100);
                 _gpText(data.message || 'Установка завершена', '100%');
                 bar.classList.add('done');
                 _gpHideTimer = setTimeout(_gpHide, 4000);
             } else if (stage === 'error') {
+                _gpPaused = false;
                 _gpFillTo(100);
                 _gpText('Ошибка: ' + (data.message || 'неизвестно'), '!');
                 bar.classList.add('error');
@@ -8897,6 +8908,7 @@
                 _gpFillTo(pct);
                 _gpText((data.message || _gpStageNames[stage] || 'Установка...'), pct + '%');
             }
+            bar.classList.toggle('paused', _gpPaused && stage !== 'done' && stage !== 'error');
             bar.classList.add('visible');
             _gpSyncOverlay(data);
         }
@@ -8915,6 +8927,46 @@
         function _gpHide() {
             const bar = _gpEl('gpBar');
             if (bar) bar.classList.remove('visible', 'done', 'error');
+        }
+
+        let _gpPaused = false;
+
+        /** Переключить паузу качки из модалки деталей. */
+        async function gpTogglePause() {
+            try {
+                const r = await window.pywebview.api.pause_game_update(!_gpPaused);
+                if (r && r.success) {
+                    _gpPaused = !!r.paused;
+                    _gpRenderPauseBtn();
+                    _gpApplyPausedVisual();
+                    showNotification(_gpPaused ? 'Пауза' : 'Продолжаем качать', 'info');
+                } else {
+                    showNotification((r && r.message) || 'Нечего ставить на паузу', 'error');
+                }
+            } catch (e) {
+                showNotification('Пауза: ' + e, 'error');
+            }
+        }
+
+        /** Применить визу паузы к полосе и чипу (бэкенд молчит во время паузы). */
+        function _gpApplyPausedVisual() {
+            const bar = _gpEl('gpBar');
+            if (bar) bar.classList.toggle('paused', _gpPaused);
+            const chip = _gpEl('gpStageChip');
+            if (chip && _gpPaused) {
+                chip.textContent = 'Пауза';
+                chip.className = 'gp-stage-chip paused';
+            }
+        }
+
+        /** Обновить вид кнопки паузы (иконка + текст) по текущему состоянию. */
+        function _gpRenderPauseBtn() {
+            const btn = _gpEl('gpPauseBtn');
+            if (!btn) return;
+            btn.innerHTML = _gpPaused
+                ? '<i data-lucide="play"></i> Продолжить'
+                : '<i data-lucide="pause"></i> Пауза';
+            if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
         }
 
         /** Синхронизировать содержимое модалки деталей, если она открыта. */
@@ -8939,6 +8991,8 @@
             }
             const cancelBtn = _gpEl('gpCancelBtn');
             if (cancelBtn) cancelBtn.style.display = (stage === 'done' || stage === 'error') ? 'none' : '';
+            const pauseBtn = _gpEl('gpPauseBtn');
+            if (pauseBtn) pauseBtn.style.display = (stage === 'done' || stage === 'error') ? 'none' : '';
         }
 
         /** Открыть модалку деталей прогресса. */

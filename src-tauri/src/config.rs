@@ -255,6 +255,9 @@ pub struct AppState {
     /// Активная задача установки/обновления/починки игры: флаг отмены.
     /// None — задач нет; Some — задача идёт (флаг=true => отмена).
     pub game_update_cancel: Mutex<Option<std::sync::Arc<std::sync::atomic::AtomicBool>>>,
+    /// Флаг паузы активной задачи: true — качка на паузе (задача ждёт).
+    /// Сбрасывается при старте каждой новой задачи.
+    pub game_update_pause: Mutex<Option<std::sync::Arc<std::sync::atomic::AtomicBool>>>,
 }
 
 impl AppState {
@@ -275,6 +278,7 @@ impl AppState {
             servers_revalidating: std::sync::atomic::AtomicBool::new(false),
             news_revalidating: std::sync::atomic::AtomicBool::new(false),
             game_update_cancel: Mutex::new(None),
+            game_update_pause: Mutex::new(None),
         }
     }
 

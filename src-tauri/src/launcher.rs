@@ -2810,10 +2810,16 @@ fn resolve_game_target(gp: &str) -> Option<PathBuf> {
 }
 
 /// Захватить единственную задачу установки/обновления. Повторный вызов
-/// до завершения — ошибка.
+/// до завершения — ошибка. Возвращает (флаг отмены, флаг паузы).
 fn claim_game_job(
     state: &AppState,
-) -> Result<std::sync::Arc<std::sync::atomic::AtomicBool>, String> {
+) -> Result<
+    (
+        std::sync::Arc<std::sync::atomic::AtomicBool>,
+        std::sync::Arc<std::sync::atomic::AtomicBool>,
+    ),
+    String,
+> {
     use std::sync::atomic::AtomicBool;
     let mut g = state
         .game_update_cancel
@@ -2824,12 +2830,19 @@ fn claim_game_job(
     }
     let flag = std::sync::Arc::new(AtomicBool::new(false));
     *g = Some(flag.clone());
-    Ok(flag)
+    let pause = std::sync::Arc::new(AtomicBool::new(false));
+    if let Ok(mut p) = state.game_update_pause.lock() {
+        *p = Some(pause.clone());
+    }
+    Ok((flag, pause))
 }
 
 fn release_game_job(state: &AppState) {
     if let Ok(mut g) = state.game_update_cancel.lock() {
         *g = None;
+    }
+    if let Ok(mut p) = state.game_update_pause.lock() {
+        *p = None;
     }
 }
 
@@ -2935,7 +2948,7 @@ fn spawn_game_job(
             "message": "Игра запущена — закрой её перед установкой/обновлением"
         }));
     }
-    let cancel = claim_game_job(state)?;
+    let (cancel, pause) = claim_game_job(state)?;
 
     let job = Job {
         mode,
@@ -2995,7 +3008,7 @@ fn spawn_game_job(
             }
         };
 
-        let result = engine::run(&job, &on_event, &cancel).await;
+        let result = engine::run(&job, &on_event, &cancel, &pause).await;
         let (ok, text) = match &result {
             Ok(text) => {
                 log::info!(
@@ -3138,7 +3151,28 @@ pub fn cancel_game_update(state: State<'_, AppState>) -> Result<serde_json::Valu
     }
 }
 
-/// Статус: выполняется ли сейчас установка/обновление игры.
+/// Поставить/снять паузу качки. `paused=true` — качка ждёт, false — продолжает.
+#[tauri::command]
+pub fn pause_game_update(
+    state: State<'_, AppState>,
+    paused: bool,
+) -> Result<serde_json::Value, String> {
+    let flag = state
+        .game_update_pause
+        .lock()
+        .map_err(|e| e.to_string())?
+        .clone();
+    match flag {
+        Some(f) => {
+            f.store(paused, std::sync::atomic::Ordering::Relaxed);
+            log::info!("game_update: пауза={paused}");
+            Ok(serde_json::json!({"success": true, "paused": paused}))
+        }
+        None => Ok(serde_json::json!({"success": false, "message": "Нечего ставить на паузу"})),
+    }
+}
+
+/// Статус: выполняется ли сейчас установка/обновление игры и на паузе ли она.
 #[tauri::command]
 pub fn game_update_status(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
     let busy = state
@@ -3146,7 +3180,12 @@ pub fn game_update_status(state: State<'_, AppState>) -> Result<serde_json::Valu
         .lock()
         .map(|g| g.is_some())
         .unwrap_or(false);
-    Ok(serde_json::json!({"busy": busy}))
+    let paused = state
+        .game_update_pause
+        .lock()
+        .map(|g| g.as_ref().map(|f| f.load(std::sync::atomic::Ordering::Relaxed)).unwrap_or(false))
+        .unwrap_or(false);
+    Ok(serde_json::json!({"busy": busy, "paused": paused}))
 }
 
 // ==================== Установка лаунчера Air v8 ====================

@@ -87,7 +87,25 @@ fn part_path(dest: &Path) -> PathBuf {
     dest.with_file_name(name)
 }
 
-/// Качает url в dest через `.part`, сообщает прогресс (байт файла), умеет отменяться.
+/// Ждать, пока пауза снята. Проверяет и cancel: во время паузы отмена тоже
+/// работает (иначе кнопка «Отменить» зависнет). true — вышли из-за отмены.
+fn wait_while_paused(
+    pause: &AtomicBool,
+    cancel: &AtomicBool,
+    on_tick: &mut (dyn FnMut() + Send),
+) -> bool {
+    while pause.load(Ordering::Relaxed) {
+        if cancel.load(Ordering::Relaxed) {
+            return true;
+        }
+        on_tick();
+        std::thread::sleep(Duration::from_millis(120));
+    }
+    cancel.load(Ordering::Relaxed)
+}
+
+/// Качает url в dest через `.part`, сообщает прогресс (байт файла),
+/// умеет отменяться и ставиться на паузу.
 /// rate_bytes — лимит скорости (байт/с); None — качаем без ограничения.
 pub async fn download_to(
     http: &reqwest::Client,
@@ -95,6 +113,7 @@ pub async fn download_to(
     dest: &Path,
     rate_bytes: u64,
     cancel: &AtomicBool,
+    pause: &AtomicBool,
     mut on_progress: impl FnMut(u64) + Send,
 ) -> anyhow::Result<u64> {
     if let Some(parent) = dest.parent() {
@@ -160,6 +179,12 @@ pub async fn download_to(
     let mut due: Option<std::time::Instant> = None;
     let mut resp = resp;
     loop {
+        // Пауза: стоим на месте, пока фронт не снимет. .part не трогаем —
+        // после снятия качаем дальше с того же байта.
+        if wait_while_paused(pause, cancel, &mut || {}) {
+            drop(f);
+            bail!("отменено");
+        }
         let chunk = resp
             .chunk()
             .await
@@ -185,6 +210,16 @@ pub async fn download_to(
                 if cancel.load(Ordering::Relaxed) {
                     drop(f);
                     bail!("отменено");
+                }
+                if pause.load(Ordering::Relaxed) {
+                    // На паузе «дедлайн» токенов замораживаем: базу не двигаем,
+                    // чтобы после снятия не пытаться «догнать» время паузы.
+                    if wait_while_paused(pause, cancel, &mut || {}) {
+                        drop(f);
+                        bail!("отменено");
+                    }
+                    due = None;
+                    break;
                 }
             }
         }

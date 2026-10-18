@@ -124,6 +124,18 @@ pub async fn build_plan(
     Ok((flat, plan))
 }
 
+/// Ждать, пока пауза снята (true = вышли из-за отмены). Внутри асинхронной
+/// задачи — спим через tokio, чтобы не блокировать рантайм.
+async fn wait_while_paused(pause: &AtomicBool, cancel: &AtomicBool) -> bool {
+    while pause.load(Ordering::Relaxed) {
+        if cancel.load(Ordering::Relaxed) {
+            return true;
+        }
+        tokio::time::sleep(Duration::from_millis(120)).await;
+    }
+    cancel.load(Ordering::Relaxed)
+}
+
 struct Speed {
     at: Instant,
     base: u64,
@@ -149,10 +161,12 @@ impl Speed {
 }
 
 /// Полное выполнение Apply/Repair. Возвращает итоговую строку.
+/// `pause` — флаг паузы: true = качка ждёт (см. downloader::wait_while_paused).
 pub async fn run(
     job: &Job,
     on_event: &(dyn Fn(Event) + Send + Sync),
     cancel: &AtomicBool,
+    pause: &AtomicBool,
 ) -> anyhow::Result<String> {
     let log = |m: String| on_event(Event::Log(m));
 
@@ -194,6 +208,10 @@ pub async fn run(
         if cancel.load(Ordering::Relaxed) {
             bail!("отменено пользователем");
         }
+        // Пауза между файлами: стоим на месте до снятия.
+        if wait_while_paused(pause, cancel).await {
+            bail!("отменено пользователем");
+        }
         let rel = &item.entry.rel;
         let path = job.target.join(rel);
 
@@ -232,7 +250,7 @@ pub async fn run(
                     ("резервном", &job.cdn_reserve),
                 ] {
                     let url = downloader::file_url(cdn, rel);
-                    let res = downloader::download_to(&http, &url, &path, job.speed_limit, cancel, |file_bytes| {
+                    let res = downloader::download_to(&http, &url, &path, job.speed_limit, cancel, pause, |file_bytes| {
                         let total = base + file_bytes;
                         if let Some(s) = speed.tick(total) {
                             on_event(Event::Progress {
