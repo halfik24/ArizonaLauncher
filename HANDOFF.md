@@ -13,12 +13,25 @@
 - **Warnings:** `cargo check` — **0 предупреждений** (было ~18): убраны unused import/hash_total/current_flat, `reason` теперь логируется в Delete, `files_done/files_total` показываются в сообщении прогресса (`файлы X/Y, ...`).
 - **Версия выровнена:** `Cargo.toml` `2.0.0-rc1` → `2.0.0-rc1-new` (согласовано с tauri.conf.json/package.json); NSIS; `additionalBrowserArgs` без 9222.
 - Проверки: `cargo check` ok (0 warnings), JS-синтаксис inline-блоков index.html ok (node `new Function`).
+- **Косметика:** ~14 пустых catch при вызовах бэкенд-API заменены на `console.warn` (localStorage/тикерные оставлены пустыми — безобидны); `let _ =` у emit-прогресса и `update_config(game_path)` заменены на логирование (раньше молчаливая невозможность записать game_path при логе «записан»).
+
+### Живой прогон через CDP — прогнан (18.10, `node tools/cdp.js` + `tools/smoke-expr.js`)
+- Обе подписки событий установились (`launcher-install-progress`, `patches-install-progress`).
+- Команды живые: `fetch_patch_presets` (1 пресет), `fetch_patches_schema`, `fetch_others_catalog` (1 запись DxVk), `get_debug_info` (все поля: v2.0.0-rc1-new, Windows 10.0 build 26300, v8, moonloader 13 скриптов), `check_tray_support` (true), `check_launcher_update`, `check_other_installed`, `get_wallpapers`, `get_wallpaper_thumb` (JPEG-превью реально сжато), `get_launch_method`/`get_saved_data`.
+- **Пресет установлен и откачен:** `install_patch_preset(Dapo)` → `Установлено 24 настроек` + бэкап; `restore_patches_backup` вернул исходные 10 ключей. Связка install→backup→restore работает.
+- **«Другое» круговым тестом:** `install_other_file(d3d9.dll)` → `installed:true` → `remove_other_file` → `installed:false` (файл в `G:\Arizona Games Launcher` удалён, не остался).
+- **Путь ошибки патчей честный:** zip сейчас не выпущен (404 в обоих зеркалах, `updates/patches.json` → `released:false`) → `download_and_install_patches` вернул `success:false` + события `download→Пробую зеркало...→error`, фронт получил понятный текст.
+- **Исправлено найденное в живом прогоне:**
+  1. **BOM-баг:** primary `others.txt` отдаётся с UTF-8 BOM → первая строка `[file]` не парсилась, каталог пустой и **fallback не пробовался**. Фикс: `decode_text_bytes` срезает BOM + пустой парс зеркала не принимается (в `fetch_others_catalog`).
+  2. **Даты бэкапов:** `fs::copy`/`shutil.copy2` сохраняют mtime источника → у свежего бэкапа дата в листинге была старой (в Python та же особенность). Фикс: `backup_display_date` читает timestamp из имени файла; сортировка и лимит 15 штук — по имени (по mtime свежий бэкап мог бы первым удаляться).
+  3. **Зеркала патчей:** `patches_download_urls` = ArzLaunchRepo + worteng в `download_patches_zip` (событие «Пробую зеркало...»), `check_patches_available` (HEAD по всем зеркалам, различает «не выпущено» / «нет сети»), `get_patches_latest_version` (`version.txt`); 404 → текст «Архив патчей не найден... возможно, обновление ещё не вышло».
+  4. `os_name` в debug: «windows» → «Windows» (`os_display_name`, как `platform.system()` в Python).
+- Методика: `--remote-debugging-port=9222` временно в tauri.conf.json → авто-rebuild → `node tools/cdp.js '<выражение>'`. **Ловушка PowerShell:** одинарный аргумент с двойными кавычками ломается — писать выражение в файл (см. `C:\Users\halfik\AppData\Local\Temp\opencode\expr_*.js`) и подавать `Get-Content -Raw`; в самих выражениях — только одинарные кавычки.
 
 ### Осталось (по плану, в порядке)
 3. **Пункт 3 плана:** связка свежая установка→запуск: `find_launcher_exe` для скачанного клиента, дефолт `launch_method`, быстрый чек перед `spawn` (не полный MD5-скан), авто-«починить» при нехватке.
 5. **Пункт 5:** драйверы DX/VCRedist (d3dx9_43.dll в System32, реестр VC Runtimes x86, тихая установка, опционально).
-- **Живая проверка портированных команд** (ручная, через `npm run dev` + Ctrl+R): пресеты/другое/moonloader-каталог/установка патчей с прогрессом/выбор фона/debug-вкладка.
-- Косметика: ~22 пустых catch в JS (add console.warn), ~21 `let _ =` в Rust (заменить на явное логирование/игнор с комментарием).
+- Живой прогон UI-кликов (вкладки «Моды»/«Патчи» глазами, установка moonloader-скрипта, установка патчей после их релиза) — команды проверены поштучно, клики по UI не проверялись.
 - Старое (2a/2b из прошлого HANDOFF): живой тест установки в пустую папку — не дошёл до конца из-за Ctrl+R; повторить.
 
 ## Важные детали

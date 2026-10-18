@@ -86,14 +86,17 @@ pub async fn http_request(
 }
 
 /// Декодирование текстовых ответов: utf-8, иначе windows-1251 (как errors='replace').
+/// BOM срезаем: raw.githubusercontent отдаёт часть файлов с UTF-8 BOM, и первая
+/// строка (`[file]`/`[config]`) иначе не распознаётся парсером блоков.
 pub fn decode_text_bytes(bytes: &[u8]) -> String {
-    match std::str::from_utf8(bytes) {
+    let s = match std::str::from_utf8(bytes) {
         Ok(s) => s.to_string(),
         Err(_) => {
             let (cow, _, _) = encoding_rs::WINDOWS_1251.decode(bytes);
             cow.into_owned()
         }
-    }
+    };
+    s.trim_start_matches('\u{feff}').to_string()
 }
 
 /// Python: чтение `#ArizonaPatches.json` со срезанием строк-комментариев `//`.

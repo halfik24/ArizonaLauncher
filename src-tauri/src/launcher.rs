@@ -1602,6 +1602,17 @@ pub async fn fetch_image_as_base64(url: String) -> Result<serde_json::Value, Str
 
 // ==================== Debug ====================
 
+/// Название ОС для отладочной вкладки: как Python `platform.system()` —
+/// с заглавной («Windows», а не «windows» из `env::consts::OS`).
+fn os_display_name() -> &'static str {
+    match std::env::consts::OS {
+        "windows" => "Windows",
+        "macos" => "macOS",
+        "linux" => "Linux",
+        other => other,
+    }
+}
+
 /// Версия ОС через RtlGetVersion (ntdll) — GetVersionEx вырезан манифестом.
 #[cfg(windows)]
 fn os_version_string() -> String {
@@ -1728,7 +1739,7 @@ pub fn get_debug_info(state: State<'_, AppState>) -> Result<serde_json::Value, S
             "moonloader_status": if ml_found { "найдена" } else { "не найдена" },
             "moonloader_scripts": ml_scripts,
             "python_version": "— (Tauri/Rust)",
-            "os_name": std::env::consts::OS,
+            "os_name": os_display_name(),
             "os_version": os_version_string(),
             "architecture": std::env::consts::ARCH,
         }
@@ -2227,24 +2238,22 @@ fn create_patches_backup(state: &AppState, label: &str) -> Option<PathBuf> {
     let dst = backup_dir.join(format!("patches_{}{}.json", ts, suffix));
     std::fs::copy(&src, &dst).ok()?;
 
-    // Чистим старые бэкапы: максимум 15, сортировка по mtime
+    // Чистим старые бэкапы: максимум 15. Сортировка по имени (timestamp в имени =
+    // момент создания): по mtime нельзя — fs::copy сохраняет время источника, и
+    // свежий бэкап выглядел бы «старейшим» и первым удалялся бы.
     const MAX_BACKUPS: usize = 15;
-    let mut backups: Vec<(std::time::SystemTime, PathBuf)> = Vec::new();
+    let mut backups: Vec<std::path::PathBuf> = Vec::new();
     if let Ok(rd) = std::fs::read_dir(&backup_dir) {
         for e in rd.flatten() {
             let name = e.file_name().to_string_lossy().to_string();
             if name.starts_with("patches_") && name.ends_with(".json") {
-                if let Ok(md) = e.metadata() {
-                    if let Ok(mtime) = md.modified() {
-                        backups.push((mtime, e.path()));
-                    }
-                }
+                backups.push(e.path());
             }
         }
     }
-    backups.sort_by_key(|(t, _)| *t);
+    backups.sort_by(|a, b| a.file_name().cmp(&b.file_name()));
     while backups.len() > MAX_BACKUPS {
-        if let Some((_, p)) = backups.first() {
+        if let Some(p) = backups.first() {
             std::fs::remove_file(p).ok();
         }
         backups.remove(0);
@@ -2386,6 +2395,18 @@ fn patches_download_url(version: &str) -> String {
     )
 }
 
+/// Все зеркала архива патчей: primary — ArzLaunchRepo, fallback — исходный
+/// репозиторий Python-версии (worteng/ArizonaLauncher).
+fn patches_download_urls(version: &str) -> Vec<String> {
+    vec![
+        patches_download_url(version),
+        format!(
+            "https://raw.githubusercontent.com/worteng/ArizonaLauncher/main/patches/arizonapatches_{}.zip",
+            version
+        ),
+    ]
+}
+
 fn check_patches_files_inner(state: &AppState) -> serde_json::Value {
     if util::game_path(state).is_empty() {
         return serde_json::json!({
@@ -2471,6 +2492,22 @@ pub fn write_patches(state: State<'_, AppState>, data: serde_json::Value) -> Res
     Ok(write_patches_inner(&state, &data))
 }
 
+/// Дата бэкапа: из timestamp в имени файла (момент создания), fallback — mtime.
+/// mtime у копии = время источника (`std::fs::copy`/`shutil.copy2` сохраняют его),
+/// поэтому имя файла надёжнее.
+fn backup_display_date(name: &str, mtime: Option<std::time::SystemTime>) -> String {
+    let from_name = name
+        .strip_prefix("patches_")
+        .and_then(|rest| rest.get(..15))
+        .and_then(|ts| chrono::NaiveDateTime::parse_from_str(ts, "%Y%m%d_%H%M%S").ok())
+        .and_then(|ndt| ndt.and_local_timezone(chrono::Local).single());
+    let fallback = mtime.map(|m| chrono::DateTime::<chrono::Utc>::from(m).with_timezone(&chrono::Local));
+    match from_name.or(fallback) {
+        Some(dt) => dt.format("%d.%m.%Y %H:%M:%S").to_string(),
+        None => "—".to_string(),
+    }
+}
+
 #[tauri::command]
 pub fn list_patches_backups(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
     let backup_dir = state.documents_path.join("backups");
@@ -2478,7 +2515,7 @@ pub fn list_patches_backups(state: State<'_, AppState>) -> Result<serde_json::Va
         return Ok(serde_json::json!([]));
     }
 
-    let mut items: Vec<(std::time::SystemTime, serde_json::Value)> = Vec::new();
+    let mut items: Vec<serde_json::Value> = Vec::new();
     if let Ok(rd) = std::fs::read_dir(&backup_dir) {
         for e in rd.flatten() {
             let name = e.file_name().to_string_lossy().to_string();
@@ -2486,10 +2523,7 @@ pub fn list_patches_backups(state: State<'_, AppState>) -> Result<serde_json::Va
                 continue;
             }
             let Ok(md) = e.metadata() else { continue };
-            let Ok(mtime) = md.modified() else { continue };
-            let date = chrono::DateTime::<chrono::Local>::from(mtime)
-                .format("%d.%m.%Y %H:%M:%S")
-                .to_string();
+            let date = backup_display_date(&name, md.modified().ok());
 
             // Сводка бэкапа: сколько патчей вкл/выкл и сколько отличий
             // от текущего конфига (для бейджа в списке).
@@ -2514,23 +2548,26 @@ pub fn list_patches_backups(state: State<'_, AppState>) -> Result<serde_json::Va
                 "save"
             };
 
-            items.push((
-                mtime,
-                serde_json::json!({
-                    "filename": name,
-                    "path": e.path().to_string_lossy(),
-                    "date": date,
-                    "size": md.len(),
-                    "type": r#type,
-                    "summary": summary,
-                    "diff_count": diff_count,
-                }),
-            ));
+            items.push(serde_json::json!({
+                "filename": name,
+                "path": e.path().to_string_lossy(),
+                "date": date,
+                "size": md.len(),
+                "type": r#type,
+                "summary": summary,
+                "diff_count": diff_count,
+            }));
         }
     }
-    // Новые первыми
-    items.sort_by(|a, b| b.0.cmp(&a.0));
-    Ok(serde_json::Value::Array(items.into_iter().map(|(_, v)| v).collect()))
+    // Новые первыми: сортируем по имени (в нем timestamp создания Local::now()).
+    // По mtime нельзя — std::fs::copy сохраняет время источника (#ArizonaPatches.json),
+    // и у свежего бэкапа mtime оказывается старым (в Python была та же особенность).
+    items.sort_by(|a, b| {
+        let na = a.get("filename").and_then(|v| v.as_str()).unwrap_or("");
+        let nb = b.get("filename").and_then(|v| v.as_str()).unwrap_or("");
+        nb.cmp(na)
+    });
+    Ok(serde_json::Value::Array(items))
 }
 
 #[tauri::command]
@@ -2688,9 +2725,10 @@ fn emit_patches_progress(app: &tauri::AppHandle, stage: &str, progress: u32, mes
 }
 
 /// Скачивает архив патчей во временный файл, шлёт прогресс `download` 0..80%.
+/// Пробует зеркала по очереди; понятный текст для 404 (архив ещё не выложен).
 async fn download_patches_zip(
     app: &tauri::AppHandle,
-    url: &str,
+    urls: &[String],
 ) -> Result<tempfile::NamedTempFile, String> {
     let client = reqwest::Client::builder()
         .connect_timeout(std::time::Duration::from_secs(15))
@@ -2699,14 +2737,33 @@ async fn download_patches_zip(
         .build()
         .map_err(|e| format!("Не удалось создать HTTP-клиент: {e}"))?;
 
-    let mut resp = client
-        .get(url)
-        .send()
-        .await
-        .map_err(|e| format!("Ошибка загрузки: {e}"))?;
-    if !resp.status().is_success() {
-        return Err(format!("Ошибка загрузки: HTTP {}", resp.status()));
+    let mut last_err = "Архив патчей не найден (404)".to_string();
+    let mut resp = None;
+    let mut used_url = String::new();
+    for (i, url) in urls.iter().enumerate() {
+        if i > 0 {
+            emit_patches_progress(app, "download", 0, "Пробую зеркало...");
+        }
+        match client.get(url).send().await {
+            Ok(r) if r.status().is_success() => {
+                used_url = url.clone();
+                resp = Some(r);
+                break;
+            }
+            Ok(r) if r.status().as_u16() == 404 => {
+                last_err = "Архив патчей не найден на GitHub (404) — возможно, обновление патчей ещё не вышло. Попробуйте позже.".to_string();
+            }
+            Ok(r) => {
+                last_err = format!("Ошибка загрузки: HTTP {}", r.status());
+            }
+            Err(e) => {
+                last_err = format!("Ошибка загрузки: {e}");
+            }
+        }
     }
+    let Some(mut resp) = resp else {
+        return Err(last_err);
+    };
     let total = resp.content_length().unwrap_or(0);
 
     let mut tmp = tempfile::Builder::new()
@@ -2739,7 +2796,7 @@ async fn download_patches_zip(
             Err(e) => return Err(format!("Ошибка загрузки: {e}")),
         }
     }
-    log::info!("download_patches_zip: {url} → {downloaded} байт");
+    log::info!("download_patches_zip: {used_url} → {downloaded} байт");
     emit_patches_progress(app, "download", 80, "Скачивание завершено");
     Ok(tmp)
 }
@@ -2816,12 +2873,12 @@ pub async fn download_and_install_patches(
     if let Err(e) = std::fs::create_dir_all(&plugins) {
         return util::fail_message(format!("Не удалось создать preloading_plugins: {e}"));
     }
-    let url = patches_download_url(&version);
+    let urls = patches_download_urls(&version);
 
     emit_patches_progress(&app, "download", 0, "Подключение к GitHub...");
 
-    // 1. Скачивание во временный файл
-    let tmp = match download_patches_zip(&app, &url).await {
+    // 1. Скачивание во временный файл (зеркала пробуются по очереди)
+    let tmp = match download_patches_zip(&app, &urls).await {
         Ok(t) => t,
         Err(e) => {
             emit_patches_progress(&app, "error", 0, &e);
@@ -2875,70 +2932,88 @@ pub async fn download_and_install_patches(
 
 #[tauri::command]
 pub async fn get_patches_latest_version() -> Result<serde_json::Value, String> {
-    // Python: чтение patches/version.txt с GitHub
-    let url = "https://raw.githubusercontent.com/halfik24/ArzLaunchRepo/main/patches/version.txt";
+    // Python: чтение patches/version.txt с GitHub (primary ArzLaunchRepo, fallback worteng)
+    let urls = [
+        "https://raw.githubusercontent.com/halfik24/ArzLaunchRepo/main/patches/version.txt",
+        "https://raw.githubusercontent.com/worteng/ArizonaLauncher/main/patches/version.txt",
+    ];
     let mut headers = reqwest::header::HeaderMap::new();
     headers.insert(
         reqwest::header::USER_AGENT,
         reqwest::header::HeaderValue::from_static("Mozilla/5.0"),
     );
-    let resp = match util::http_request(
-        reqwest::Method::GET,
-        url,
-        headers,
-        std::time::Duration::from_secs(15),
-    )
-    .await
-    {
-        Ok(r) => r,
-        Err(e) => return Ok(serde_json::json!({"success": false, "message": e.to_string()})),
-    };
-    let status = resp.status();
-    let bytes = match resp.bytes().await {
-        Ok(b) => b,
-        Err(e) => return Ok(serde_json::json!({"success": false, "message": e.to_string()})),
-    };
-    let version = util::decode_text_bytes(&bytes).trim().to_string();
-    if status == reqwest::StatusCode::OK && !version.is_empty() && version.starts_with('v') {
-        return Ok(serde_json::json!({
-            "success": true,
-            "version": version,
-            "download_url": patches_download_url(&version)
-        }));
+    let mut last_msg = "HTTP 404".to_string();
+    for url in urls {
+        let resp = match util::http_request(
+            reqwest::Method::GET,
+            url,
+            headers.clone(),
+            std::time::Duration::from_secs(15),
+        )
+        .await
+        {
+            Ok(r) => r,
+            Err(e) => {
+                last_msg = e;
+                continue;
+            }
+        };
+        let status = resp.status();
+        let bytes = match resp.bytes().await {
+            Ok(b) => b,
+            Err(e) => {
+                last_msg = e.to_string();
+                continue;
+            }
+        };
+        let version = util::decode_text_bytes(&bytes).trim().to_string();
+        if status == reqwest::StatusCode::OK && !version.is_empty() && version.starts_with('v') {
+            return Ok(serde_json::json!({
+                "success": true,
+                "version": version,
+                "download_url": patches_download_url(&version)
+            }));
+        }
+        last_msg = format!("HTTP {status}");
     }
-    Ok(serde_json::json!({"success": false, "message": format!("HTTP {}", status)}))
+    Ok(serde_json::json!({"success": false, "message": last_msg}))
 }
 
 #[tauri::command]
 pub async fn check_patches_available(version: Option<String>) -> Result<serde_json::Value, String> {
     let version = version.unwrap_or_else(|| "v2".to_string());
-    let url = patches_download_url(&version);
     let mut headers = reqwest::header::HeaderMap::new();
     headers.insert(
         reqwest::header::USER_AGENT,
         reqwest::header::HeaderValue::from_static("Mozilla/5.0"),
     );
-    match util::http_request(
-        reqwest::Method::HEAD,
-        &url,
-        headers,
-        std::time::Duration::from_secs(10),
-    )
-    .await
-    {
-        Ok(resp) => {
-            if resp.status() == reqwest::StatusCode::OK {
-                Ok(serde_json::json!({"success": true, "available": true, "url": url, "version": version}))
-            } else {
-                Ok(serde_json::json!({"success": true, "available": false,
-                    "message": format!("Патчи {} пока недоступны. Следите за обновлениями!", version)}))
+    // Пробуем все зеркала; различаем «не выпущено» и «нет сети».
+    let mut any_http_response = false;
+    for url in patches_download_urls(&version) {
+        match util::http_request(
+            reqwest::Method::HEAD,
+            &url,
+            headers.clone(),
+            std::time::Duration::from_secs(10),
+        )
+        .await
+        {
+            Ok(resp) if resp.status() == reqwest::StatusCode::OK => {
+                return Ok(serde_json::json!({"success": true, "available": true, "url": url, "version": version}));
             }
+            Ok(resp) => {
+                log::info!("check_patches_available: {url} → HTTP {}", resp.status());
+                any_http_response = true;
+            }
+            Err(e) => log::warn!("check_patches_available: {url}: {e}"),
         }
-        Err(e) => {
-            log::warn!("check_patches_available error: {e}");
-            Ok(serde_json::json!({"success": true, "available": false,
-                "message": "Не удалось проверить доступность. Проверьте подключение к интернету."}))
-        }
+    }
+    if any_http_response {
+        Ok(serde_json::json!({"success": true, "available": false,
+            "message": format!("Патчи {} пока недоступны. Следите за обновлениями!", version)}))
+    } else {
+        Ok(serde_json::json!({"success": true, "available": false,
+            "message": "Не удалось проверить доступность. Проверьте подключение к интернету."}))
     }
 }
 
@@ -5028,7 +5103,11 @@ pub async fn fetch_others_catalog() -> Result<serde_json::Value, String> {
         let text = util::decode_text_bytes(&bytes);
         let data = parse_catalog_txt(&text);
         log::info!("fetch_others_catalog: {} записей с {url}", data.len());
-        return Ok(serde_json::json!({"success": true, "data": data}));
+        // Пустой парс = файл без блоков (или битый) — пробуем следующий источник.
+        if !data.is_empty() {
+            return Ok(serde_json::json!({"success": true, "data": data}));
+        }
+        last_err = format!("Каталог others.txt пуст: {url}");
     }
     util::fail_message(format!("Не удалось загрузить каталог others.txt: {last_err}"))
 }
