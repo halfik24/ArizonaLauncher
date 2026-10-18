@@ -1268,6 +1268,21 @@
             width: 0%;
             background: linear-gradient(135deg, rgba(var(--accent-rgb), 0.88), rgba(var(--accent2-rgb), 0.72));
             transition: width 0.4s ease;
+            /* Волнистая граница между активной частью и фоном: маска с правым
+               краем-синусоидой, «течёт» вниз. Край никогда не ровный. */
+            -webkit-mask-image: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 20' preserveAspectRatio='none'%3E%3Cpath d='M0,0 L100,0 Q93,5 100,10 Q93,15 100,20 L0,20 Z' fill='%23000'/%3E%3C/svg%3E");
+            -webkit-mask-repeat: repeat-y;
+            -webkit-mask-size: 100% 20px;
+            -webkit-mask-position: 0 0;
+            mask-image: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 20' preserveAspectRatio='none'%3E%3Cpath d='M0,0 L100,0 Q93,5 100,10 Q93,15 100,20 L0,20 Z' fill='%23000'/%3E%3C/svg%3E");
+            mask-repeat: repeat-y;
+            mask-size: 100% 20px;
+            mask-position: 0 0;
+            animation: gpWaveMask 1.6s linear infinite;
+        }
+        @keyframes gpWaveMask {
+            from { -webkit-mask-position: 0 0; mask-position: 0 0; }
+            to   { -webkit-mask-position: 0 -20px; mask-position: 0 -20px; }
         }
         .gp-wrap.done .gp-fill {
             background: linear-gradient(135deg, rgba(60, 200, 110, 0.85), rgba(30, 160, 80, 0.85));
