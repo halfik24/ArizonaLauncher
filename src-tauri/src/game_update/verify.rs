@@ -191,7 +191,6 @@ pub fn plan(
     // в flags по своему индексу, план в конце собирается В ИСХОДНОМ
     // порядке очереди — итог детерминированный и совпадает с однопотоком.
     if pending.iter().any(|x| x.is_some()) {
-        let hash_total: u64 = pending.iter().filter_map(|x| x.as_ref().map(|y| y.size)).sum();
         let workers = std::thread::available_parallelism()
             .map(|v| v.get())
             .unwrap_or(4)

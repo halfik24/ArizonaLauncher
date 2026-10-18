@@ -7781,7 +7781,7 @@
                             <span class="debug-value" id="dbgArchitecture">—</span>
                         </div>
                         <div class="debug-row">
-                            <span class="debug-label">Python</span>
+                            <span class="debug-label">Рантайм</span>
                             <span class="debug-value" id="dbgPythonVersion">—</span>
                         </div>
                     </div>
@@ -8508,6 +8508,19 @@
         function apiMsg(msg) {
             if (msg === 'Not implemented' || msg === 'Not implemented yet') return 'Функция пока не реализована';
             return msg || '';
+        }
+
+        /**
+         * Демо-ветка «команды нет»: в Tauri-приложении отсутствие команды в
+         * бридже — баг разработки, а не демо-режим, поэтому бросаем ошибку
+         * вместо фейкового «Готово». В обычном браузере (без window.__TAURI__)
+         * ничего не делает — там демо-ветки работают как раньше.
+         * Вызывать первой строкой блока `else { ... }`.
+         */
+        function demoGuard(cmd) {
+            if (!window.__TAURI__) return;
+            console.error('[demo-guard] команда "' + cmd + '" не подключена в tauri-bridge (KNOWN/CMD_PARAMS)');
+            throw new Error('Функция «' + cmd + '» не подключена — сообщи разработчику');
         }
 
         /** Ошибки запуска игры: код из бэка → текст по-русски. */
@@ -9823,7 +9836,8 @@
                             showNotification('Ошибка: ' + startErrorMessage(result), 'error');
                         }
                     } else {
-                        // Демо-режим
+                        // Демо-режим (только браузер без Tauri)
+                        demoGuard('start_game');
                         setLaunchStatus('Завершение предыдущих процессов...', 15);
                         await new Promise(resolve => setTimeout(resolve, 700));
                         setLaunchStatus('Запуск лаунчера...', 40);
@@ -10973,6 +10987,7 @@
                         throw new Error(result.message);
                     }
                 } else {
+                    demoGuard('install_moonloader_script');
                     await new Promise(r => setTimeout(r, 600));
                     setState('installing', '<i data-lucide="settings"></i> Устанавливается...', 'rgba(210,150,255,0.9)');
                     await new Promise(r => setTimeout(r, 400));
@@ -11042,6 +11057,7 @@
                         throw new Error(result.message);
                     }
                 } else {
+                    demoGuard('install_moonloader_script');
                     await new Promise(r => setTimeout(r, 600));
                     btn.innerHTML = '<i data-lucide="settings"></i> Установка...';
                     await new Promise(r => setTimeout(r, 400));
@@ -11541,6 +11557,7 @@
                         btn.disabled = true;
                     }
                 } else {
+                    demoGuard('install_library');
                     showNotification('(демо) Библиотека установлена', 'success');
                     if (btn) {
                         btn.className = 'done';
@@ -11598,7 +11615,7 @@
                     btn.innerHTML = '<i data-lucide="settings"></i> Устанавливается...';
                     const result = await window.pywebview.api.install_moonloader_script(item.url, item.file);
                     if (!result.success) throw new Error(result.message);
-                } else { await new Promise(r => setTimeout(r, 900)); }
+                } else { demoGuard('install_moonloader_script'); await new Promise(r => setTimeout(r, 900)); }
                 const fileName = (item.file || '').toLowerCase().split(/[\\/]/).pop();
                 if (fileName) window._installedScriptFiles.add(fileName);
                 _updateDetailButtons(idx);
@@ -11624,7 +11641,7 @@
                     btn.innerHTML = '<i data-lucide="settings"></i> Устанавливается...';
                     const result = await window.pywebview.api.install_other_file(item.url, item.file, item.destination || 'root');
                     if (!result.success) throw new Error(result.message);
-                } else { await new Promise(r => setTimeout(r, 900)); }
+                } else { demoGuard('install_other_file'); await new Promise(r => setTimeout(r, 900)); }
                 window._installedOtherFiles.add(_othersInstalledKey(item));
                 _updateDetailButtons(idx);
                 _syncCatalogCard('otherInstBtn_' + idx, 'otherInstStatus_' + idx, true);
@@ -11646,7 +11663,7 @@
                 if (window.pywebview && window.pywebview.api.delete_moonloader_script) {
                     const result = await window.pywebview.api.delete_moonloader_script(item.file);
                     if (!result.success) throw new Error(result.message);
-                } else { await new Promise(r => setTimeout(r, 600)); }
+                } else { demoGuard('delete_moonloader_script'); await new Promise(r => setTimeout(r, 600)); }
                 const fileName = (item.file || '').toLowerCase().split(/[\\/]/).pop();
                 if (fileName) window._installedScriptFiles.delete(fileName);
                 _updateDetailButtons(idx);
@@ -11671,7 +11688,7 @@
                 if (window.pywebview && window.pywebview.api.remove_other_file) {
                     const result = await window.pywebview.api.remove_other_file(item.file, item.destination || 'root');
                     if (!result.success) throw new Error(result.message);
-                } else { await new Promise(r => setTimeout(r, 600)); }
+                } else { demoGuard('remove_other_file'); await new Promise(r => setTimeout(r, 600)); }
                 window._installedOtherFiles.delete(_othersInstalledKey(item));
                 _updateDetailButtons(idx);
                 _syncCatalogCard('otherInstBtn_' + idx, 'otherInstStatus_' + idx, false);
@@ -11791,7 +11808,7 @@
                     btn.className = 'mods-install-btn installing';
                     const result = await window.pywebview.api.install_other_file(item.url, item.file, item.destination || 'root');
                     if (!result.success) throw new Error(result.message);
-                } else { await new Promise(r => setTimeout(r, 800)); }
+                } else { demoGuard('install_other_file'); await new Promise(r => setTimeout(r, 800)); }
                 window._installedOtherFiles.add(_othersInstalledKey(item));
                 _syncCatalogCard('otherInstBtn_' + idx, 'otherInstStatus_' + idx, true);
                 showNotification('Установлен: ' + item.name, 'success');
@@ -12156,6 +12173,7 @@
                     }
                 } else {
                     // Браузер без pywebview — скачиваем и парсим сами
+                    demoGuard('install_patch_preset');
                     const resp = await fetch(preset.url);
                     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
                     setState('installing', '<i data-lucide="settings"></i> Устанавливается...', 'rgba(210,150,255,0.9)');
@@ -14939,7 +14957,8 @@
                         closeSettings();
                     }
                 } else {
-                    // Демо режим
+                    // Демо режим (только браузер без Tauri)
+                    demoGuard('save_launcher_settings');
                     console.log('Демо: патчи сохранены', patchesData);
                     console.log('Демо: параметры запуска сохранены', launchParams);
                     showNotification('Настройки сохранены (демо)', 'success');
@@ -15096,6 +15115,7 @@
                             if (window.pywebview && window.pywebview.api.install_patches_file) {
                                 result = await window.pywebview.api.install_patches_file(file.name, b64);
                             } else {
+                                demoGuard('install_patches_file');
                                 result = { success: true, message: `[DEMO] ${file.name} → #ArizonaPatches.json` };
                             }
                             if (result && result.success) {
@@ -15104,7 +15124,7 @@
                                 showNotification('Ошибка: ' + (result && result.message || 'неизвестная ошибка'), 'error');
                             }
                         } catch (err) {
-                            showNotification('Ошибка установки патчей', 'error');
+                            showNotification('Ошибка установки патчей: ' + (err && err.message || err), 'error');
                         }
                     }
                 })();
@@ -15121,6 +15141,7 @@
                                 result = await window.pywebview.api.install_lua_file(file.name, b64);
                             } else {
                                 // Демо-режим (тест в браузере)
+                                demoGuard('install_lua_file');
                                 result = { success: true, message: `[DEMO] ${file.name} установлен в moonloader` };
                             }
 
@@ -15558,7 +15579,7 @@
                         // Профили и настройки
                         _setDebugEl('dbgProfilesCount',  d.profiles_count + ' профил(ей) · активный: ' + (d.active_profile_name || 'нет'));
                         _setDebugEl('dbgLastNickname',   d.last_nickname   || '(не задан)');
-                        _setDebugEl('dbgLastServer',     'Сервер #' + d.last_server);
+                        _setDebugEl('dbgLastServer',     (d.last_server || d.last_server === 0) ? 'Сервер #' + d.last_server : '(не задан)');
                         _setDebugEl('dbgMemory',         d.memory + ' МБ');
                         _setDebugEl('dbgLaunchParams',   d.launch_params_count + ' параметр(ов): ' + d.launch_params_list);
                         
@@ -16287,9 +16308,12 @@
                         applyBgImage(r.data_url);
                         try { window.pywebview.api.save_launcher_settings(launcherSettings); } catch(e) {}
                         _flRender();
+                    } else if (r && r.message && r.message !== 'Отменено') {
+                        // «Отменено» — пользователь закрыл диалог, не ошибка
+                        showNotification(apiMsg(r.message), 'error');
                     }
-                } else { showNotification('Доступно тол��ко в приложении', 'error'); }
-            } catch(e) { showNotification('Ошибка', 'error'); }
+                } else { showNotification('Доступно только в приложении', 'error'); }
+            } catch(e) { showNotification('Ошибка: ' + (e && e.message || e), 'error'); }
         }
 
         function _flTriggerInstall() {

@@ -2,23 +2,24 @@
 
 ## Состояние на момент передачи
 
-### Сделано и закоммичено (последний коммит `9de488f`)
-- Автопоиск игры: реестр + корни дисков, онбординг со статусом «Ищу...».
-- Кнопка **«Установить игру»** на шаге 1 онбординга (карточка прогресса `flInstMsg/flInstPct/flInstBar`, хаб `_installModalProgressCb`, `_flRefreshGameCard`). Проверка проверки JS: node-скрипт ok (скриншот: `.agent/shots/scr_fl1_three_btns.png`).
-- **Пункт 2 плана сделан:** `select_game_path` при отсутствии `gta_sa.exe` возвращает маркер `{success:false, code:'EMPTY_FOLDER', folder}` вместо ошибки. Фронт (`_flSelectManual`) ловит маркер → `confirmAction` «Установить игру сюда?» → `_flRunInstall(folder)` → новый бэкенд-команд `install_game_to_folder` (без диалога) → `spawn_game_job(Mode::Apply)`.
-- `_flInstallGame` вынесен в общий `_flRunInstall(folder)`: folder=null → `install_game_api` с диалогом, иначе `install_game_to_folder`.
-- **Fix z-index:** `confirm-modal` поднят с 1100 → 1500 — раньше онбординг-панель (тоже 1100) перекрывал confirm, из-за чего «Установить» было нельзя нажать (диалог за панелью).
-- **Версия поднята** `2.0.0-rc1` → **`2.0.0-rc1-new`** (tauri.conf.json + package.json).
-- Живой тест пункта 2: EMPTY_FOLDER-маркер доходил, confirm появился с текстом «Установить игру сюда?» и кнопками Отмена/Установить (проверено CDP).
-- **Сборка rc1-new сделана:** `npm run build` ok.
-  Установщик: `src-tauri\target\release\bundle\nsis\Arizona RP Launcher_2.0.0-rc1-new_x64-setup.exe` (35.72 MiB).
+### Сделано и закоммичено (последний коммит — см. `git log`, тема: порт 10 заглушек)
+- **Порт всех 10 заглушек `launcher.rs` из `old_python/main.py`:**
+  - `download_and_install_patches` — скачивание zip с GitHub (0..80% прогресса), распаковка только `#ArizonaPatches.json`/`#ArizonaPatches.dll` в `preloading_plugins` (защита от zip-slip, лимит файлов), удаление старой `.dll.1`, запись `patches_version`/`patches_last_check`, стадии `download→extract→done/error` через новое событие `patches-install-progress`.
+  - `install_patches_file` (b64 → plugins + бэкап `before_drop`), `install_lua_file` (b64 → moonloader), `fetch_patch_presets`/`fetch_others_catalog` (primary `halfik24/ArzLaunchRepo` → fallback `worteng`), `install_patch_preset` (скачивание, вычистка // комментариев, вложенный формат `{"patches":{}}`, `write_patches_inner`), `fetch_patches_schema` (валидация categories+settings, кэш `static Mutex`), `install_other_file`/`remove_other_file`/`check_other_installed` (+ helper `resolve_dest`: root/asi/cleo/plugins/moonloader), `select_bg_image` (blocking_pick_file → data URL).
+- **Хардкоды исправлены:** `check_launcher_update` (реальная логика через `install_action_for_folder`, включая ветку `error`), `check_tray_support` (`app.tray_by_id("main").is_some()`), `get_debug_info` (все поля фронта: patches_path, backups_count, profiles_count, active_profile_name, launch_params_count/list, moonloader_status/scripts, os_version через `RtlGetVersion`, python_version; `launcher_version` через `detect_launcher_version` вместо хардкода), вкладка Debug label «Python» → «Рантайм».
+- **`get_wallpaper_thumb`** — реальный ресайз до 500px (crate `image 0.25`, jpeg/png/webp/bmp; PNG с альфой, иначе JPEG q85), fallback на оригинал при ошибке декодирования.
+- **Ложный успех убит:** helper `demoGuard(cmd)` в index.html — в Tauri-приложении (`window.__TAURI__`) демо-ветка бросает ошибку вместо фейкового «Готово»; в обычном браузере демо работает как раньше. Применён в ~10 местах (start_game, install/delete moonloader, install_library, install_patch_preset, save_launcher_settings, install_patches_file, install_lua_file, install/remove others, quick-install).
+- **Бридж:** `install_game_to_folder` добавлен в CMD_PARAMS (`["folder","future"]`) и KNOWN (починка живого бага: команда была в main.rs, но не в бридже → `undefined` → фронт молчал); подписка на события обобщена в `listenEvent` → теперь слушает и `patches-install-progress` → `window._onPatchesInstallProgress`.
+- **Warnings:** `cargo check` — **0 предупреждений** (было ~18): убраны unused import/hash_total/current_flat, `reason` теперь логируется в Delete, `files_done/files_total` показываются в сообщении прогресса (`файлы X/Y, ...`).
+- **Версия выровнена:** `Cargo.toml` `2.0.0-rc1` → `2.0.0-rc1-new` (согласовано с tauri.conf.json/package.json); NSIS; `additionalBrowserArgs` без 9222.
+- Проверки: `cargo check` ok (0 warnings), JS-синтаксис inline-блоков index.html ok (node `new Function`).
 
 ### Осталось (по плану, в порядке)
-2a. **Живой тест полной установки в пустую папку не дошёл до конца** — после подтверждения прогресс не стартовал при первом раскладе (JS-правки не были подхвачены — Ctrl+R; после reload каких-то ошибок уже не было, но установка после смерти dev-сервера не продолжилась с пустого состоянием). Требуется: запустить `npm run dev`, повторить сценарий «Указать путь вручную → пустая папка → Установить» и дождаться прогресса/завершения. Могла быть отдельная причина: индикаторы не подтвердились из-за перерисовки.
-2b. Проверить, что `install_game_to_folder` появился в invoke-регистре (это сделано в main.rs), но нужен живой запуск команды.
 3. **Пункт 3 плана:** связка свежая установка→запуск: `find_launcher_exe` для скачанного клиента, дефолт `launch_method`, быстрый чек перед `spawn` (не полный MD5-скан), авто-«починить» при нехватке.
-4. **Пункт 4:** чистка 18-20 warnings (`cargo fix` + руками: unused vars, `hash_total` verify.rs:194, `reason`/`files_done`/`files_total` dead поля engine.rs:50/verify.rs:24, unused import launcher.rs:1/main.rs:32).
 5. **Пункт 5:** драйверы DX/VCRedist (d3dx9_43.dll в System32, реестр VC Runtimes x86, тихая установка, опционально).
+- **Живая проверка портированных команд** (ручная, через `npm run dev` + Ctrl+R): пресеты/другое/moonloader-каталог/установка патчей с прогрессом/выбор фона/debug-вкладка.
+- Косметика: ~22 пустых catch в JS (add console.warn), ~21 `let _ =` в Rust (заменить на явное логирование/игнор с комментарием).
+- Старое (2a/2b из прошлого HANDOFF): живой тест установки в пустую папку — не дошёл до конца из-за Ctrl+R; повторить.
 
 ## Важные детали
 - **`--remote-debugging-port=9222` для CDP-тестов в конце снова убран** из `tauri.conf.json` (добавлять временно для тестов и убирать перед коммитом).

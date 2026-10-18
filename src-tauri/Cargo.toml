@@ -1,6 +1,6 @@
 [package]
 name = "arizona-launcher"
-version = "2.0.0-rc1"
+version = "2.0.0-rc1-new"
 edition = "2021"
 
 [dependencies]
@@ -26,6 +26,7 @@ sysinfo = "0.33"
 open = "5"
 md-5 = "0.10"
 anyhow = "1"
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp", "bmp"] }
 
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3", features = ["winver", "winuser", "windef", "minwindef", "dwmapi"] }

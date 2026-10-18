@@ -1,4 +1,4 @@
-use crate::config::{AppState, LauncherConfig};
+use crate::config::AppState;
 use crate::util;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -1395,9 +1395,66 @@ pub fn get_launcher_version(state: State<'_, AppState>) -> Result<serde_json::Va
     Ok(serde_json::json!({"success": true, "version": detect_launcher_version(&state)}))
 }
 
+/// Проверка обновления лаунчера (Python check_launcher_update): сравнивает
+/// состояние папки игры с требуемым и сообщает, нужна ли установка/апгрейд.
 #[tauri::command]
 pub fn check_launcher_update(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
-    Ok(serde_json::json!({"success": true, "needs_update": false, "message": "Лаунчер v8 уже установлен"}))
+    let (game_path, launcher_path) = {
+        let cfg = util::lock_config(&state)?;
+        (cfg.game_path.clone(), cfg.launcher_path.clone())
+    };
+    if game_path.is_empty() || launcher_path.is_empty() {
+        return Ok(serde_json::json!({
+            "success": true, "needs_update": false,
+            "message": "Путь к игре не настроен", "folder": serde_json::Value::Null
+        }));
+    }
+    let Some(folder_path) = std::path::Path::new(&game_path)
+        .parent()
+        .map(|p| p.to_string_lossy().to_string())
+    else {
+        return Ok(serde_json::json!({
+            "success": true, "needs_update": false,
+            "message": "Путь к игре не настроен", "folder": serde_json::Value::Null
+        }));
+    };
+    let info = match install_action_for_folder(&folder_path) {
+        Ok(v) => v,
+        Err(e) => return Ok(serde_json::json!({"success": false, "needs_update": false, "message": e})),
+    };
+    let action = info.get("action").and_then(|a| a.as_str()).unwrap_or("none");
+    if action == "none" {
+        return Ok(serde_json::json!({
+            "success": true, "needs_update": false,
+            "message": "Лаунчер v8 уже установлен", "folder": folder_path
+        }));
+    }
+    let launcher_version = info
+        .get("launcher_version")
+        .and_then(|v| v.as_str())
+        .unwrap_or("?");
+    let message = match action {
+        "choose_version" | "install_launcher_only" => "Требуется установка лаунчера v8",
+        "install_preloading_only" => "Требуется установка патчей",
+        "upgrade_to_v8" => return Ok(serde_json::json!({
+            "success": true, "needs_update": true,
+            "message": format!("Доступно обновление v{launcher_version} → v8"),
+            "folder": folder_path, "action": action
+        })),
+        // gta_sa.exe не найден — это не «обновление», а неверная папка
+        "error" => {
+            let m = info.get("message").and_then(|v| v.as_str()).unwrap_or("Папка игры не найдена");
+            return Ok(serde_json::json!({
+                "success": true, "needs_update": false,
+                "message": m, "folder": folder_path, "action": action
+            }));
+        }
+        _ => "Доступно обновление",
+    };
+    Ok(serde_json::json!({
+        "success": true, "needs_update": true,
+        "message": message, "folder": folder_path, "action": action
+    }))
 }
 
 /// Python `get_install_action`, но лаунчер определяется по ресурсу версии среди
@@ -1545,26 +1602,154 @@ pub async fn fetch_image_as_base64(url: String) -> Result<serde_json::Value, Str
 
 // ==================== Debug ====================
 
+/// Версия ОС через RtlGetVersion (ntdll) — GetVersionEx вырезан манифестом.
+#[cfg(windows)]
+fn os_version_string() -> String {
+    #[repr(C)]
+    struct OsVersionInfoEx {
+        dw_os_version_info_size: u32,
+        dw_major_version: u32,
+        dw_minor_version: u32,
+        dw_build_number: u32,
+        dw_platform_id: u32,
+        sz_csd_version: [u16; 128],
+        w_service_pack_major: u16,
+        w_service_pack_minor: u16,
+        w_suite_mask: u16,
+        w_product_type: u8,
+        w_reserved: u8,
+    }
+    #[link(name = "ntdll")]
+    extern "system" {
+        fn RtlGetVersion(info: *mut OsVersionInfoEx) -> i32;
+    }
+    unsafe {
+        let mut info: OsVersionInfoEx = std::mem::zeroed();
+        info.dw_os_version_info_size = std::mem::size_of::<OsVersionInfoEx>() as u32;
+        if RtlGetVersion(&mut info) == 0 {
+            return format!(
+                "Windows {}.{} build {}",
+                info.dw_major_version, info.dw_minor_version, info.dw_build_number
+            );
+        }
+    }
+    "—".to_string()
+}
+
+#[cfg(not(windows))]
+fn os_version_string() -> String {
+    "—".to_string()
+}
+
+/// Диагностическая информация для Debug-вкладки (Python get_debug_info).
 #[tauri::command]
 pub fn get_debug_info(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
-    let cfg = util::lock_config(&state)?;
+    let (config_path, docs_path, game_path, launcher_path, last_nickname, last_server, memory, profiles) = {
+        let cfg = util::lock_config(&state)?;
+        (
+            state.config_path.to_string_lossy().to_string(),
+            state.documents_path.to_string_lossy().to_string(),
+            cfg.game_path.clone(),
+            cfg.launcher_path.clone(),
+            cfg.last_nickname.clone(),
+            cfg.last_server,
+            cfg.launch_params.memory,
+            cfg.profiles.clone().unwrap_or_default(),
+        )
+    };
+    let active_profile_name = {
+        let cfg = util::lock_config(&state)?;
+        cfg.active_profile_id
+            .as_ref()
+            .and_then(|id| {
+                profiles
+                    .iter()
+                    .find(|p| p.get("id").and_then(|v| v.as_str()) == Some(id.as_str()))
+                    .and_then(|p| p.get("name").and_then(|v| v.as_str()))
+            })
+            .unwrap_or("нет")
+            .to_string()
+    };
+
+    // Включённые параметры запуска (bool-поля LaunchParams со значением true)
+    let launch_params = {
+        let cfg = util::lock_config(&state)?;
+        serde_json::to_value(&cfg.launch_params).unwrap_or_default()
+    };
+    let params_enabled: Vec<String> = launch_params
+        .as_object()
+        .map(|o| {
+            o.iter()
+                .filter(|(k, v)| v.as_bool() == Some(true) && k.as_str() != "memory")
+                .map(|(k, _)| k.clone())
+                .collect()
+        })
+        .unwrap_or_default();
+
+    // Бэкапы патчей
+    let backups_dir = state.documents_path.join("backups");
+    let backups_count = std::fs::read_dir(&backups_dir)
+        .map(|rd| {
+            rd.flatten()
+                .filter(|e| {
+                    let n = e.file_name().to_string_lossy().to_string();
+                    n.starts_with("patches_") && n.ends_with(".json")
+                })
+                .count()
+        })
+        .unwrap_or(0);
+
+    // Moonloader
+    let ml_found = moonloader_dir(&state).is_ok();
+    let ml_scripts = moonloader_scripts_count(&state);
+
     Ok(serde_json::json!({
         "success": true,
         "data": {
-            "config_path": state.config_path.to_string_lossy(),
-            "docs_path": state.documents_path.to_string_lossy(),
-            "game_path": cfg.game_path,
-            "launcher_path": cfg.launcher_path,
+            "config_path": config_path,
+            "docs_path": docs_path,
+            "game_path": game_path,
+            "launcher_path": launcher_path,
+            "patches_path": patches_json_path(&state).to_string_lossy(),
+            "profiles_count": profiles.len(),
+            "active_profile_name": active_profile_name,
             "app_version": format!("v{}", env!("CARGO_PKG_VERSION")),
-            "launcher_version": "v8",
-            "last_nickname": cfg.last_nickname,
-            "last_server": cfg.last_server,
-            "memory": cfg.launch_params.memory,
+            "launcher_version": detect_launcher_version(&state),
+            "last_nickname": last_nickname,
+            "last_server": last_server,
+            "launch_params_count": params_enabled.len(),
+            "launch_params_list": if params_enabled.is_empty() {
+                "нет".to_string()
+            } else {
+                params_enabled.join(", ")
+            },
+            "memory": memory,
+            "backups_count": backups_count,
+            "moonloader_status": if ml_found { "найдена" } else { "не найдена" },
+            "moonloader_scripts": ml_scripts,
+            "python_version": "— (Tauri/Rust)",
             "os_name": std::env::consts::OS,
+            "os_version": os_version_string(),
             "architecture": std::env::consts::ARCH,
-            "rust_version": env!("CARGO_PKG_VERSION"),
         }
     }))
+}
+
+/// Количество скриптов (.lua/.luac/.cs/.asi) в папке moonloader.
+fn moonloader_scripts_count(state: &AppState) -> usize {
+    let Ok(dir) = moonloader_dir(state) else {
+        return 0;
+    };
+    std::fs::read_dir(dir)
+        .map(|rd| {
+            rd.flatten()
+                .filter(|e| {
+                    let n = e.file_name().to_string_lossy().to_lowercase();
+                    n.ends_with(".lua") || n.ends_with(".luac") || n.ends_with(".cs") || n.ends_with(".asi")
+                })
+                .count()
+        })
+        .unwrap_or(0)
 }
 
 // ==================== Window ====================
@@ -2292,11 +2477,6 @@ pub fn list_patches_backups(state: State<'_, AppState>) -> Result<serde_json::Va
     if !backup_dir.exists() {
         return Ok(serde_json::json!([]));
     }
-    // Текущий конфиг — чтобы каждому бэкапу сразу посчитать отличия
-    let current_flat = util::read_patches_file(&patches_json_path(&state))
-        .ok()
-        .and_then(|d| patches_flat(&d))
-        .unwrap_or_default();
 
     let mut items: Vec<(std::time::SystemTime, serde_json::Value)> = Vec::new();
     if let Ok(rd) = std::fs::read_dir(&backup_dir) {
@@ -2490,10 +2670,207 @@ pub fn preview_patches_backup(state: State<'_, AppState>, filename: String) -> R
     }))
 }
 
+/// Прогресс установки патчей: событие `patches-install-progress` →
+/// `window._onPatchesInstallProgress` (слушатель в src/tauri-bridge.js).
+/// stage: 'download' | 'extract' | 'done' | 'error', progress 0-100.
+fn emit_patches_progress(app: &tauri::AppHandle, stage: &str, progress: u32, message: &str) {
+    use tauri::Emitter;
+    if let Err(e) = app.emit(
+        "patches-install-progress",
+        serde_json::json!({
+            "stage": stage,
+            "progress": progress,
+            "message": message,
+        }),
+    ) {
+        log::warn!("emit_patches_progress({stage}): {e}");
+    }
+}
+
+/// Скачивает архив патчей во временный файл, шлёт прогресс `download` 0..80%.
+async fn download_patches_zip(
+    app: &tauri::AppHandle,
+    url: &str,
+) -> Result<tempfile::NamedTempFile, String> {
+    let client = reqwest::Client::builder()
+        .connect_timeout(std::time::Duration::from_secs(15))
+        .timeout(std::time::Duration::from_secs(600))
+        .user_agent("Mozilla/5.0")
+        .build()
+        .map_err(|e| format!("Не удалось создать HTTP-клиент: {e}"))?;
+
+    let mut resp = client
+        .get(url)
+        .send()
+        .await
+        .map_err(|e| format!("Ошибка загрузки: {e}"))?;
+    if !resp.status().is_success() {
+        return Err(format!("Ошибка загрузки: HTTP {}", resp.status()));
+    }
+    let total = resp.content_length().unwrap_or(0);
+
+    let mut tmp = tempfile::Builder::new()
+        .prefix("arizonapatches_install_")
+        .suffix(".zip")
+        .tempfile()
+        .map_err(|e| format!("Не удалось создать временный файл: {e}"))?;
+
+    let mut downloaded: u64 = 0;
+    let mut last_emit = std::time::Instant::now();
+    loop {
+        match resp.chunk().await {
+            Ok(Some(chunk)) => {
+                use std::io::Write;
+                tmp.write_all(&chunk)
+                    .map_err(|e| format!("Не удалось записать временный файл: {e}"))?;
+                downloaded += chunk.len() as u64;
+                if last_emit.elapsed() >= std::time::Duration::from_millis(250) {
+                    last_emit = std::time::Instant::now();
+                    let mb = downloaded as f64 / 1_048_576.0;
+                    let pct = if total > 0 {
+                        (downloaded * 80 / total) as u32
+                    } else {
+                        10
+                    };
+                    emit_patches_progress(app, "download", pct.min(80), &format!("Скачано {mb:.1} МБ..."));
+                }
+            }
+            Ok(None) => break,
+            Err(e) => return Err(format!("Ошибка загрузки: {e}")),
+        }
+    }
+    log::info!("download_patches_zip: {url} → {downloaded} байт");
+    emit_patches_progress(app, "download", 80, "Скачивание завершено");
+    Ok(tmp)
+}
+
+/// Распаковывает из архива патчей только `#ArizonaPatches.json` и `#ArizonaPatches.dll`
+/// (по basename, из любой вложенности — как в Python) в plugins. Защита от zip-slip.
+fn extract_patches_zip(
+    zip_path: &std::path::Path,
+    plugins: &std::path::Path,
+) -> Result<usize, String> {
+    let file =
+        std::fs::File::open(zip_path).map_err(|e| format!("Не удалось открыть архив: {e}"))?;
+    let mut archive = zip::ZipArchive::new(file).map_err(|e| format!("Некорректный архив: {e}"))?;
+    if archive.len() > MAX_ZIP_FILES {
+        return Err(format!("Слишком много файлов в архиве: {}", archive.len()));
+    }
+    const WANT: [&str; 2] = ["#ArizonaPatches.json", "#ArizonaPatches.dll"];
+    let plugins_real = plugins
+        .canonicalize()
+        .map_err(|e| format!("preloading_plugins не найдена: {e}"))?;
+    let mut extracted = 0;
+    for i in 0..archive.len() {
+        let (name, is_dir) = {
+            let f = archive.by_index(i).map_err(|e| e.to_string())?;
+            (f.name().to_string(), f.is_dir())
+        };
+        if is_dir {
+            continue;
+        }
+        let norm = name.replace('\\', "/");
+        if norm.split('/').any(|s| s == "..") {
+            return Err(format!("Недопустимый путь в архиве: {name}"));
+        }
+        let Some(base) = std::path::Path::new(&norm)
+            .file_name()
+            .map(|s| s.to_string_lossy().to_string())
+        else {
+            continue;
+        };
+        if !WANT.contains(&base.as_str()) {
+            continue;
+        }
+        let dest = plugins_real.join(&base);
+        if !dest.starts_with(&plugins_real) {
+            return Err(format!("Zip-slip обнаружен: {name}"));
+        }
+        let mut src = archive
+            .by_index(i)
+            .map_err(|e| format!("Ошибка чтения архива: {e}"))?;
+        let mut dst = std::fs::File::create(&dest)
+            .map_err(|e| format!("Не удалось записать файл: {e}"))?;
+        std::io::copy(&mut src, &mut dst)
+            .map_err(|e| format!("Ошибка распаковки '{base}': {e}"))?;
+        log::info!("download_and_install_patches: извлечён {base}");
+        extracted += 1;
+    }
+    Ok(extracted)
+}
+
+/// Скачивает архив патчей с GitHub и ставит `#ArizonaPatches.json`/`#ArizonaPatches.dll`
+/// в preloading_plugins (Python download_and_install_patches, v1: стадии
+/// download 0-80 → extract 82 → done 100).
 #[tauri::command]
-pub async fn download_and_install_patches(version: Option<String>) -> Result<serde_json::Value, String> {
-    // TODO
-    Ok(serde_json::json!({"success": false, "message": "Not implemented"}))
+pub async fn download_and_install_patches(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    version: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let version = version.unwrap_or_else(|| "v2".to_string());
+    if util::game_path(&state).is_empty() {
+        return util::fail_message("game_path не установлен");
+    }
+    let plugins = plugins_dir(&state);
+    if let Err(e) = std::fs::create_dir_all(&plugins) {
+        return util::fail_message(format!("Не удалось создать preloading_plugins: {e}"));
+    }
+    let url = patches_download_url(&version);
+
+    emit_patches_progress(&app, "download", 0, "Подключение к GitHub...");
+
+    // 1. Скачивание во временный файл
+    let tmp = match download_patches_zip(&app, &url).await {
+        Ok(t) => t,
+        Err(e) => {
+            emit_patches_progress(&app, "error", 0, &e);
+            return util::fail_message(e);
+        }
+    };
+
+    emit_patches_progress(&app, "extract", 82, "Распаковка архива...");
+
+    // 2. Распаковка: только два файла патчей
+    match extract_patches_zip(tmp.path(), &plugins) {
+        Ok(0) => {
+            let m = "В архиве нет файлов патчей".to_string();
+            emit_patches_progress(&app, "error", 0, &m);
+            return util::fail_message(m);
+        }
+        Ok(n) => log::info!("download_and_install_patches: извлечено {n} файл(ов)"),
+        Err(e) => {
+            emit_patches_progress(&app, "error", 0, &e);
+            return util::fail_message(e);
+        }
+    }
+
+    // 3. Удаляем старый отключенный DLL (.1), если есть (Python _remove_disabled_dll)
+    let dll = plugins.join("#ArizonaPatches.dll");
+    let backup = std::path::PathBuf::from(format!("{}.1", dll.to_string_lossy()));
+    if backup.exists() {
+        std::fs::remove_file(&backup).ok();
+        log::info!("Removed old disabled DLL: {}", backup.display());
+    }
+
+    // 4. Версия в конфиг
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    util::update_config(&state, |cfg| {
+        cfg.patches_version = Some(version.clone());
+        cfg.patches_last_check = Some(now);
+        Ok(())
+    })?;
+
+    emit_patches_progress(&app, "done", 100, "Патчи успешно установлены!");
+    log::info!("download_and_install_patches: патчи {version} установлены в {}", plugins.display());
+    Ok(serde_json::json!({
+        "success": true,
+        "message": "Патчи успешно установлены",
+        "version": version,
+    }))
 }
 
 #[tauri::command]
@@ -2719,26 +3096,250 @@ pub fn import_patches(app: tauri::AppHandle, state: State<'_, AppState>) -> Resu
     }))
 }
 
+/// Принимает .json файл (base64 из drag&drop) и кладёт его как
+/// #ArizonaPatches.json в preloading_plugins; старый файл уходит в бэкап.
 #[tauri::command]
-pub fn install_patches_file(filename: String, content_b64: String) -> Result<serde_json::Value, String> {
-    Ok(serde_json::json!({"success": false, "message": "Not implemented"}))
+pub fn install_patches_file(
+    state: State<'_, AppState>,
+    filename: String,
+    content_b64: String,
+) -> Result<serde_json::Value, String> {
+    if util::game_path(&state).is_empty() {
+        return util::fail_message("Путь к игре не установлен");
+    }
+    let plugins = plugins_dir(&state);
+    if let Err(e) = std::fs::create_dir_all(&plugins) {
+        return util::fail_message(format!("Не удалось создать preloading_plugins: {e}"));
+    }
+    let dest = plugins.join("#ArizonaPatches.json");
+    // Бэкап старого файла перед заменой
+    if dest.exists() {
+        create_patches_backup(&state, "before_drop");
+    }
+    use base64::Engine;
+    let content = match base64::engine::general_purpose::STANDARD.decode(content_b64.trim()) {
+        Ok(b) => b,
+        Err(e) => return util::fail_message(format!("Некорректный base64: {e}")),
+    };
+    if let Err(e) = std::fs::write(&dest, &content) {
+        return util::fail_message(format!("Не удалось записать файл: {e}"));
+    }
+    log::info!("install_patches_file: установлен {} ({} байт, из {filename})", dest.display(), content.len());
+    Ok(serde_json::json!({"success": true, "message": format!("Патчи обновлены из {filename}")}))
 }
 
 // ==================== Presets ====================
 
+/// Пресеты патчей: `configs.txt` с GitHub (fallback-репозитории, как у moonloader).
 #[tauri::command]
 pub async fn fetch_patch_presets() -> Result<serde_json::Value, String> {
-    Ok(serde_json::json!({"success": false, "message": "Not implemented"}))
+    let urls = [
+        "https://raw.githubusercontent.com/halfik24/ArzLaunchRepo/main/configs.txt",
+        "https://raw.githubusercontent.com/worteng/ArizonaLauncher/main/configs.txt",
+    ];
+    let mut last_err = "Неизвестная ошибка".to_string();
+    for url in urls {
+        let mut headers = reqwest::header::HeaderMap::new();
+        headers.insert(
+            reqwest::header::CACHE_CONTROL,
+            reqwest::header::HeaderValue::from_static("no-cache"),
+        );
+        headers.insert(
+            reqwest::header::USER_AGENT,
+            reqwest::header::HeaderValue::from_static("Mozilla/5.0"),
+        );
+        let resp = match util::http_request(
+            reqwest::Method::GET,
+            url,
+            headers,
+            std::time::Duration::from_secs(10),
+        )
+        .await
+        {
+            Ok(r) => r,
+            Err(e) => {
+                last_err = e;
+                continue;
+            }
+        };
+        let status = resp.status();
+        let bytes = match resp.bytes().await {
+            Ok(b) => b,
+            Err(e) => {
+                last_err = e.to_string();
+                continue;
+            }
+        };
+        let text = util::decode_text_bytes(&bytes);
+        if status == 404 {
+            last_err = format!("Файл configs.txt не найден (404): {url}");
+            continue;
+        }
+        if status != 200 {
+            last_err = format!("HTTP {status}: {url}");
+            continue;
+        }
+        let data = parse_catalog_txt(&text);
+        log::info!("fetch_patch_presets: {} пресетов с {url}", data.len());
+        if data.is_empty() {
+            last_err = format!("configs.txt не содержит блоков [config] ({url})");
+            continue;
+        }
+        return Ok(serde_json::json!({"success": true, "data": data}));
+    }
+    util::fail_message(format!("Не удалось загрузить список пресетов: {last_err}"))
 }
 
+/// Скачивает JSON-конфиг пресета по ссылке и пишет в #ArizonaPatches.json.
 #[tauri::command]
-pub async fn install_patch_preset(url: String) -> Result<serde_json::Value, String> {
-    Ok(serde_json::json!({"success": false, "message": "Not implemented"}))
+pub async fn install_patch_preset(
+    state: State<'_, AppState>,
+    url: String,
+) -> Result<serde_json::Value, String> {
+    if util::game_path(&state).is_empty() {
+        return util::fail_message("Путь к патчам не установлен. Сначала укажи путь к игре.");
+    }
+    let mut headers = reqwest::header::HeaderMap::new();
+    headers.insert(
+        reqwest::header::USER_AGENT,
+        reqwest::header::HeaderValue::from_static("Mozilla/5.0"),
+    );
+    let resp = match util::http_request(
+        reqwest::Method::GET,
+        &url,
+        headers,
+        std::time::Duration::from_secs(15),
+    )
+    .await
+    {
+        Ok(r) => r,
+        Err(e) => {
+            return Ok(serde_json::json!({"success": false, "message": format!("Ошибка загрузки: {e}"), "stage": "downloading"}))
+        }
+    };
+    if resp.status() != reqwest::StatusCode::OK {
+        return Ok(serde_json::json!({"success": false, "message": format!("Ошибка загрузки: HTTP {}", resp.status()), "stage": "downloading"}));
+    }
+    let bytes = match resp.bytes().await {
+        Ok(b) => b,
+        Err(e) => return util::fail_message(format!("Ошибка загрузки: {e}")),
+    };
+    let raw = util::decode_text_bytes(&bytes);
+    let cleaned = match util::clean_patches_text(&raw) {
+        Ok(c) => c,
+        Err(e) => return util::fail_message(format!("Неверный формат JSON: {e}")),
+    };
+    let data: serde_json::Value = match serde_json::from_str(&cleaned) {
+        Ok(d) => d,
+        Err(e) => return util::fail_message(format!("Неверный формат JSON: {e}")),
+    };
+    let Some(obj) = data.as_object() else {
+        return util::fail_message("Файл не содержит настроек патчей");
+    };
+    // Вложенный формат {"patches": {...}} — разворачиваем до плоского (как import_patches)
+    let is_nested = obj.get("patches").map(|p| p.is_object()).unwrap_or(false);
+    let flat: serde_json::Map<String, serde_json::Value> = if is_nested {
+        obj["patches"].as_object().cloned().unwrap_or_default()
+    } else {
+        obj.clone()
+    };
+    let bool_count = flat.values().filter(|v| v.as_bool().is_some()).count();
+    if bool_count == 0 {
+        return util::fail_message("Файл не содержит настроек патчей");
+    }
+    let flat_val = serde_json::Value::Object(flat);
+    let written = write_patches_inner(&state, &flat_val);
+    if written.get("success").and_then(|s| s.as_bool()) != Some(true) {
+        return Ok(written);
+    }
+    log::info!("install_patch_preset: установлено {bool_count} настроек из {url}");
+    Ok(serde_json::json!({
+        "success": true,
+        "message": format!("Установлено {bool_count} настроек"),
+        "keys_count": bool_count,
+    }))
 }
 
+/// Кэш схемы патчей в памяти (Python _patches_schema_cache).
+static PATCHES_SCHEMA_CACHE: std::sync::Mutex<Option<serde_json::Value>> =
+    std::sync::Mutex::new(None);
+
+/// Схема патчей V2 с GitHub (categories/settings); при ошибке фронт падает
+/// на зашитый FALLBACK_PATCHES_SCHEMA.
 #[tauri::command]
 pub async fn fetch_patches_schema() -> Result<serde_json::Value, String> {
-    Ok(serde_json::json!({"success": false, "message": "Not implemented"}))
+    if let Ok(cache) = PATCHES_SCHEMA_CACHE.lock() {
+        if let Some(data) = cache.as_ref() {
+            return Ok(serde_json::json!({"success": true, "data": data, "cached": true}));
+        }
+    }
+    let urls = [
+        "https://raw.githubusercontent.com/halfik24/ArzLaunchRepo/main/patches_schema.json",
+        "https://raw.githubusercontent.com/worteng/ArizonaLauncher/main/patches_schema.json",
+    ];
+    let mut last_err = "Неизвестная ошибка".to_string();
+    for url in urls {
+        let mut headers = reqwest::header::HeaderMap::new();
+        headers.insert(
+            reqwest::header::CACHE_CONTROL,
+            reqwest::header::HeaderValue::from_static("no-cache"),
+        );
+        headers.insert(
+            reqwest::header::USER_AGENT,
+            reqwest::header::HeaderValue::from_static("Mozilla/5.0"),
+        );
+        let resp = match util::http_request(
+            reqwest::Method::GET,
+            url,
+            headers,
+            std::time::Duration::from_secs(10),
+        )
+        .await
+        {
+            Ok(r) => r,
+            Err(e) => {
+                last_err = e;
+                continue;
+            }
+        };
+        let status = resp.status();
+        let bytes = match resp.bytes().await {
+            Ok(b) => b,
+            Err(e) => {
+                last_err = e.to_string();
+                continue;
+            }
+        };
+        if status == 404 {
+            last_err = format!("patches_schema.json не найден (404): {url}");
+            continue;
+        }
+        if status != 200 {
+            last_err = format!("HTTP {status}: {url}");
+            continue;
+        }
+        let text = util::decode_text_bytes(&bytes);
+        let parsed: serde_json::Value = match serde_json::from_str(text.trim()) {
+            Ok(d) => d,
+            Err(e) => {
+                last_err = format!("Некорректный JSON ({url}): {e}");
+                continue;
+            }
+        };
+        // Минимальная валидация структуры (как в Python)
+        let ok = parsed.get("settings").map(|s| s.is_array()).unwrap_or(false)
+            && parsed.get("categories").map(|c| c.is_array()).unwrap_or(false);
+        if !ok {
+            last_err = format!("Схема должна содержать массивы 'categories' и 'settings' ({url})");
+            continue;
+        }
+        log::info!("fetch_patches_schema: загружена схема с {url}");
+        if let Ok(mut cache) = PATCHES_SCHEMA_CACHE.lock() {
+            *cache = Some(parsed.clone());
+        }
+        return Ok(serde_json::json!({"success": true, "data": parsed}));
+    }
+    util::fail_message(format!("Не удалось загрузить схему патчей: {last_err}"))
 }
 
 // ==================== Update ====================
@@ -2970,11 +3571,12 @@ fn spawn_game_job(
         let on_event = |ev: Event| match ev {
             Event::Log(m) => log::info!("[game] {m}"),
             Event::Progress {
+                files_done,
+                files_total,
                 bytes_done,
                 bytes_total,
                 current,
                 speed,
-                ..
             } => {
                 let pct = if bytes_total > 0 {
                     ((bytes_done as f64 / bytes_total as f64) * 100.0) as u32
@@ -2982,10 +3584,16 @@ fn spawn_game_job(
                     0
                 };
                 let speed_mb = speed as f64 / 1_048_576.0;
-                let message = if speed > 0 {
-                    format!("{current} — {speed_mb:.1} МБ/с")
+                // files_* = 0 на стадии проверки — тогда не показываем счётчик.
+                let files = if files_total > 0 {
+                    format!("файлы {files_done}/{files_total}, ")
                 } else {
-                    current.clone()
+                    String::new()
+                };
+                let message = if speed > 0 {
+                    format!("{files}{current} — {speed_mb:.1} МБ/с")
+                } else {
+                    format!("{files}{current}")
                 };
                 let _ = app.emit(
                     "launcher-install-progress",
@@ -3895,9 +4503,32 @@ pub async fn install_moonloader_script(
     Ok(serde_json::json!({"success": true, "message": format!("Установлен: {safe_name}")}))
 }
 
+/// Принимает .lua файл (base64 из drag&drop) и кладёт его в папку moonloader.
 #[tauri::command]
-pub fn install_lua_file(filename: String, content_b64: String) -> Result<serde_json::Value, String> {
-    Ok(serde_json::json!({"success": false, "message": "Not implemented"}))
+pub fn install_lua_file(
+    state: State<'_, AppState>,
+    filename: String,
+    content_b64: String,
+) -> Result<serde_json::Value, String> {
+    let dir = match moonloader_dir(&state) {
+        Ok(d) => d,
+        Err(e) => return util::fail_message(format!("{e}. Сначала укажи путь к игре.")),
+    };
+    let name = match safe_script_filename(&filename) {
+        Ok(n) => n,
+        Err(e) => return util::fail_message(e),
+    };
+    use base64::Engine;
+    let content = match base64::engine::general_purpose::STANDARD.decode(content_b64.trim()) {
+        Ok(b) => b,
+        Err(e) => return util::fail_message(format!("Некорректный base64: {e}")),
+    };
+    let dest = dir.join(name);
+    if let Err(e) = std::fs::write(&dest, &content) {
+        return util::fail_message(format!("Не удалось записать файл: {e}"));
+    }
+    log::info!("install_lua_file: установлен {} ({} байт)", dest.display(), content.len());
+    Ok(serde_json::json!({"success": true, "message": format!("Скрипт '{filename}' установлен в moonloader")}))
 }
 
 // ==================== Libraries ====================
@@ -4318,31 +4949,182 @@ pub fn uninstall_library(
 
 // ==================== Others ====================
 
+/// Папка назначения из каталога others.txt (Python DEST_MAP):
+/// root/asi — корень игры, cleo — CLEO, moonloader — moonloader, plugins — plugins.
+/// Отсутствующие папки создаются (как в Python _resolve_dest).
+fn resolve_dest(state: &AppState, destination: &str) -> Result<PathBuf, String> {
+    let game_dir = util::game_dir(state)
+        .ok_or_else(|| "Путь к игре не установлен — укажи его в настройках".to_string())?;
+    let dir = match destination.to_ascii_lowercase().as_str() {
+        "root" | "asi" => game_dir.clone(),
+        "cleo" => game_dir.join("CLEO"),
+        "plugins" => game_dir.join("plugins"),
+        // moonloader должна уже существовать (Python: _get_moonloader_dir → None)
+        "moonloader" => moonloader_dir(state)?,
+        other => return Err(format!("Неизвестное назначение: {other}")),
+    };
+    if !dir.is_dir() {
+        std::fs::create_dir_all(&dir)
+            .map_err(|e| format!("Не удалось создать папку {}: {e}", dir.display()))?;
+    }
+    Ok(dir)
+}
+
+/// Каталог «Другое»: `others.txt` с GitHub (fallback-репозитории).
 #[tauri::command]
 pub async fn fetch_others_catalog() -> Result<serde_json::Value, String> {
-    Ok(serde_json::json!({"success": false, "message": "Not implemented"}))
+    let urls = [
+        "https://raw.githubusercontent.com/halfik24/ArzLaunchRepo/main/others.txt",
+        "https://raw.githubusercontent.com/worteng/ArizonaLauncher/main/others.txt",
+    ];
+    let mut last_err = "Неизвестная ошибка".to_string();
+    for url in urls {
+        let mut headers = reqwest::header::HeaderMap::new();
+        headers.insert(
+            reqwest::header::CACHE_CONTROL,
+            reqwest::header::HeaderValue::from_static("no-cache"),
+        );
+        headers.insert(
+            reqwest::header::USER_AGENT,
+            reqwest::header::HeaderValue::from_static("Mozilla/5.0"),
+        );
+        let resp = match util::http_request(
+            reqwest::Method::GET,
+            url,
+            headers,
+            std::time::Duration::from_secs(10),
+        )
+        .await
+        {
+            Ok(r) => r,
+            Err(e) => {
+                last_err = e;
+                continue;
+            }
+        };
+        let status = resp.status();
+        let bytes = match resp.bytes().await {
+            Ok(b) => b,
+            Err(e) => {
+                last_err = e.to_string();
+                continue;
+            }
+        };
+        if status == 404 {
+            last_err = format!("Файл others.txt не найден (404): {url}");
+            continue;
+        }
+        if status != 200 {
+            last_err = format!("HTTP {status}: {url}");
+            continue;
+        }
+        let text = util::decode_text_bytes(&bytes);
+        let data = parse_catalog_txt(&text);
+        log::info!("fetch_others_catalog: {} записей с {url}", data.len());
+        return Ok(serde_json::json!({"success": true, "data": data}));
+    }
+    util::fail_message(format!("Не удалось загрузить каталог others.txt: {last_err}"))
 }
 
+/// Скачивает файл из каталога «Другое» и кладёт его в папку назначения.
 #[tauri::command]
-pub async fn install_other_file(url: String, filename: String, destination: String) -> Result<serde_json::Value, String> {
-    Ok(serde_json::json!({"success": false, "message": "Not implemented"}))
+pub async fn install_other_file(
+    state: State<'_, AppState>,
+    url: String,
+    filename: String,
+    destination: String,
+) -> Result<serde_json::Value, String> {
+    let dest_dir = match resolve_dest(&state, &destination) {
+        Ok(d) => d,
+        Err(e) => return util::fail_message(e),
+    };
+    let name = match safe_script_filename(&filename) {
+        Ok(n) => n,
+        Err(e) => return util::fail_message(e),
+    };
+    let mut headers = reqwest::header::HeaderMap::new();
+    headers.insert(
+        reqwest::header::USER_AGENT,
+        reqwest::header::HeaderValue::from_static("Mozilla/5.0"),
+    );
+    let resp = match util::http_request(
+        reqwest::Method::GET,
+        &url,
+        headers,
+        std::time::Duration::from_secs(60),
+    )
+    .await
+    {
+        Ok(r) => r,
+        Err(e) => return util::fail_message(format!("Ошибка загрузки: {e}")),
+    };
+    if resp.status() != reqwest::StatusCode::OK {
+        return util::fail_message(format!("Ошибка загрузки: HTTP {}", resp.status()));
+    }
+    let bytes = match resp.bytes().await {
+        Ok(b) => b,
+        Err(e) => return util::fail_message(format!("Ошибка загрузки: {e}")),
+    };
+    let out = dest_dir.join(name);
+    if let Err(e) = std::fs::write(&out, &bytes) {
+        return util::fail_message(format!("Не удалось записать файл: {e}"));
+    }
+    log::info!("install_other_file: {} ({} байт)", out.display(), bytes.len());
+    Ok(serde_json::json!({
+        "success": true,
+        "message": format!("Установлен в {}", dest_dir.to_string_lossy()),
+        "path": out.to_string_lossy(),
+    }))
 }
 
+/// Удаляет файл из папки назначения каталога «Другое».
 #[tauri::command]
-pub fn remove_other_file(filename: String, destination: String) -> Result<serde_json::Value, String> {
-    Ok(serde_json::json!({"success": false, "message": "Not implemented"}))
+pub fn remove_other_file(
+    state: State<'_, AppState>,
+    filename: String,
+    destination: String,
+) -> Result<serde_json::Value, String> {
+    let dest_dir = match resolve_dest(&state, &destination) {
+        Ok(d) => d,
+        Err(e) => return util::fail_message(e),
+    };
+    let name = match safe_script_filename(&filename) {
+        Ok(n) => n,
+        Err(e) => return util::fail_message(e),
+    };
+    let path = dest_dir.join(name);
+    if !path.exists() {
+        return util::fail_message(format!("Файл не найден: {}", path.to_string_lossy()));
+    }
+    if let Err(e) = std::fs::remove_file(&path) {
+        return util::fail_message(format!("Не удалось удалить файл: {e}"));
+    }
+    log::info!("remove_other_file: удалён {}", path.display());
+    Ok(serde_json::json!({"success": true, "message": format!("Удалён: {filename}")}))
 }
 
+/// Установлен ли файл из каталога «Другое».
 #[tauri::command]
-pub fn check_other_installed(filename: String, destination: String) -> Result<serde_json::Value, String> {
-    Ok(serde_json::json!({"installed": false}))
+pub fn check_other_installed(
+    state: State<'_, AppState>,
+    filename: String,
+    destination: String,
+) -> Result<serde_json::Value, String> {
+    let installed = resolve_dest(&state, &destination)
+        .ok()
+        .and_then(|dir| safe_script_filename(&filename).ok().map(|n| dir.join(n)))
+        .map(|p| p.exists())
+        .unwrap_or(false);
+    Ok(serde_json::json!({"installed": installed}))
 }
 
 // ==================== Misc ====================
 
+/// Трей поддерживается, если иконка «main» создана при старте (main.rs setup).
 #[tauri::command]
-pub fn check_tray_support() -> Result<serde_json::Value, String> {
-    Ok(serde_json::json!({"success": true, "available": true}))
+pub fn check_tray_support(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
+    let available = app.tray_by_id("main").is_some();
+    Ok(serde_json::json!({"success": true, "available": available}))
 }
 
 #[tauri::command]
@@ -4471,11 +5253,44 @@ pub fn get_wallpapers() -> Result<serde_json::Value, String> {
     Ok(serde_json::json!({"success": true, "wallpapers": result}))
 }
 
+/// Превью обоев: сжатие до 500px по большей стороне (Python PIL thumbnail).
+/// При ошибке декодирования — отдаём оригинал (fallback, как в Python без PIL).
 #[tauri::command]
 pub fn get_wallpaper_thumb(filename: String) -> Result<serde_json::Value, String> {
-    // Легаси ресайзил превью в 500px через PIL; без crate `image` отдаём оригинал —
-    // это тот же fallback, что срабатывал в Python-версии при отсутствии PIL.
-    wallpaper_data_url(&filename)
+    let thumb = find_wallpaper(&filename)
+        .and_then(|p| std::fs::read(&p).ok())
+        .and_then(|bytes| thumb_data_url(&bytes, 500));
+    match thumb {
+        Some(url) => Ok(serde_json::json!({"success": true, "data_url": url})),
+        None => wallpaper_data_url(&filename),
+    }
+}
+
+/// Сжимает картинку до maxpx по большей стороне → data URL
+/// (PNG сохраняет альфу, остальное — JPEG q85).
+fn thumb_data_url(bytes: &[u8], maxpx: u32) -> Option<String> {
+    let img = image::load_from_memory(bytes).ok()?;
+    let thumb = if img.width() > maxpx || img.height() > maxpx {
+        img.thumbnail(maxpx, maxpx)
+    } else {
+        img
+    };
+    let mut out: Vec<u8> = Vec::new();
+    let mime = if thumb.color().has_alpha() {
+        use image::codecs::png::PngEncoder;
+        thumb.write_with_encoder(PngEncoder::new(&mut out))
+            .ok()?;
+        "image/png"
+    } else {
+        use image::codecs::jpeg::JpegEncoder;
+        JpegEncoder::new_with_quality(&mut out, 85)
+            .encode_image(&thumb)
+            .ok()?;
+        "image/jpeg"
+    };
+    use base64::Engine;
+    let b64 = base64::engine::general_purpose::STANDARD.encode(&out);
+    Some(format!("data:{mime};base64,{b64}"))
 }
 
 #[tauri::command]
@@ -4483,9 +5298,53 @@ pub fn get_wallpaper_full(filename: String) -> Result<serde_json::Value, String>
     wallpaper_data_url(&filename)
 }
 
+/// Диалог выбора картинки для фона лаунчера → base64 data URL
+/// (Python select_bg_image).
 #[tauri::command]
-pub fn select_bg_image() -> Result<serde_json::Value, String> {
-    Ok(serde_json::json!({"success": false, "message": "Not implemented"}))
+pub fn select_bg_image(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
+    use tauri_plugin_dialog::DialogExt;
+
+    let picked = app
+        .dialog()
+        .file()
+        .set_title("Выбрать картинку для фона")
+        .add_filter("Изображения", &["png", "jpg", "jpeg", "webp", "bmp"])
+        .add_filter("Все файлы", &["*"])
+        .blocking_pick_file();
+
+    let Some(picked) = picked else {
+        return util::fail_message("Отменено");
+    };
+    let path = match picked {
+        tauri_plugin_dialog::FilePath::Path(p) => p,
+        tauri_plugin_dialog::FilePath::Url(u) => u
+            .to_file_path()
+            .map_err(|_| "Некорректный путь".to_string())?,
+    };
+
+    let bytes = match std::fs::read(&path) {
+        Ok(b) => b,
+        Err(e) => return util::fail_message(format!("Не удалось прочитать файл: {e}")),
+    };
+    let mime = match path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_ascii_lowercase())
+        .as_deref()
+    {
+        Some("png") => "image/png",
+        Some("jpg") | Some("jpeg") => "image/jpeg",
+        Some("webp") => "image/webp",
+        Some("bmp") => "image/bmp",
+        _ => "image/jpeg",
+    };
+    use base64::Engine;
+    let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+    log::info!("select_bg_image: {} ({} байт, {mime})", path.display(), bytes.len());
+    Ok(serde_json::json!({
+        "success": true,
+        "data_url": format!("data:{mime};base64,{b64}"),
+    }))
 }
 
 #[cfg(test)]

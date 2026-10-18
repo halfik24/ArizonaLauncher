@@ -51,6 +51,7 @@
   "check_update_api": ["gamePath"],
   "repair_game_api": ["future"],
   "install_game_api": ["future"],
+  "install_game_to_folder": ["folder", "future"],
   "cancel_game_update": [],
   "pause_game_update": ["paused"],
   "game_update_status": [],
@@ -142,6 +143,7 @@
     "download_update_api",
     "repair_game_api",
     "install_game_api",
+    "install_game_to_folder",
     "cancel_game_update",
     "pause_game_update",
     "game_update_status",
@@ -230,44 +232,51 @@
 
   window.pywebview = { api: api };
 
-  // Прогресс установки лаунчера: Tauri-событие 'launcher-install-progress'
-  // (эмит из src-tauri/src/launcher.rs) → глобальный хаб
-  // window._onLauncherInstallProgress из index.html. Слушатель ставим до
-  // диспатча 'pywebviewready'; если __TAURI__ ещё не готов — ретраим.
-  function subscribeInstallProgress(attempt) {
-    if (window.__installProgressSubscribed) return;
+  // Прогресс установки: Tauri-события 'launcher-install-progress' и
+  // 'patches-install-progress' (эмит из src-tauri/src/launcher.rs) → глобальные
+  // хабы window._onLauncherInstallProgress / window._onPatchesInstallProgress
+  // из index.html. Слушатели ставим до диспатча 'pywebviewready'; если
+  // __TAURI__ ещё не готов — ретраим.
+  function listenEvent(eventName, handlerName, attempt) {
+    var flag = '__sub_' + eventName;
+    if (window[flag]) return;
     var t = window.__TAURI__;
-    if (t && t.event && typeof t.event.listen === 'function') {
-      try {
-        // listen() возвращает Promise — учтём возможное отклонение прав
-        // (event.listen blocked по ACL) и перетянемся позже.
-        var p = t.event.listen('launcher-install-progress', function (e) {
-          if (typeof window._onLauncherInstallProgress === 'function') {
-            window._onLauncherInstallProgress(e.payload);
-          }
-        });
-        if (p && typeof p.then === 'function') {
-          p.then(function () {
-            window.__installProgressSubscribed = true;
-            console.log('[tauri-bridge] подписка на launcher-install-progress установлена');
-          }).catch(function (err) {
-            console.warn('[tauri-bridge] подписка на launcher-install-progress отклонена:', err);
-            if (attempt < 40) setTimeout(function () { subscribeInstallProgress(attempt + 1); }, 250);
-          });
-          return;
-        }
-        window.__installProgressSubscribed = true;
-        console.log('[tauri-bridge] подписка на launcher-install-progress установлена');
-        return;
-      } catch (err) {
-        console.warn('[tauri-bridge] подписка на launcher-install-progress не удалась:', err);
+    if (!(t && t.event && typeof t.event.listen === 'function')) {
+      if (attempt < 40) {
+        setTimeout(function () { listenEvent(eventName, handlerName, attempt + 1); }, 250);
+      } else {
+        console.warn('[tauri-bridge] window.__TAURI__.event недоступен — прогресс не придёт:', eventName);
       }
+      return;
     }
-    if (attempt < 40) {
-      setTimeout(function () { subscribeInstallProgress(attempt + 1); }, 250);
-    } else {
-      console.warn('[tauri-bridge] window.__TAURI__.event недоступен — прогресс установки не придёт');
+    try {
+      // listen() возвращает Promise — учтём возможное отклонение прав
+      // (event.listen blocked по ACL) и перетянемся позже.
+      var p = t.event.listen(eventName, function (e) {
+        var fn = window[handlerName];
+        if (typeof fn === 'function') fn(e.payload);
+      });
+      var done = function () {
+        window[flag] = true;
+        console.log('[tauri-bridge] подписка на ' + eventName + ' установлена');
+      };
+      if (p && typeof p.then === 'function') {
+        p.then(done).catch(function (err) {
+          console.warn('[tauri-bridge] подписка на ' + eventName + ' отклонена:', err);
+          if (attempt < 40) setTimeout(function () { listenEvent(eventName, handlerName, attempt + 1); }, 250);
+        });
+        return;
+      }
+      done();
+    } catch (err) {
+      console.warn('[tauri-bridge] подписка на ' + eventName + ' не удалась:', err);
+      if (attempt < 40) setTimeout(function () { listenEvent(eventName, handlerName, attempt + 1); }, 250);
     }
+  }
+
+  function subscribeInstallProgress(attempt) {
+    listenEvent('launcher-install-progress', '_onLauncherInstallProgress', attempt);
+    listenEvent('patches-install-progress', '_onPatchesInstallProgress', attempt);
   }
 
   function fireReady() {

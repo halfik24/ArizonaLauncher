@@ -222,7 +222,7 @@ pub async fn run(
                 mkdirs += 1;
             }
             Action::Delete => {
-                log(format!("удаляю {rel}"));
+                log(format!("удаляю {rel} ({})", item.reason));
                 fs::remove_file(&path).ok();
                 deletes += 1;
             }
