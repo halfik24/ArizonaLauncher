@@ -18,7 +18,18 @@
 **Требования:** Windows 10/11 x64, WebView2 (встроен в Windows 11; для 10 ставится автоматически с установщиком).
 
 **Поддерживается только лаунчер Air v8** (`ArizonaLauncher8.0_byAIR.exe`) — единственная стабильная версия.
+<details>
+<summary><b>Поддержать разработку</b></summary>
 
+Хотя лаунчер распространяется бесплатно и с открытым исходным кодом (Open Source), разработка требует времени и ресурсов. Любая финансовая поддержка помогает мне откладывать деньги на оборудование и дальнейшее развитие проекта.
+
+**Реквизиты для донатов:**
+
+1. **Bitcoin (BTC):** `bc1pfk8stmu8ttutwvcegg8hkdaaqfs3t83wrlc4fnv7a934mac59m6qnrx5v3`
+2. **Ethereum (ETH):** `0x9a7f1a6f1E2F18c6493aB1B51A742aB161507Ba3`
+3. **Solana (SOL):** `HAkjcc35TKD4txDjtQ75jZBPk4eNtecGtAW45a78SCeN`
+
+</details>
 <details>
 <summary><b>Запуск игры</b></summary>
 
