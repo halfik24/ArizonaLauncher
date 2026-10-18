@@ -4,7 +4,7 @@
 [![Rust](https://img.shields.io/badge/Rust-1.70+-orange.svg)](https://www.rust-lang.org/)
 [![Tauri](https://img.shields.io/badge/Tauri-2-green.svg)](https://tauri.app)
 [![Version](https://img.shields.io/badge/version-2.0.0%20rc1-blue.svg)](https://github.com/halfik24/ArizonaLauncher/releases)
-[![Status](https://img.shields.io/badge/status-RC-brightgreen.svg)](https://github.com/halfik24/ArizonaLauncher)
+[![Status](https://img.shields.io/badge/status-WIP-brightgreen.svg)](https://github.com/halfik24/ArizonaLauncher)
 
 > Современный лаунчер для Arizona RP на Rust + Tauri 2. Полная переработка v1 (Python): быстрый запуск, нативный интерфейс, установщик без прав администратора.
 
