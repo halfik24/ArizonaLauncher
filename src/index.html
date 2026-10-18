@@ -1243,6 +1243,89 @@
             margin-top: auto;
         }
 
+        /* ── Глобальная полоса прогресса установки/обновления (под меню) ──
+           Видна всегда, даже когда онбординг/модалки закрыты: завязана на общий
+           хаб launcher-install-progress. Клик — модалка с деталями. */
+        .gp-wrap {
+            display: none;
+            position: relative;
+            width: 100%;
+            height: 34px;
+            border-radius: 8px;
+            overflow: hidden;
+            background: rgba(0, 0, 0, 0.45);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+        .gp-wrap.visible { display: block; }
+
+        .gp-fill {
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 0%;
+            background: linear-gradient(135deg, rgba(var(--accent-rgb), 0.88), rgba(var(--accent2-rgb), 0.72));
+            transition: width 0.4s ease;
+        }
+        .gp-wrap.done .gp-fill {
+            background: linear-gradient(135deg, rgba(60, 200, 110, 0.85), rgba(30, 160, 80, 0.85));
+        }
+        .gp-wrap.error .gp-fill {
+            background: linear-gradient(135deg, rgba(220, 70, 70, 0.85), rgba(160, 40, 40, 0.85));
+        }
+
+        .gp-label {
+            position: relative;
+            z-index: 1;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            height: 100%;
+            padding: 0 12px;
+            gap: 10px;
+            font-family: 'Montserrat Alternates', sans-serif;
+            font-size: 11.5px;
+            color: rgba(255, 255, 255, 0.92);
+            text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+        }
+        .gp-msg {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .gp-pct {
+            flex-shrink: 0;
+            font-weight: bold;
+        }
+        .gp-stage-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            border-radius: 20px;
+            background: rgba(var(--accent-rgb), 0.15);
+            border: 1px solid rgba(var(--accent2-rgb), 0.4);
+            font-family: 'Montserrat Alternates', sans-serif;
+            font-size: 11px;
+            color: rgba(255, 255, 255, 0.85);
+        }
+        .gp-stage-chip::before {
+            content: '';
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: rgba(var(--accent2-rgb), 0.9);
+            animation: gpPulse 1.2s ease-in-out infinite;
+        }
+        .gp-stage-chip.done::before { background: rgba(60, 200, 110, 0.95); animation: none; }
+        .gp-stage-chip.error::before { background: rgba(220, 70, 70, 0.95); animation: none; }
+        @keyframes gpPulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.35; transform: scale(0.75); }
+        }
+
         .icon-btn {
             flex: 1;
             height: 45px;
@@ -6892,6 +6975,16 @@
                     </button>
 
                 </div>
+
+                <!-- Глобальный прогресс установки/обновления: виден всегда,
+                     даже при закрытом онбординге. Клик — детали. -->
+                <div class="gp-wrap" id="gpBar" onclick="openGpOverlay()" title="Показать подробности установки">
+                    <div class="gp-fill" id="gpFill"></div>
+                    <div class="gp-label">
+                        <span class="gp-msg" id="gpMsg">Установка...</span>
+                        <span class="gp-pct" id="gpPct">0%</span>
+                    </div>
+                </div>
             </div>
 
             <!-- Статус-строка главного экрана (вкл/выкл: Настройки → Лаунчер) -->
@@ -7940,6 +8033,39 @@
             </div>
         </div>
 
+        <!-- Детали глобального прогресса (клик по полосе под главным меню) -->
+        <div class="install-overlay" id="gpOverlay" role="dialog" aria-modal="true" aria-labelledby="gpOverlayTitle" style="z-index:1400;">
+            <div class="install-modal">
+                <div class="install-header">
+                    <div class="install-title" id="gpOverlayTitle"><i data-lucide="download"></i> Установка / обновление игры</div>
+                    <button class="close-btn" onclick="closeGpOverlay()" aria-label="Закрыть">×</button>
+                </div>
+
+                <div style="padding: 18px 24px 0; display:flex; align-items:center; gap:8px;">
+                    <span class="gp-stage-chip" id="gpStageChip">Скачивание</span>
+                </div>
+
+                <div class="install-progress-wrap visible" style="margin-top:12px;">
+                    <div class="install-progress-label">
+                        <span id="gpOverlayMsg">Подготовка...</span>
+                        <span id="gpOverlayPct">0%</span>
+                    </div>
+                    <div class="install-progress-bar">
+                        <div class="install-progress-fill" id="gpOverlayFill"></div>
+                    </div>
+                </div>
+
+                <div style="padding: 12px 24px 0; font-size: 11px; color: rgba(255,255,255,0.4); line-height:1.5;" id="gpOverlayHint">
+                    Окно можно свернуть — полоса прогресса останется под главным меню.
+                </div>
+
+                <div class="install-footer">
+                    <button class="s-btn" id="gpCancelBtn" onclick="gpCancelUpdate()"><i data-lucide="x-circle"></i> Отменить установку</button>
+                    <button class="s-btn" onclick="closeGpOverlay()"><i data-lucide="chevron-down"></i> Свернуть</button>
+                </div>
+            </div>
+        </div>
+
         <!-- Installer modal -->
         <div class="install-overlay" id="installOverlay" role="dialog" aria-modal="true" aria-labelledby="installModalTitle">
             <div class="install-modal">
@@ -8721,7 +8847,139 @@
         window._onLauncherInstallProgress = function(data) {
             if (typeof _patchHandleProgressCb === 'function') _patchHandleProgressCb(data);
             if (typeof _installModalProgressCb === 'function') _installModalProgressCb(data);
+            if (typeof _gpUpdate === 'function') _gpUpdate(data);
         };
+
+        // ══════════════════════════════════════════════
+        //  ГЛОБАЛЬНАЯ ПОЛОСА ПРОГРЕССА (под главным меню)
+        //  Работает независимо от того, какие модалки/онбординг открыты.
+        // ══════════════════════════════════════════════
+        let _gpHideTimer = null;
+        const _gpStageNames = { dl: 'Скачивание', extract: 'Распаковка', install: 'Установка файлов', done: 'Готово', error: 'Ошибка' };
+
+        function _gpEl(id) { return document.getElementById(id); }
+
+        /** Обновить полосу из общего хаба прогресса. */
+        function _gpUpdate(data) {
+            const bar = _gpEl('gpBar');
+            if (!bar || !data) return;
+            const stage = data.stage || 'dl';
+            clearTimeout(_gpHideTimer);
+            bar.classList.remove('done', 'error');
+
+            if (stage === 'done') {
+                _gpFillTo(100);
+                _gpText(data.message || 'Установка завершена', '100%');
+                bar.classList.add('done');
+                _gpHideTimer = setTimeout(_gpHide, 4000);
+            } else if (stage === 'error') {
+                _gpFillTo(100);
+                _gpText('Ошибка: ' + (data.message || 'неизвестно'), '!');
+                bar.classList.add('error');
+                _gpHideTimer = setTimeout(_gpHide, 8000);
+            } else {
+                const pct = Math.min(100, data.progress || 0);
+                _gpFillTo(pct);
+                _gpText((data.message || _gpStageNames[stage] || 'Установка...'), pct + '%');
+            }
+            bar.classList.add('visible');
+            _gpSyncOverlay(data);
+        }
+
+        function _gpFillTo(pct) {
+            const fill = _gpEl('gpFill');
+            if (fill) fill.style.width = pct + '%';
+        }
+
+        function _gpText(msg, pct) {
+            const m = _gpEl('gpMsg'), p = _gpEl('gpPct');
+            if (m) m.textContent = msg;
+            if (p) p.textContent = pct;
+        }
+
+        function _gpHide() {
+            const bar = _gpEl('gpBar');
+            if (bar) bar.classList.remove('visible', 'done', 'error');
+        }
+
+        /** Синхронизировать содержимое модалки деталей, если она открыта. */
+        function _gpSyncOverlay(data) {
+            const ov = _gpEl('gpOverlay');
+            if (!ov || ov.style.display !== 'flex') return;
+            const stage = (data && data.stage) || 'dl';
+            const chip = _gpEl('gpStageChip');
+            if (chip) {
+                chip.textContent = _gpStageNames[stage] || stage;
+                chip.className = 'gp-stage-chip' + (stage === 'done' ? ' done' : stage === 'error' ? ' error' : '');
+            }
+            const msg = _gpEl('gpOverlayMsg');
+            const pctEl = _gpEl('gpOverlayPct');
+            const fill = _gpEl('gpOverlayFill');
+            if (msg) msg.textContent = (data && data.message) || _gpStageNames[stage] || '...';
+            const pct = stage === 'done' ? 100 : stage === 'error' ? 100 : Math.min(100, (data && data.progress) || 0);
+            if (pctEl) pctEl.textContent = pct + '%';
+            if (fill) {
+                fill.style.width = pct + '%';
+                fill.className = 'install-progress-fill' + (stage === 'done' ? ' done' : stage === 'error' ? ' error' : '');
+            }
+            const cancelBtn = _gpEl('gpCancelBtn');
+            if (cancelBtn) cancelBtn.style.display = (stage === 'done' || stage === 'error') ? 'none' : '';
+        }
+
+        /** Открыть модалку деталей прогресса. */
+        function openGpOverlay() {
+            const ov = _gpEl('gpOverlay');
+            if (!ov) return;
+            ov.style.display = 'flex';
+            // Отразить текущее состояние полосы
+            const bar = _gpEl('gpBar');
+            const chip = _gpEl('gpStageChip');
+            if (chip && bar) {
+                if (bar.classList.contains('done')) { chip.textContent = 'Готово'; chip.className = 'gp-stage-chip done'; }
+                else if (bar.classList.contains('error')) { chip.textContent = 'Ошибка'; chip.className = 'gp-stage-chip error'; }
+                else { chip.textContent = 'Скачивание'; chip.className = 'gp-stage-chip'; }
+            }
+            const msg = _gpEl('gpOverlayMsg'), pctEl = _gpEl('gpOverlayPct'), fill = _gpEl('gpOverlayFill');
+            if (msg && _gpEl('gpMsg')) msg.textContent = _gpEl('gpMsg').textContent;
+            if (pctEl && _gpEl('gpPct')) pctEl.textContent = _gpEl('gpPct').textContent;
+            if (fill && _gpEl('gpFill')) fill.style.width = _gpEl('gpFill').style.width || '0%';
+            if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
+        }
+
+        function closeGpOverlay() {
+            const ov = _gpEl('gpOverlay');
+            if (ov) ov.style.display = 'none';
+        }
+
+        /** Отмена установки/обновления из модалки деталей. */
+        async function gpCancelUpdate() {
+            try {
+                const r = await window.pywebview.api.cancel_game_update();
+                if (r && r.success) {
+                    showNotification('Отмена установки...', 'info');
+                    closeGpOverlay();
+                } else {
+                    showNotification((r && r.message) || 'Нечего отменять', 'error');
+                }
+            } catch (e) {
+                showNotification('Отмена: ' + e, 'error');
+            }
+        }
+
+        /** На старте: если бэкенд уже качает (после Ctrl+R) — показать полосу. */
+        async function _gpCheckBusyOnStart() {
+            try {
+                if (!(window.pywebview && window.pywebview.api.game_update_status)) return;
+                const st = await window.pywebview.api.game_update_status();
+                if (st && st.busy) {
+                    const bar = _gpEl('gpBar');
+                    if (bar) {
+                        _gpText('Установка/обновление...', '');
+                        bar.classList.add('visible');
+                    }
+                }
+            } catch (e) { /* не критично */ }
+        }
 
         async function init() {
             try {
@@ -8756,6 +9014,10 @@
             // Первый запуск: путь к игре не настроен — открываем онбординг
             // (в Python это делал main.py:3371 через evaluate_js)
             setTimeout(() => _maybeStartFirstLaunch(), 300);
+
+            // Если установка/обновление уже идёт (например, после Ctrl+R) —
+            // сразу показать глобальную полосу, чтобы прогресс не «пропал».
+            _gpCheckBusyOnStart();
 
             setInterval(loadServers, 300000);
             // Примечание: interval ID не хранится намеренно — loadServers
