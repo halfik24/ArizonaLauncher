@@ -8547,7 +8547,9 @@
                         return;
                     }
                 }
-            } catch {}
+            } catch (e) {
+                console.warn('get_profiles, беру localStorage-fallback:', e);
+            }
             // localStorage fallback
             try {
                 _profiles = JSON.parse(localStorage.getItem('arp_profiles') || '[]');
@@ -8561,7 +8563,9 @@
                     await window.pywebview.api.save_profiles(_profiles, _activeProfileId);
                     return;
                 }
-            } catch {}
+            } catch (e) {
+                console.warn('save_profiles:', e);
+            }
             try {
                 localStorage.setItem('arp_profiles', JSON.stringify(_profiles));
                 localStorage.setItem('arp_active_profile', _activeProfileId || '');
@@ -8838,7 +8842,9 @@
                     const res = await window.pywebview.api.get_read_news_ids();
                     if (res && res.success) return res.ids || [];
                 }
-            } catch {}
+            } catch (e) {
+                console.warn('get_read_news_ids:', e);
+            }
             // fallback
             try { return JSON.parse(localStorage.getItem(NEWS_READ_KEY) || '[]'); }
             catch { return []; }
@@ -8850,7 +8856,9 @@
                     await window.pywebview.api.save_read_news_ids(ids);
                     return;
                 }
-            } catch {}
+            } catch (e) {
+                console.warn('save_read_news_ids:', e);
+            }
             // fallback
             try { localStorage.setItem(NEWS_READ_KEY, JSON.stringify(ids)); }
             catch {}
@@ -9267,7 +9275,9 @@
                     const update = await window.pywebview.api.check_launcher_update();
                     checkLauncherInstallationUI(true, null, update);
                 }
-            } catch (e) {}
+            } catch (e) {
+                console.warn('check_launcher_update:', e);
+            }
         }
 
         // ── Кнопка «Установить» / «Обновить» в правой панели (patch-handle) ──
@@ -10428,12 +10438,16 @@
                         const libRes = await window.pywebview.api.fetch_libraries_catalog();
                         if (libRes && libRes.success) window._mlLibCatalog = libRes.data;
                     }
-                } catch(e) {}
+                } catch(e) {
+                    console.warn('fetch_libraries_catalog:', e);
+                }
                 if (!window._mlLibCatalog) {
                     try {
                         const resp = await fetch('https://raw.githubusercontent.com/halfik24/ArzLaunchRepo/main/libraries.txt', { cache: 'no-store' });
                         if (resp.ok) window._mlLibCatalog = parsConfigsTxt(await resp.text());
-                    } catch(e) {}
+                    } catch(e) {
+                        console.warn('libraries.txt fallback:', e);
+                    }
                 }
                 if (!window._mlLibCatalog) window._mlLibCatalog = [];
             }
@@ -11214,7 +11228,9 @@
                 try {
                     const result = await window.pywebview.api.fetch_image_as_base64(url);
                     if (result && result.success && result.data_url) src = result.data_url;
-                } catch(e) {}
+                } catch(e) {
+                    console.warn('fetch_image_as_base64, оставляю прямой url:', e);
+                }
             }
             _imgCache[url] = src;
             return src;
@@ -12527,7 +12543,9 @@
                             const sep = gp.lastIndexOf('\\') >= 0 ? '\\' : '/';
                             _installFolder = gp.substring(0, gp.lastIndexOf(sep));
                         }
-                    } catch(e) {}
+                    } catch(e) {
+                        console.warn('get_saved_data (папка для установки):', e);
+                    }
                 }
             }
             if (!_installFolder) {
@@ -13484,7 +13502,9 @@
                 if (window.pywebview && window.pywebview.api.save_launcher_settings) {
                     await window.pywebview.api.save_launcher_settings(launcherSettings);
                 }
-            } catch(e) {}
+            } catch(e) {
+                console.warn('save_launcher_settings:', e);
+            }
         }
 
         async function selectBgImage() {
@@ -13525,7 +13545,9 @@
                 try {
                     const result = await window.pywebview.api.get_wallpapers();
                     if (result.success) _wallpapers = result.wallpapers;
-                } catch(e) {}
+                } catch(e) {
+                    console.warn('get_wallpapers:', e);
+                }
             }
             renderWallpaperGrid();
         }
@@ -13696,7 +13718,9 @@
                     const result = await window.pywebview.api.get_launcher_settings();
                     if (result.success) launcherSettings = Object.assign(launcherSettings, result.data);
                 }
-            } catch(e) {}
+            } catch(e) {
+                console.warn('get_launcher_settings:', e);
+            }
             perfMark('  get_launcher_settings done');
 
             // Применяем обой из конфига мгновенно
@@ -13840,7 +13864,9 @@
                     const r = await window.pywebview.api.is_maximized();
                     document.body.classList.toggle('frame-maximized', !!(r && r.maximized));
                 }
-            } catch(e) {}
+            } catch(e) {
+                console.warn('is_maximized:', e);
+            }
         }
 
         // Ручки ресайза frameless-окна
@@ -15910,7 +15936,9 @@
                     const saved = await window.pywebview.api.get_saved_data();
                     gp = (saved && saved.game_path) || '';
                 }
-            } catch (e) {}
+            } catch (e) {
+                console.warn('get_saved_data (онбординг):', e);
+            }
             if (gp) return; // путь уже есть — онбординг не открываем
 
             // Открываем онбординг сразу, поиск гоняем в фоне (spawn_blocking
@@ -16024,7 +16052,9 @@
                 } else if (_flData && _flData.check_status !== 'checking') {
                     _flData.check_status = 'not_found';
                 }
-            } catch (e) {}
+            } catch (e) {
+                console.warn('_flRefreshGameCard:', e);
+            }
             _flRender();
         }
 
@@ -16041,7 +16071,9 @@
                     const lm = await window.pywebview.api.get_launch_method();
                     if (lm && lm.success && lm.method) _flLaunchMethod = lm.method;
                 }
-            } catch (e) {}
+            } catch (e) {
+                console.warn('get_launch_method:', e);
+            }
             _flRender();
             _flHideMain();
             document.getElementById('flOverlay').classList.add('open');
@@ -16306,7 +16338,9 @@
                         launcherSettings.bg_image = r.data_url;
                         launcherSettings.bg_data  = r.data_url;
                         applyBgImage(r.data_url);
-                        try { window.pywebview.api.save_launcher_settings(launcherSettings); } catch(e) {}
+                        try { window.pywebview.api.save_launcher_settings(launcherSettings); } catch(e) {
+                            console.warn('save_launcher_settings:', e);
+                        }
                         _flRender();
                     } else if (r && r.message && r.message !== 'Отменено') {
                         // «Отменено» — пользователь закрыл диалог, не ошибка

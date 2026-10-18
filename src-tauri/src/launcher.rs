@@ -3595,24 +3595,29 @@ fn spawn_game_job(
                 } else {
                     format!("{files}{current}")
                 };
-                let _ = app.emit(
+                if let Err(e) = app.emit(
                     "launcher-install-progress",
                     serde_json::json!({
                         "stage": "dl",
                         "progress": pct.min(99),
                         "message": message,
                     }),
-                );
+                ) {
+                    // горячий цикл — debug, чтобы не заспамить лог частыми отказами
+                    log::debug!("emit launcher-install-progress(dl): {e}");
+                }
             }
             Event::Finished { ok, text } => {
-                let _ = app.emit(
+                if let Err(e) = app.emit(
                     "launcher-install-progress",
                     serde_json::json!({
                         "stage": if ok { "done" } else { "error" },
                         "progress": if ok { 100 } else { 0 },
                         "message": text,
                     }),
-                );
+                ) {
+                    log::warn!("emit launcher-install-progress(finish): {e}");
+                }
             }
         };
 
@@ -3641,11 +3646,13 @@ fn spawn_game_job(
             if exe.is_file() {
                 let st = app.state::<AppState>();
                 let p = exe.to_string_lossy().to_string();
-                let _ = util::update_config(&st, |cfg| {
+                match util::update_config(&st, |cfg| {
                     cfg.game_path = p.clone();
                     Ok(())
-                });
-                log::info!("game_update: game_path записан → {p}");
+                }) {
+                    Ok(_) => log::info!("game_update: game_path записан → {p}"),
+                    Err(e) => log::warn!("game_update: не удалось записать game_path в конфиг: {e}"),
+                }
             }
         }
         on_event(Event::Finished { ok, text });
