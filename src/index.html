@@ -8963,7 +8963,13 @@
 
         function closeGpOverlay() {
             const ov = _gpEl('gpOverlay');
-            if (ov) ov.style.display = 'none';
+            if (!ov || ov.style.display === 'none') return;
+            // Анимация выхода: оверлей затухает, модалка «уходит вглубь» (creOut)
+            ov.classList.add('closing');
+            setTimeout(() => {
+                ov.classList.remove('closing');
+                ov.style.display = 'none';
+            }, 250);
         }
 
         /** Отмена установки/обновления из модалки деталей. */
