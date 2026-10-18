@@ -28,9 +28,14 @@
   4. `os_name` в debug: «windows» → «Windows» (`os_display_name`, как `platform.system()` в Python).
 - Методика: `--remote-debugging-port=9222` временно в tauri.conf.json → авто-rebuild → `node tools/cdp.js '<выражение>'`. **Ловушка PowerShell:** одинарный аргумент с двойными кавычками ломается — писать выражение в файл (см. `C:\Users\halfik\AppData\Local\Temp\opencode\expr_*.js`) и подавать `Get-Content -Raw`; в самих выражениях — только одинарные кавычки.
 
+### Пункт 3 плана — сделан: связка «свежая установка → запуск»
+- **Быстрый чек перед spawn** (`quick_game_check` в `start_game`): наличие + ненулевой размер 9 ключевых файлов по манифесту CDN (gta_sa.exe, arizona.asi, anim/cuts.img, models/gta3.img/peds.img/vehs_7.img, SAMP/SAMP.img, frontend.zip, data/script/script.img) — без MD5, миллисекунды. Нехватка → код `FILES_MISSING` со списком.
+- **Авто-починка** (фронт): по `FILES_MISSING` launch-оверлей показывает «авто-починка...», без confirm вызывается `repair_game_api` + `_gameProgressStart('Починка')`; если уже идёт установка — уведомление «дождитесь». Карта `START_ERRORS` пополнена.
+- **Связка после установки** (пост-хук `game_update`): помимо `game_path` пишется `launcher_path` (через `find_launcher_exe`) и дефолт метода запуска: лаунчер в папке есть → `air` (иначе прелоады не внедряются), нет → `native`. Работает только для свежей установки (`write_path_target`), «Обновить» не трогает выбор пользователя.
+- **Живой тест:** песочница `%TEMP%\opencode\qcheck` (только dummy gta_sa.exe) → `set_game_paths` → `start_game` вернул `FILES_MISSING` + 8 отсутствующих файлов, spawn не выполнялся (чек стоит до kill/spawn) → пути откачены, конфиг как был.
+
 ### Осталось (по плану, в порядке)
-3. **Пункт 3 плана:** связка свежая установка→запуск: `find_launcher_exe` для скачанного клиента, дефолт `launch_method`, быстрый чек перед `spawn` (не полный MD5-скан), авто-«починить» при нехватке.
-5. **Пункт 5:** драйверы DX/VCRedist (d3dx9_43.dll в System32, реестр VC Runtimes x86, тихая установка, опционально).
+5. **Пункт 5:** драйверы DX/VCRedist — в манифесте CDN уже лежит `drivers/` (directx_Jun2010_redist 100МБ, dxwebsetup, vc_redist 2010-2017 x86/x64): d3dx9_43.dll в System32, реестр VC Runtimes x86, тихая установка, опционально.
 - Живой прогон UI-кликов (вкладки «Моды»/«Патчи» глазами, установка moonloader-скрипта, установка патчей после их релиза) — команды проверены поштучно, клики по UI не проверялись.
 - Старое (2a/2b из прошлого HANDOFF): живой тест установки в пустую папку — не дошёл до конца из-за Ctrl+R; повторить.
 

@@ -652,6 +652,34 @@ mod launch_tests {
     }
 }
 
+/// Быстрый чек ключевых файлов перед запуском (пункт 3 плана):
+/// только наличие и ненулевой размер — без MD5, миллисекунды.
+/// Список покрывает ядро установки по манифесту CDN (exe, крупные .img,
+/// SAMP, фронтенд): частично скачанная или порушенная папка поймается.
+/// Возвращает относительные пути отсутствующих файлов.
+fn quick_game_check(game_dir: &std::path::Path) -> Vec<String> {
+    const CRITICAL: &[&str] = &[
+        "gta_sa.exe",
+        "arizona.asi",
+        "anim/cuts.img",
+        "models/gta3.img",
+        "models/peds.img",
+        "models/vehs_7.img",
+        "SAMP/SAMP.img",
+        "frontend.zip",
+        "data/script/script.img",
+    ];
+    CRITICAL
+        .iter()
+        .filter(|rel| {
+            !std::fs::metadata(game_dir.join(rel))
+                .map(|m| m.is_file() && m.len() > 0)
+                .unwrap_or(false)
+        })
+        .map(|rel| rel.to_string())
+        .collect()
+}
+
 #[tauri::command]
 pub async fn start_game(
     state: State<'_, AppState>,
@@ -676,6 +704,21 @@ pub async fn start_game(
     if game_path.is_empty() || !std::path::Path::new(&game_path).exists() {
         return Ok(serde_json::json!({"success": false,
             "message": "Game path is missing or invalid — set it in Settings", "code": "GAME_MISSING"}));
+    }
+    // Быстрый чек перед spawn (пункт 3): без MD5, только наличие ключевых
+    // файлов — неполная установка не должна долетать до запуска. Фронт по
+    // коду FILES_MISSING сам запускает авто-починку.
+    if let Some(game_dir) = resolve_game_target(&game_path) {
+        let missing = quick_game_check(&game_dir);
+        if !missing.is_empty() {
+            log::warn!("start_game: {} файлов не хватает в {}", missing.len(), game_dir.display());
+            return Ok(serde_json::json!({
+                "success": false,
+                "code": "FILES_MISSING",
+                "missing": missing,
+                "message": format!("Не хватает файлов игры ({})", missing.len())
+            }));
+        }
     }
     if nickname.trim().is_empty() {
         return Ok(serde_json::json!({"success": false, "message": "Enter nickname", "code": "NICKNAME_EMPTY"}));
@@ -3715,17 +3758,35 @@ fn spawn_game_job(
             }
         };
         // Свежая установка: путь до exe пишем в конфиг, чтобы лаунчер
-        // «ожил» (проверка, кнопка Обновить, запуск).
+        // «ожил» (проверка, кнопка Обновить, запуск). Заодно закрываем
+        // связку «установка → запуск» (пункт 3): ищем Air-лаунчер в папке
+        // и выставляем метод запуска, работающий из коробки — лаунчер
+        // есть → «air» (иначе прелоады не внедряются), нет → «native».
         if ok && write_path_target {
             let exe = job.target.join("gta_sa.exe");
             if exe.is_file() {
                 let st = app.state::<AppState>();
                 let p = exe.to_string_lossy().to_string();
+                let launcher = find_launcher_exe(&job.target);
                 match util::update_config(&st, |cfg| {
                     cfg.game_path = p.clone();
+                    match &launcher {
+                        Some((lp, _)) => {
+                            cfg.launcher_path = lp.to_string_lossy().to_string();
+                            cfg.launch_method = "air".to_string();
+                        }
+                        None => {
+                            cfg.launcher_path = String::new();
+                            cfg.launch_method = "native".to_string();
+                        }
+                    }
                     Ok(())
                 }) {
-                    Ok(_) => log::info!("game_update: game_path записан → {p}"),
+                    Ok(_) => log::info!(
+                        "game_update: game_path → {p}; launcher: {}; method: {}",
+                        launcher.as_ref().map(|(lp, _)| lp.display().to_string()).unwrap_or_else(|| "не найден".into()),
+                        if launcher.is_some() { "air" } else { "native" }
+                    ),
                     Err(e) => log::warn!("game_update: не удалось записать game_path в конфиг: {e}"),
                 }
             }

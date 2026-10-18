@@ -8527,6 +8527,7 @@
         const START_ERRORS = {
             LAUNCHER_MISSING: 'Лаунчер игры не найден — укажите его путь в настройках',
             GAME_MISSING: 'Путь к игре не задан или неверен — укажите его в настройках',
+            FILES_MISSING: 'Не хватает файлов игры — запускаю авто-починку',
             NICKNAME_EMPTY: 'Введите никнейм',
             NICKNAME_INVALID: 'Ник состоит только из недопустимых символов',
             LAUNCHER_CRASHED: 'Лаунчер игры аварийно завершился',
@@ -9839,6 +9840,32 @@
                             hideLaunchScreen();
                             // Запускаем слежение за GTA — развернём окно когда игра закроется
                             startGtaWatcher();
+                        } else if (result.code === 'FILES_MISSING') {
+                            // Пункт 3: быстрый чек перед spawn нашёл нехватку
+                            // файлов — без вопросов запускаем авто-починку.
+                            const n = (result.missing || []).length;
+                            setLaunchStatus('Не хватает файлов (' + n + ') — авто-починка...', 0);
+                            await new Promise(resolve => setTimeout(resolve, 1800));
+                            hideLaunchScreen();
+                            try {
+                                const st = window.pywebview.api.game_update_status
+                                    ? await window.pywebview.api.game_update_status() : null;
+                                if (st && st.busy) {
+                                    showNotification('Файлы игры неполные — дождитесь текущей установки', 'info');
+                                } else {
+                                    const res = await window.pywebview.api.repair_game_api(gameUpdateFutureEnabled());
+                                    if (res && res.success) {
+                                        _gameProgressStart('Починка');
+                                        showNotification('<i data-lucide="wrench"></i> Обнаружены недостающие файлы — запущена авто-починка', 'info');
+                                        if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
+                                    } else {
+                                        showNotification('Не хватает файлов игры: ' + ((res && res.message) || 'починка не запустилась'), 'error');
+                                    }
+                                }
+                            } catch (e) {
+                                console.warn('auto-repair on FILES_MISSING failed:', e);
+                                showNotification('Не хватает файлов игры — починка не запустилась', 'error');
+                            }
                         } else {
                             setLaunchStatus('Ошибка: ' + startErrorMessage(result), 0);
                             await new Promise(resolve => setTimeout(resolve, 1800));
