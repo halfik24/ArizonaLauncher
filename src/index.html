@@ -143,7 +143,10 @@
             flex-direction: column;
         }
 
-        /* ── Свой тайтлбар (frame-custom): без полосы, поверх фона ── */
+        /* ── Свой тайтлбар (frame-custom): без полосы, поверх фона ──
+           z-index выше всех модалок (1400/1500) и оверлеев — кнопки окна и
+           название должны быть кликабельны всегда. У #titlebar pointer-events:
+           none, кликается только пилюля #tbButtons. */
         #titlebar {
             display: none;
             position: fixed;
@@ -151,7 +154,7 @@
             left: 0;
             right: 0;
             height: 42px;
-            z-index: 1200;
+            z-index: 100000;
             align-items: center;
             justify-content: space-between;
             padding-right: 6px;
@@ -4755,7 +4758,7 @@
            Тёмное стекло в стиле уведомлений, акцентный левый край. */
         #uiTip {
             position: fixed;
-            z-index: 9999;
+            z-index: 100001;
             max-width: 280px;
             padding: 7px 11px;
             background: rgba(24, 26, 34, 0.94);
