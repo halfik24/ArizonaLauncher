@@ -8523,6 +8523,20 @@
                 .replace(/'/g, '&#39;');
         }
 
+        // Значение для JS-строки внутри inline-обработчика (HTML-атрибут вида
+        // on...="fn('ЗНАЧЕНИЕ')"). Сначала экранируем JS-строку (обратный слэш,
+        // кавычка, переводы строки), затем HTML: парсер атрибута развернёт
+        // сущности обратно ещё до компиляции обработчика, поэтому порядок
+        // обязателен — только такой порядок сохраняет исходное значение в JS.
+        function _escJsArg(s) {
+            if (s == null) return '';
+            return escapeHtml(String(s)
+                .replace(/\\/g, '\\\\')
+                .replace(/'/g, "\\'")
+                .replace(/\r/g, '\\r')
+                .replace(/\n/g, '\\n'));
+        }
+
         /** Открыть внешнюю ссылку: в приложении — бэкендом (WebView2 не даёт window.open), в браузере — как есть. */
         function openExternal(url) {
             if (window.pywebview && window.pywebview.api.open_url) {
@@ -9598,14 +9612,14 @@
                 item.dataset.value = server.number;
                 const iconHtml = server.icon
                     ? `<img class="cs-item-icon" src="${escapeHtml(server.icon)}" alt="" onerror="this.style.display='none'">`
-                    : `<span class="cs-item-num">#${server.number}</span>`;
+                    : `<span class="cs-item-num">#${escapeHtml(server.number)}</span>`;
                 const queueHtml = server.queue > 0 ? `<span style="font-size:10px;color:rgba(255,185,0,0.8);margin-left:4px;"><i data-lucide="loader"></i>${server.queue}</span>` : '';
                 const recHtml = server.recommended ? `<span style="font-size:9px;color:rgba(0,210,100,0.8);margin-left:4px;"><i data-lucide="star"></i></span>` : '';
                 item.innerHTML = `
                     <div class="cs-item-top">
                         ${iconHtml}
                         <span class="cs-item-name">${escapeHtml(server.name)}${recHtml}</span>
-                        <span class="cs-item-count">${server.online}/${server.maxplayers}${queueHtml}</span>
+                        <span class="cs-item-count">${escapeHtml(server.online)}/${escapeHtml(server.maxplayers)}${queueHtml}</span>
                     </div>
                     <div class="cs-item-bar-wrap">
                         <div class="cs-item-bar-fill" style="width:${pct}%;background:${color};"></div>
@@ -10460,12 +10474,12 @@
                 if (!result.success) {
                     btn.classList.toggle('on', enabled);
                     btn.dataset.enabled = String(enabled);
-                    showNotification('Ошибка: ' + apiMsg(result.message), 'error');
+                    showNotification('Ошибка: ' + escapeHtml(apiMsg(result.message)), 'error');
                 }
             } catch(e) {
                 btn.classList.toggle('on', enabled);
                 btn.dataset.enabled = String(enabled);
-                showNotification('Ошибка: ' + e.message, 'error');
+                showNotification('Ошибка: ' + escapeHtml(e.message), 'error');
             } finally {
                 btn.disabled = false;
                 if (typeof _sbRefreshScripts === 'function') _sbRefreshScripts();
@@ -10657,10 +10671,10 @@
                     const fallback = document.createElement('div');
                     fallback.className = 'ml-preview-fallback';
                     fallback.style.cssText = 'display:none;align-items:center;justify-content:center;width:100%;height:100%;position:absolute;inset:0;';
-                    fallback.innerHTML = item.icon || '<i data-lucide="moon"></i>';
+                    fallback.innerHTML = escapeHtml(item.icon) || '<i data-lucide="moon"></i>';
                     preview.appendChild(fallback);
                 } else {
-                    preview.innerHTML = item.icon || '<i data-lucide="moon"></i>';
+                    preview.innerHTML = escapeHtml(item.icon) || '<i data-lucide="moon"></i>';
                 }
                 // Status badge
                 const badge = document.createElement('div');
@@ -10872,7 +10886,7 @@
                 } catch (e) { err.push(`${r.name}: ${e.message || e}`); }
             }
             if (btn) { btn.disabled = false; btn.innerHTML = orig; if (window.lucide) refreshLucideIcons(); }
-            if (err.length) showNotification(`Ошибки либ: ${err.join('; ')}`, 'error', 6000);
+            if (err.length) showNotification(`Ошибки либ: ${escapeHtml(err.join('; '))}`, 'error', 6000);
             else if (ok > 0 || skipped > 0) showNotification(`Библиотеки: ${ok} новых, ${skipped} уже стояли`, 'success', 2500);
             else showNotification('Готово', 'success', 1500);
 
@@ -10984,7 +10998,7 @@
                 const card = document.createElement('div');
                 const isInstalled = installedNames.has(lib.name.toLowerCase());
                 card.className = 'lib-card' + (isInstalled ? ' is-installed' : '');
-                const safeName = _mlEscape(lib.name).replace(/'/g, "\\'");
+                const safeName = _escJsArg(lib.name);
                 const btn = isInstalled
                     ? `<button class="lib-card-btn installed" disabled><i data-lucide="check"></i> Установлено</button>`
                     : `<button class="lib-card-btn primary" onclick="installLibFromCatalog('${safeName}', this)"><i data-lucide="download"></i> Установить</button>`;
@@ -11045,7 +11059,7 @@
         async function installLibFromCatalog(name, btn) {
             if (!name) return;
             const lib = (window._libCatalog || []).find(l => l.name === name);
-            if (!lib) { showNotification(`Либа ${name} не найдена в каталоге`, 'error'); return; }
+            if (!lib) { showNotification(`Либа ${escapeHtml(name)} не найдена в каталоге`, 'error'); return; }
             const orig = btn.innerHTML;
             btn.disabled = true;
             btn.innerHTML = '<i data-lucide="loader"></i> Скачивается...';
@@ -11053,12 +11067,12 @@
             try {
                 const res = await _installLibViaApi(lib);
                 if (res && res.success) {
-                    showNotification(res.skipped ? `${lib.name} уже установлена` : `Установлено: ${lib.name}`, 'success', 2000);
+                    showNotification(res.skipped ? `${escapeHtml(lib.name)} уже установлена` : `Установлено: ${escapeHtml(lib.name)}`, 'success', 2000);
                 } else {
                     throw new Error((res && res.message) || 'ошибка');
                 }
             } catch (e) {
-                showNotification(`Ошибка: ${e.message || e}`, 'error', 4000);
+                showNotification(`Ошибка: ${escapeHtml(e.message || e)}`, 'error', 4000);
                 btn.disabled = false;
                 btn.innerHTML = orig;
                 if (window.lucide) refreshLucideIcons();
@@ -11078,12 +11092,12 @@
             try {
                 const res = await window.pywebview.api.uninstall_library(name);
                 if (res && res.success) {
-                    showNotification(res.message || `Удалено: ${name}`, 'success', 2000);
+                    showNotification(escapeHtml(res.message || `Удалено: ${name}`), 'success', 2000);
                 } else {
                     throw new Error((res && res.message) || 'ошибка');
                 }
             } catch (e) {
-                showNotification(`Ошибка: ${e.message || e}`, 'error', 4000);
+                showNotification(`Ошибка: ${escapeHtml(e.message || e)}`, 'error', 4000);
                 btn.disabled = false;
                 btn.innerHTML = orig;
                 if (window.lucide) refreshLucideIcons();
@@ -11137,7 +11151,7 @@
                 btn.disabled = false;
                 btn.className = 'mods-install-btn';
                 btn.innerHTML = '<i data-lucide="download"></i> Установить';
-                if (status) { status.innerHTML = '<i data-lucide="x-circle"></i> ' + e.message; status.style.color = 'rgba(255,100,100,0.9)'; }
+                if (status) { status.innerHTML = '<i data-lucide="x-circle"></i> ' + escapeHtml(e.message); status.style.color = 'rgba(255,100,100,0.9)'; }
             }
         }
 
@@ -11158,11 +11172,11 @@
                 if (item.libraries && item.libraries.trim()) {
                     const libs = item.libraries.split(',').map(s => s.trim()).filter(Boolean);
                     const libCatalog = window._mlLibCatalog || [];
-                    showNotification(`Установка библиотек: ${libs.join(', ')}...`, 'info', 3000);
+                    showNotification(`Установка библиотек: ${escapeHtml(libs.join(', '))}...`, 'info', 3000);
                     let libOk = 0, libSkipped = 0, libErr = [];
                     for (let i = 0; i < libs.length; i++) {
                         const libName = libs[i];
-                        btn.innerHTML = `<i data-lucide="package"></i> ${libName} (${i+1}/${libs.length})`;
+                        btn.innerHTML = `<i data-lucide="package"></i> ${escapeHtml(libName)} (${i+1}/${libs.length})`;
                         if (window.lucide) refreshLucideIcons();
                         const lib = libCatalog.find(l => l.name.toLowerCase() === libName.toLowerCase());
                         if (!lib) { libErr.push(`${libName} (нет в каталоге)`); continue; }
@@ -11173,7 +11187,7 @@
                             else libErr.push(`${libName}: ${(lr && lr.message) || 'ошибка'}`);
                         } catch(e) { libErr.push(`${libName}: ${e.message || e}`); }
                     }
-                    if (libErr.length) showNotification(`Ошибки либ: ${libErr.join('; ')}`, 'error', 6000);
+                    if (libErr.length) showNotification(`Ошибки либ: ${escapeHtml(libErr.join('; '))}`, 'error', 6000);
                     else if (libOk > 0 || libSkipped > 0) {
                         showNotification(`Библиотеки: ${libOk} новых, ${libSkipped} уже стояли`, 'success', 2500);
                     }
@@ -11210,7 +11224,7 @@
                 btn.disabled = false;
                 btn.textContent = originalText;
                 btn.className = 'ml-card-install-btn';
-                showNotification('<i data-lucide="x-circle"></i> ' + e.message, 'error');
+                showNotification('<i data-lucide="x-circle"></i> ' + escapeHtml(e.message), 'error');
             }
         }
 
@@ -11310,12 +11324,12 @@
             const url = _sdImages[_sdImgIdx];
             const cached = _imgCache[url];
             if (cached) {
-                wrap.innerHTML = `<img src="${cached}" alt="preview" onerror="_sdImageFailed('${url.replace(/'/g, "\\'")}')">`;
+                wrap.innerHTML = `<img src="${escapeHtml(cached)}" alt="preview" onerror="_sdImageFailed('${_escJsArg(url)}')">`;
             } else {
                 wrap.innerHTML = '<span style="font-family:\'Montserrat Alternates\';font-size:11px;color:rgba(255,255,255,0.2);"><i data-lucide="loader"></i> Загрузка...</span>';
                 _fetchImageData(url).then(src => {
                     // Пользователь мог переключить фото, пока грузили — не мигаем
-                    if (_sdImages[_sdImgIdx] === url) wrap.innerHTML = `<img src="${src}" alt="preview" onerror="_sdImageFailed('${url.replace(/'/g, "\\'")}')">`;
+                    if (_sdImages[_sdImgIdx] === url) wrap.innerHTML = `<img src="${escapeHtml(src)}" alt="preview" onerror="_sdImageFailed('${_escJsArg(url)}')">`;
                     if (window.lucide) refreshLucideIcons();
                 });
             }
@@ -11549,10 +11563,10 @@
                         const isLibInstalled = installedNames.has(libName.toLowerCase());
                         const chip = document.createElement('span');
                         chip.className = 'sd-lib-chip';
-                        const escName = libName.replace(/'/g, "\\'");
+                        const escName = _escJsArg(libName);
                         chip.innerHTML = `
                             <i data-lucide="package"></i>
-                            <span>${libName}</span>
+                            <span>${escapeHtml(libName)}</span>
                             ${isLibInstalled
                                 ? `<button class="done" disabled><i data-lucide="check"></i> Готово</button>`
                                 : `<button onclick="event.stopPropagation(); installLibFromDetail('${escName}', this)"><i data-lucide="download"></i> Установить</button>`}
@@ -11587,7 +11601,7 @@
             document.getElementById('sdCrumb').textContent =
                 _sdCatalogType === 'other' ? 'Каталог · Другие моды' : 'Каталог · Moonloader';
 
-            document.getElementById('sdIcon').innerHTML   = item.icon || (_sdCatalogType === 'other' ? '<i data-lucide="package"></i>' : '<i data-lucide="moon"></i>');
+            document.getElementById('sdIcon').innerHTML   = escapeHtml(item.icon) || (_sdCatalogType === 'other' ? '<i data-lucide="package"></i>' : '<i data-lucide="moon"></i>');
             document.getElementById('sdName').textContent   = item.name || 'Без названия';
             document.getElementById('sdAuthor').textContent = item.author ? 'от ' + item.author : '';
 
@@ -11691,7 +11705,7 @@
             try {
                 if (window.pywebview && window.pywebview.api.install_library) {
                     const result = await _installLibViaApi(lib);
-                    showNotification(result.success ? '<i data-lucide="check-circle"></i> ' + result.message : '<i data-lucide="x-circle"></i> ' + result.message, result.success ? 'success' : 'error');
+                    showNotification(result.success ? '<i data-lucide="check-circle"></i> ' + escapeHtml(result.message) : '<i data-lucide="x-circle"></i> ' + escapeHtml(result.message), result.success ? 'success' : 'error');
                     if (result.success && btn) {
                         btn.className = 'done';
                         btn.innerHTML = '<i data-lucide="check"></i> Готово';
@@ -11710,7 +11724,7 @@
                 await loadLibrariesTab();
                 if (btn && window.lucide) refreshLucideIcons();
             } catch(e) {
-                showNotification('<i data-lucide="x-circle"></i> ' + e.message, 'error');
+                showNotification('<i data-lucide="x-circle"></i> ' + escapeHtml(e.message), 'error');
                 if (btn) {
                     btn.disabled = false;
                     btn.innerHTML = origText;
@@ -11731,11 +11745,11 @@
                 if (item.libraries && item.libraries.trim()) {
                     const libs = item.libraries.split(',').map(s => s.trim()).filter(Boolean);
                     const libCatalog = window._mlLibCatalog || [];
-                    showNotification(`Установка библиотек: ${libs.join(', ')}...`, 'info', 3000);
+                    showNotification(`Установка библиотек: ${escapeHtml(libs.join(', '))}...`, 'info', 3000);
                     let libOk = 0, libSkipped = 0, libErr = [];
                     for (let i = 0; i < libs.length; i++) {
                         const libName = libs[i];
-                        btn.innerHTML = `<i data-lucide="package"></i> ${libName} (${i+1}/${libs.length})`;
+                        btn.innerHTML = `<i data-lucide="package"></i> ${escapeHtml(libName)} (${i+1}/${libs.length})`;
                         if (window.lucide) refreshLucideIcons();
                         const lib = libCatalog.find(l => l.name.toLowerCase() === libName.toLowerCase());
                         if (!lib) { libErr.push(`${libName} (нет в каталоге)`); continue; }
@@ -11746,7 +11760,7 @@
                             else libErr.push(`${libName}: ${(lr && lr.message) || 'ошибка'}`);
                         } catch(e) { libErr.push(`${libName}: ${e.message || e}`); }
                     }
-                    if (libErr.length) showNotification(`Ошибки либ: ${libErr.join('; ')}`, 'error', 6000);
+                    if (libErr.length) showNotification(`Ошибки либ: ${escapeHtml(libErr.join('; '))}`, 'error', 6000);
                     else if (libOk > 0 || libSkipped > 0) {
                         showNotification(`Библиотеки: ${libOk} новых, ${libSkipped} уже стояли`, 'success', 2500);
                     }
@@ -11761,12 +11775,12 @@
                 if (fileName) window._installedScriptFiles.add(fileName);
                 _updateDetailButtons(idx);
                 _syncCatalogCard('mlInstBtn_' + idx, 'mlInstStatus_' + idx, true);
-                showNotification('Установлен: ' + item.name, 'success');
+                showNotification('Установлен: ' + escapeHtml(item.name), 'success');
                 window._libLoaded = false;
                 await loadLibrariesTab();
             } catch(e) {
                 btn.disabled = false; btn.innerHTML = '<i data-lucide="download"></i> Установить'; btn.className = 'sd-install-btn';
-                showNotification('Ошибка: ' + e.message, 'error');
+                showNotification('Ошибка: ' + escapeHtml(e.message), 'error');
             }
         }
 
@@ -11786,10 +11800,10 @@
                 window._installedOtherFiles.add(_othersInstalledKey(item));
                 _updateDetailButtons(idx);
                 _syncCatalogCard('otherInstBtn_' + idx, 'otherInstStatus_' + idx, true);
-                showNotification('Установлен: ' + item.name, 'success');
+                showNotification('Установлен: ' + escapeHtml(item.name), 'success');
             } catch(e) {
                 btn.disabled = false; btn.innerHTML = '<i data-lucide="download"></i> Установить'; btn.className = 'sd-install-btn';
-                showNotification('Ошибка: ' + e.message, 'error');
+                showNotification('Ошибка: ' + escapeHtml(e.message), 'error');
             }
         }
 
@@ -11809,13 +11823,13 @@
                 if (fileName) window._installedScriptFiles.delete(fileName);
                 _updateDetailButtons(idx);
                 _syncCatalogCard('mlInstBtn_' + idx, 'mlInstStatus_' + idx, false);
-                showNotification('Удалён: ' + item.name, 'success');
+                showNotification('Удалён: ' + escapeHtml(item.name), 'success');
                 computeRequiredLibs();
                 renderLibRequired();
                 renderLibCatalog();
             } catch(e) {
                 btn.disabled = false; btn.innerHTML = '<i data-lucide="trash-2"></i> Удалить';
-                showNotification('Ошибка: ' + e.message, 'error');
+                showNotification('Ошибка: ' + escapeHtml(e.message), 'error');
             }
         }
 
@@ -11833,10 +11847,10 @@
                 window._installedOtherFiles.delete(_othersInstalledKey(item));
                 _updateDetailButtons(idx);
                 _syncCatalogCard('otherInstBtn_' + idx, 'otherInstStatus_' + idx, false);
-                showNotification('Удалён: ' + item.name, 'success');
+                showNotification('Удалён: ' + escapeHtml(item.name), 'success');
             } catch(e) {
                 btn.disabled = false; btn.innerHTML = '<i data-lucide="trash-2"></i> Удалить';
-                showNotification('Ошибка: ' + e.message, 'error');
+                showNotification('Ошибка: ' + escapeHtml(e.message), 'error');
             }
         }
 
@@ -11888,7 +11902,7 @@
             const allDests = [...new Set([...destOrder, ...Object.keys(groups)])].filter(d => groups[d]);
 
             allDests.forEach(dest => {
-                const label = DEST_LABELS[dest] || ('<i data-lucide="folder"></i> ' + dest);
+                const label = DEST_LABELS[dest] || ('<i data-lucide="folder"></i> ' + escapeHtml(dest));
                 const hdr = document.createElement('div');
                 hdr.style.cssText = 'font-family:"Montserrat Alternates";font-size:11px;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:0.7px;margin-top:10px;padding-bottom:4px;border-bottom:1px solid rgba(255,255,255,0.06);flex-shrink:0;';
                 hdr.innerHTML = label;
@@ -11903,7 +11917,7 @@
                     card.addEventListener('mouseenter', () => card.style.background = 'rgba(255,255,255,0.06)');
                     card.addEventListener('mouseleave', () => card.style.background = '');
                     card.innerHTML = `
-                        <span class="mods-item-icon" style="font-size:20px;margin-top:2px;">${item.icon || '<i data-lucide="package"></i>'}</span>
+                        <span class="mods-item-icon" style="font-size:20px;margin-top:2px;">${escapeHtml(item.icon) || '<i data-lucide="package"></i>'}</span>
                         <div class="mods-item-info">
                             <div class="mods-item-name">${escapeHtml(item.name)}</div>
                             <div class="mods-item-sub" style="margin-bottom:4px;">от ${escapeHtml(item.author || '?')} · ${escapeHtml(item.tag || '')}</div>
@@ -11952,10 +11966,10 @@
                 } else { demoGuard('install_other_file'); await new Promise(r => setTimeout(r, 800)); }
                 window._installedOtherFiles.add(_othersInstalledKey(item));
                 _syncCatalogCard('otherInstBtn_' + idx, 'otherInstStatus_' + idx, true);
-                showNotification('Установлен: ' + item.name, 'success');
+                showNotification('Установлен: ' + escapeHtml(item.name), 'success');
             } catch(e) {
                 btn.disabled = false; btn.className = 'mods-install-btn'; btn.innerHTML = '<i data-lucide="download"></i> Установить';
-                if (status) { status.innerHTML = '<i data-lucide="x-circle"></i> ' + e.message; status.style.color = 'rgba(255,100,100,0.8)'; }
+                if (status) { status.innerHTML = '<i data-lucide="x-circle"></i> ' + escapeHtml(e.message); status.style.color = 'rgba(255,100,100,0.8)'; }
             }
         }
         // ---- ПРЕСЕТЫ ARIZONAPATCHES ----
@@ -12152,7 +12166,7 @@
                 } else if (data.stage === 'error') {
                     document.getElementById('patchInstallProgress').style.display = 'none';
                     document.getElementById('patchStatusAlert').style.display = 'block';
-                    showNotification('Ошибка: ' + data.message, 'error');
+                    showNotification('Ошибка: ' + escapeHtml(data.message), 'error');
                 }
             };
 
@@ -12162,7 +12176,7 @@
                     if (!result.success) {
                         document.getElementById('patchInstallProgress').style.display = 'none';
                         document.getElementById('patchStatusAlert').style.display = 'block';
-                        showNotification('Ошибка: ' + apiMsg(result.message), 'error');
+                        showNotification('Ошибка: ' + escapeHtml(apiMsg(result.message)), 'error');
                     }
                 } else {
                     throw new Error('API недоступно');
@@ -12257,7 +12271,7 @@
                 card.className = 'mods-card';
                 card.innerHTML = `
                     <div class="mods-card-header">
-                        <span class="mods-card-icon">${preset.icon || '<i data-lucide="shield"></i>'}</span>
+                        <span class="mods-card-icon">${escapeHtml(preset.icon) || '<i data-lucide="shield"></i>'}</span>
                         <div class="mods-card-meta">
                             <div class="mods-card-name">${escapeHtml(preset.name)}</div>
                             <div class="mods-card-author">от ${escapeHtml(preset.author || 'Community')}</div>
@@ -12477,7 +12491,7 @@
                     wrap.style.borderColor = 'rgba(255, 80, 80, 0.55)';
                     label.textContent = '✕';
                     label.style.fontSize = '16px';
-                    showNotification('Ошибка: ' + data.message, 'error');
+                    showNotification('Ошибка: ' + escapeHtml(data.message), 'error');
                     setTimeout(() => {
                         resetPatchHandle();
                         _updateDownloading = false;
@@ -12738,7 +12752,7 @@
                     document.getElementById('installStartBtn').style.display = '';
                     document.getElementById('installStartBtn').innerHTML = '<i data-lucide="refresh-cw"></i> Повторить';
                     document.getElementById('installCloseBtn').style.display = '';
-                    showNotification('Ошибка: ' + data.message, 'error');
+                    showNotification('Ошибка: ' + escapeHtml(data.message), 'error');
                     _installModalProgressCb = null;
                 }
             };
@@ -13278,7 +13292,7 @@
             }
             const result = await window.pywebview.api.preview_patches_backup(filename).catch(e => ({ success: false, message: e.message }));
             if (!result.success) {
-                showNotification('Ошибка: ' + apiMsg(result.message), 'error');
+                showNotification('Ошибка: ' + escapeHtml(apiMsg(result.message)), 'error');
                 return;
             }
             const meta = _backupTypeMeta(result.type);
@@ -13644,7 +13658,7 @@
                         applyLauncherSettings();
                         renderWallpaperGrid();
                     } else if (result.message !== 'Отменено') {
-                        showNotification('Ошибка: ' + apiMsg(result.message), 'error');
+                        showNotification('Ошибка: ' + escapeHtml(apiMsg(result.message)), 'error');
                     }
                 } else {
                     showNotification('Функция доступна только в приложении', 'error');
@@ -14159,12 +14173,12 @@
                     if (pctEl) pctEl.textContent = (data.progress || 0) + '%';
                     if (bar) bar.style.width = Math.min(100, data.progress || 0) + '%';
                 } else if (data.stage === 'done') {
-                    showNotification('<i data-lucide="check-circle"></i> ' + (data.message || 'Готово'), 'success');
+                    showNotification('<i data-lucide="check-circle"></i> ' + escapeHtml(data.message || 'Готово'), 'success');
                     wrap.style.display = 'none';
                     if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
                     _installModalProgressCb = null;
                 } else if (data.stage === 'error') {
-                    showNotification('Ошибка: ' + (data.message || 'неизвестно'), 'error');
+                    showNotification('Ошибка: ' + escapeHtml(data.message || 'неизвестно'), 'error');
                     wrap.style.display = 'none';
                     _installModalProgressCb = null;
                 }
@@ -16147,13 +16161,13 @@
                     } else if (data.stage === 'done') {
                         _installModalProgressCb = null;
                         _flInstalling = false;
-                        showNotification('<i data-lucide="check-circle"></i> ' + (data.message || 'Игра установлена'), 'success');
+                        showNotification('<i data-lucide="check-circle"></i> ' + escapeHtml(data.message || 'Игра установлена'), 'success');
                         if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
                         _flRefreshGameCard();
                     } else if (data.stage === 'error') {
                         _installModalProgressCb = null;
                         _flInstalling = false;
-                        showNotification('Ошибка: ' + (data.message || 'неизвестно'), 'error');
+                        showNotification('Ошибка: ' + escapeHtml(data.message || 'неизвестно'), 'error');
                         _flRefreshGameCard();
                     }
                 };
@@ -16554,18 +16568,18 @@
                     ? '<span class="cso-item-badge invisible">невидимый</span>'
                     : '<span class="cso-item-badge dist-only">дистанция</span>';
                 const params = hasMove
-                    ? `dist: ${item.dist} · move: ${item.xmove}, ${item.ymove}, ${item.zmove}`
-                    : `dist: ${item.dist}`;
+                    ? `dist: ${escapeHtml(item.dist)} · move: ${escapeHtml(item.xmove)}, ${escapeHtml(item.ymove)}, ${escapeHtml(item.zmove)}`
+                    : `dist: ${escapeHtml(item.dist)}`;
                 return `
                 <div class="cso-item" onclick="_csoOpenDetail(${idx})">
                     <div class="cso-item-thumb" id="csothumb_${idx}">
-                        <img src="${CSO_IMG_BASE}${item.model}.png"
-                             onerror="_csoImgFail(this, ${item.model})"
+                        <img src="${CSO_IMG_BASE}${escapeHtml(item.model)}.png"
+                             onerror="_csoImgFail(this, '${_escJsArg(item.model)}')"
                              loading="lazy"
                              style="width:100%;height:100%;object-fit:cover;">
                     </div>
                     <div class="cso-item-info">
-                        <div class="cso-item-model">Model #${item.model}</div>
+                        <div class="cso-item-model">Model #${escapeHtml(item.model)}</div>
                         <div class="cso-item-params">${params}</div>
                     </div>
                     ${badge}
@@ -16578,7 +16592,7 @@
 
         function _csoImgFail(img, model) {
             const thumb = img.parentNode;
-            thumb.innerHTML = `<div class="cso-item-thumb-fallback">#${model}</div>`;
+            thumb.innerHTML = `<div class="cso-item-thumb-fallback">#${escapeHtml(model)}</div>`;
         }
 
         function _csoOpenDetail(idx) {
@@ -16601,18 +16615,18 @@
             document.getElementById('csoBody').innerHTML = `
             <div class="cso-detail">
                 <div class="cso-detail-preview" id="csoDetailPreview">
-                    <img src="${CSO_IMG_BASE}${item.model}.png"
-                         onerror="_csoDetailImgFail(this, ${item.model})"
+                    <img src="${CSO_IMG_BASE}${escapeHtml(item.model)}.png"
+                         onerror="_csoDetailImgFail(this, '${_escJsArg(item.model)}')"
                          style="max-width:100%;max-height:100%;object-fit:contain;">
                 </div>
                 <div class="cso-detail-fields">
                     <div class="cso-field full-width">
                         <div class="cso-field-label">Model ID</div>
-                        <input class="cso-field-input" id="csoFModel" type="number" value="${item.model}" min="0">
+                        <input class="cso-field-input" id="csoFModel" type="number" value="${escapeHtml(item.model)}" min="0">
                     </div>
                     <div class="cso-field full-width">
                         <div class="cso-field-label">dist — дистанция загрузки</div>
-                        <input class="cso-field-input" id="csoFDist" type="number" step="any" value="${item.dist}">
+                        <input class="cso-field-input" id="csoFDist" type="number" step="any" value="${escapeHtml(item.dist)}">
                     </div>
                     <label class="cso-move-toggle full-width" style="grid-column:1/-1;">
                         <input type="checkbox" id="csoFMoveEnabled" ${moveChecked} onchange="_csoToggleMove()">
@@ -16622,15 +16636,15 @@
                     <div class="cso-move-fields ${moveVisible}" id="csoMoveFields">
                         <div class="cso-field">
                             <div class="cso-field-label">xmove</div>
-                            <input class="cso-field-input" id="csoFX" type="number" value="${mx}">
+                            <input class="cso-field-input" id="csoFX" type="number" value="${escapeHtml(mx)}">
                         </div>
                         <div class="cso-field">
                             <div class="cso-field-label">ymove</div>
-                            <input class="cso-field-input" id="csoFY" type="number" value="${my}">
+                            <input class="cso-field-input" id="csoFY" type="number" value="${escapeHtml(my)}">
                         </div>
                         <div class="cso-field full-width">
                             <div class="cso-field-label">zmove</div>
-                            <input class="cso-field-input" id="csoFZ" type="number" value="${mz}">
+                            <input class="cso-field-input" id="csoFZ" type="number" value="${escapeHtml(mz)}">
                         </div>
                     </div>
                 </div>
@@ -16652,7 +16666,7 @@
             const preview = document.getElementById('csoDetailPreview');
             if (preview) preview.innerHTML = `
                 <div class="cso-detail-preview-placeholder">
-                    <div class="cso-ph-id">#${model}</div>
+                    <div class="cso-ph-id">#${escapeHtml(model)}</div>
                     <div class="cso-ph-label">Превью недоступно</div>
                 </div>`;
         }
