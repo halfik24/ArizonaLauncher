@@ -894,6 +894,24 @@ fn icon_mime(ext: &str) -> &'static str {
     }
 }
 
+/// Безопасное имя файла кэша иконки из `number` сервера.
+/// `number` приходит извне (каталог серверов) и подставляется в имя файла,
+/// поэтому допускаем только ASCII-буквы/цифры/`-`/`_` и ограничиваем длину —
+/// это исключает path traversal (`../`), разделители путей и спецсимволы ФС.
+/// None — id недопустим, кэшировать такой сервер нельзя (фоллбэк покажет номер).
+fn icon_cache_stem(server_id: &str) -> Option<String> {
+    if server_id.is_empty() || server_id.len() > 64 {
+        return None;
+    }
+    if !server_id
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
+        return None;
+    }
+    Some(format!("server_{}", server_id))
+}
+
 /// Python `_download_icon`: читает из кэша (b64 или исходный файл) и возвращает data: URI.
 /// Ничего не качает — скачивание делает prefetch в фоне.
 fn icon_data_uri(icon_url: &str, server_id: &str) -> String {
@@ -904,7 +922,10 @@ fn icon_data_uri(icon_url: &str, server_id: &str) -> String {
     let ext = icon_file_ext(icon_url);
 
     // 1) Готовый base64 data URI
-    let b64_path = cache.join(format!("server_{}.b64", server_id));
+    let Some(stem) = icon_cache_stem(server_id) else {
+        return String::new(); // Недопустимый id — не выходим за пределы кэша
+    };
+    let b64_path = cache.join(format!("{}.b64", stem));
     if let Ok(s) = std::fs::read_to_string(&b64_path) {
         let s = s.trim().to_string();
         if !s.is_empty() {
@@ -913,7 +934,7 @@ fn icon_data_uri(icon_url: &str, server_id: &str) -> String {
     }
 
     // 2) Локальный файл — кодируем и сохраняем data URI
-    let local_path = cache.join(format!("server_{}{}", server_id, ext));
+    let local_path = cache.join(format!("{}{}", stem, ext));
     if let Ok(bytes) = std::fs::read(&local_path) {
         if !bytes.is_empty() {
             let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
@@ -946,9 +967,13 @@ async fn prefetch_icons(servers: Vec<serde_json::Value>) {
         if server_id.is_empty() {
             continue;
         }
+        // Конфиним имя файла кэша к строгому набору символов
+        let Some(stem) = icon_cache_stem(&server_id) else {
+            continue;
+        };
 
         let local_path =
-            icon_cache_dir().join(format!("server_{}{}", server_id, icon_file_ext(icon_url)));
+            icon_cache_dir().join(format!("{}{}", stem, icon_file_ext(icon_url)));
         if let Ok(md) = std::fs::metadata(&local_path) {
             if md.len() > 0 {
                 continue;
@@ -1618,15 +1643,92 @@ pub async fn check_patches_available_api(version: Option<String>) -> Result<serd
     }
 }
 
-/// Скачивать картинку по URL и отдавать как data: URL в base64
+/// SSRF-защита для картинок: адрес обязан быть http/https и публичным —
+/// без loopback/приватных/Link-local/резервных диапазонов (как ограничение
+/// назначения в `http_request`, но для произвольных URL каталога).
+fn is_forbidden_image_host(host: &str) -> bool {
+    let h = host.trim().trim_end_matches('.').to_ascii_lowercase();
+    // Url::host_str() отдаёт IPv6 в квадратных скобках — снимаем их для парсинга.
+    let h = h
+        .strip_prefix('[')
+        .and_then(|s| s.strip_suffix(']'))
+        .unwrap_or(&h)
+        .to_string();
+    if h == "localhost" || h.ends_with(".localhost") || h.ends_with(".local") || h.ends_with(".internal") {
+        return true;
+    }
+    let ip: std::net::IpAddr = match h.parse() {
+        Ok(ip) => ip,
+        // Не IP — считаем доменом, ограничиваем только схемой.
+        Err(_) => return false,
+    };
+    match ip {
+        std::net::IpAddr::V4(v4) => {
+            let o = v4.octets();
+            v4.is_loopback()          // 127.0.0.0/8
+                || v4.is_private()     // 10/8, 172.16/12, 192.168/16
+                || v4.is_link_local()  // 169.254/16 (metadata AWS/GCP)
+                || v4.is_unspecified() // 0.0.0.0
+                || o[0] == 0           // 0.0.0.0/8
+                || (o[0] == 100 && (o[1] & 0xc0) == 64) // 100.64/10 (CGNAT)
+                || (o[0] == 192 && o[1] == 0 && o[2] == 0) // 192.0.0.0/24
+                || (o[0] == 198 && (o[1] & 0xfe) == 18)  // 198.18/15 (benchmark)
+        }
+        std::net::IpAddr::V6(v6) => {
+            let b = v6.octets();
+            // Разрешаем только глобальный unicast 2000::/3; loopback, unspecified,
+            // unique-local (fc00::/7), link-local (fe80::/10), multicast и прочие
+            // специальные диапазоны — запрещаем.
+            let is_global_unicast = b[0] & 0xe0 == 0x20;
+            !is_global_unicast
+                || v6.to_ipv4_mapped()
+                    .map(|v4| is_forbidden_image_host(&v4.to_string()))
+                    .unwrap_or(false)
+        }
+    }
+}
+
+/// Проверка URL картинки перед запросом: только http/https и не запрещённый хост.
+fn check_image_url(url: &str) -> Result<(), String> {
+    let parsed = reqwest::Url::parse(url).map_err(|_| "Недопустимый адрес".to_string())?;
+    match parsed.scheme() {
+        "http" | "https" => {}
+        _ => return Err("Недопустимый адрес".to_string()),
+    }
+    let host = parsed.host_str().ok_or_else(|| "Недопустимый адрес".to_string())?;
+    if is_forbidden_image_host(host) {
+        return Err("Недопустимый адрес".to_string());
+    }
+    Ok(())
+}
+
+/// Лимит размера скачиваемой картинки (защита от OOM на data: URL).
+const MAX_IMAGE_BYTES: u64 = 10 * 1024 * 1024; // 10 MB
+
+/// Скачивать картинку по URL и отдавать как data: URL в base64.
+/// SSRF-защита: схема только http/https, хост не из приватных диапазонов,
+/// ответ читается с лимитом размера.
 #[tauri::command]
 pub async fn fetch_image_as_base64(url: String) -> Result<serde_json::Value, String> {
-    let resp = match reqwest::get(&url).await {
+    if let Err(msg) = check_image_url(&url) {
+        return Ok(serde_json::json!({"success": false, "message": msg}));
+    }
+    let client = match reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+    {
+        Ok(c) => c,
+        Err(e) => return Ok(serde_json::json!({"success": false, "message": e.to_string()})),
+    };
+    let resp = match client.get(&url).send().await {
         Ok(r) => r,
         Err(e) => return Ok(serde_json::json!({"success": false, "message": e.to_string()})),
     };
     if !resp.status().is_success() {
         return Ok(serde_json::json!({"success": false, "message": format!("HTTP {}", resp.status())}));
+    }
+    if resp.content_length().unwrap_or(0) > MAX_IMAGE_BYTES {
+        return Ok(serde_json::json!({"success": false, "message": "Файл слишком большой"}));
     }
     let mime = resp
         .headers()
@@ -1634,10 +1736,20 @@ pub async fn fetch_image_as_base64(url: String) -> Result<serde_json::Value, Str
         .and_then(|v| v.to_str().ok())
         .unwrap_or("image/png")
         .to_string();
-    let bytes = match resp.bytes().await {
-        Ok(b) => b,
-        Err(e) => return Ok(serde_json::json!({"success": false, "message": e.to_string()})),
-    };
+    let mut resp = resp;
+    let mut bytes: Vec<u8> = Vec::new();
+    loop {
+        match resp.chunk().await {
+            Ok(Some(chunk)) => {
+                if bytes.len() as u64 + chunk.len() as u64 > MAX_IMAGE_BYTES {
+                    return Ok(serde_json::json!({"success": false, "message": "Файл слишком большой"}));
+                }
+                bytes.extend_from_slice(&chunk);
+            }
+            Ok(None) => break,
+            Err(e) => return Ok(serde_json::json!({"success": false, "message": e.to_string()})),
+        }
+    }
     use base64::Engine;
     let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
     Ok(serde_json::json!({"success": true, "data_url": format!("data:{};base64,{}", mime, b64)}))
@@ -5775,5 +5887,61 @@ mod game_target_tests {
     #[test]
     fn empty_is_none() {
         assert!(resolve_game_target("").is_none());
+    }
+}
+
+#[cfg(test)]
+mod icon_cache_tests {
+    use super::*;
+
+    #[test]
+    fn stem_accepts_plain_number() {
+        assert_eq!(icon_cache_stem("3").as_deref(), Some("server_3"));
+        assert_eq!(icon_cache_stem("srv-01_a").as_deref(), Some("server_srv-01_a"));
+    }
+
+    #[test]
+    fn stem_rejects_traversal_and_separators() {
+        assert!(icon_cache_stem("../evil").is_none());
+        assert!(icon_cache_stem("..\\evil").is_none());
+        assert!(icon_cache_stem("a/b").is_none());
+        assert!(icon_cache_stem("a\\b").is_none());
+        assert!(icon_cache_stem("C:evil").is_none());
+        assert!(icon_cache_stem("").is_none());
+        assert!(icon_cache_stem(&"x".repeat(65)).is_none());
+    }
+}
+
+#[cfg(test)]
+mod image_url_tests {
+    use super::*;
+
+    #[test]
+    fn allows_public_http() {
+        assert!(check_image_url("https://example.com/icon.png").is_ok());
+        assert!(check_image_url("http://cdn.example.org:8080/i.webp").is_ok());
+    }
+
+    #[test]
+    fn rejects_non_http_schemes() {
+        assert!(check_image_url("file:///C:/Windows/system32/cmd.exe").is_err());
+        assert!(check_image_url("ftp://example.com/x.png").is_err());
+        assert!(check_image_url("gopher://example.com/").is_err());
+        assert!(check_image_url("not a url").is_err());
+    }
+
+    #[test]
+    fn rejects_loopback_and_private_hosts() {
+        assert!(check_image_url("http://127.0.0.1/x.png").is_err());
+        assert!(check_image_url("http://localhost/x.png").is_err());
+        assert!(check_image_url("http://foo.localhost/x.png").is_err());
+        assert!(check_image_url("http://10.0.0.5/x.png").is_err());
+        assert!(check_image_url("http://172.16.0.1/x.png").is_err());
+        assert!(check_image_url("http://192.168.1.1/x.png").is_err());
+        assert!(check_image_url("http://169.254.169.254/latest/meta-data").is_err());
+        assert!(check_image_url("http://[::1]/x.png").is_err());
+        assert!(check_image_url("http://[fd00::1]/x.png").is_err());
+        assert!(check_image_url("http://[fe80::1]/x.png").is_err());
+        assert!(check_image_url("http://[::ffff:192.168.0.1]/x.png").is_err());
     }
 }

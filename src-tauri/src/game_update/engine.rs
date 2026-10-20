@@ -1,7 +1,8 @@
 //! Движок: манифест -> план -> применение (качание/даты/папки/удаление).
 //! Асинхронный (reqwest + tokio), события шлёт в колбэк, отмена — флагом.
 
-use std::fs;use std::path::PathBuf;
+use std::fs;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
@@ -69,6 +70,28 @@ const FREE_SPACE_MARGIN: u64 = 268_435_456; // 256 MB
 
 pub fn gb(b: u64) -> f64 {
     b as f64 / 1_073_741_824.0
+}
+
+/// Соединяет корень установки с rel-путём из манифеста. Защита от path
+/// traversal (как в extract_patches_zip): отклоняем абсолютные пути, UNC-начала
+/// (`\\`), префиксы дисков (`C:`) и любые компоненты `..` после нормализации
+/// сепараторов; итог обязан остаться внутри корня (`starts_with` сравнивает
+/// компоненты, а не подстроки).
+fn confined_join(root: &Path, rel: &str) -> anyhow::Result<PathBuf> {
+    let norm = rel.replace('\\', "/");
+    if norm.starts_with('/') {
+        bail!("недопустимый путь в манифесте: {rel}");
+    }
+    for seg in norm.split('/') {
+        if seg == ".." || seg.contains(':') {
+            bail!("недопустимый путь в манифесте: {rel}");
+        }
+    }
+    let path = root.join(&norm);
+    if !path.starts_with(root) {
+        bail!("путь выходит за пределы папки игры: {rel}");
+    }
+    Ok(path)
 }
 
 /// Манифест + план. Общая часть для `check` и выполнения.
@@ -213,7 +236,8 @@ pub async fn run(
             bail!("отменено пользователем");
         }
         let rel = &item.entry.rel;
-        let path = job.target.join(rel);
+        // Конфинем rel к директории обновления (защита от path traversal)
+        let path = confined_join(&job.target, rel)?;
 
         match item.action {
             Action::Mkdir => {
@@ -328,4 +352,42 @@ pub async fn run(
     );
     log(summary.clone());
     Ok(summary)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    #[test]
+    fn confined_join_accepts_normal_rel() {
+        let root = Path::new("C:/game");
+        let p = confined_join(root, "models/trees.img").unwrap();
+        assert!(p.starts_with(root));
+        assert!(p.ends_with(Path::new("models").join("trees.img")));
+    }
+
+    #[test]
+    fn confined_join_rejects_traversal() {
+        let root = Path::new("C:/game");
+        assert!(confined_join(root, "../evil.txt").is_err());
+        assert!(confined_join(root, "a/../../b.txt").is_err());
+        assert!(confined_join(root, "models\\..\\..\\b.txt").is_err());
+        assert!(confined_join(root, "..\\evil.txt").is_err());
+    }
+
+    #[test]
+    fn confined_join_rejects_absolute_and_prefixes() {
+        let root = Path::new("C:/game");
+        assert!(confined_join(root, "/etc/passwd").is_err());
+        assert!(confined_join(root, "C:/Windows/system32").is_err());
+        assert!(confined_join(root, "\\\\server\\share\\x").is_err());
+    }
+
+    #[test]
+    fn confined_join_rejects_colon_in_segment() {
+        let root = Path::new("C:/game");
+        assert!(confined_join(root, "a:b/c").is_err());
+        assert!(confined_join(root, "dir/ads:stream").is_err());
+    }
 }
