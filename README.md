@@ -4,7 +4,7 @@
 [![Rust](https://img.shields.io/badge/Rust-1.70+-orange.svg)](https://www.rust-lang.org/)
 [![Tauri](https://img.shields.io/badge/Tauri-2-green.svg)](https://tauri.app)
 [![Version](https://img.shields.io/badge/version-2.0.0%20rc1-blue.svg)](https://github.com/halfik24/ArizonaLauncher/releases)
-[![Status](https://img.shields.io/badge/status-RC-brightgreen.svg)](https://github.com/halfik24/ArizonaLauncher)
+[![Status](https://img.shields.io/badge/status-WIP-brightgreen.svg)](https://github.com/halfik24/ArizonaLauncher)
 
 > Современный лаунчер для Arizona RP на Rust + Tauri 2. Полная переработка v1 (Python): быстрый запуск, нативный интерфейс, установщик без прав администратора.
 
@@ -18,7 +18,18 @@
 **Требования:** Windows 10/11 x64, WebView2 (встроен в Windows 11; для 10 ставится автоматически с установщиком).
 
 **Поддерживается только лаунчер Air v8** (`ArizonaLauncher8.0_byAIR.exe`) — единственная стабильная версия.
+<details>
+<summary><b>Поддержать разработку</b></summary>
 
+Хотя лаунчер распространяется бесплатно и с открытым исходным кодом (Open Source), разработка требует времени и ресурсов. Любая финансовая поддержка помогает мне откладывать деньги на оборудование и дальнейшее развитие проекта.
+
+**Реквизиты для донатов:**
+
+1. **Bitcoin (BTC):** `bc1pfk8stmu8ttutwvcegg8hkdaaqfs3t83wrlc4fnv7a934mac59m6qnrx5v3`
+2. **Ethereum (ETH):** `0x9a7f1a6f1E2F18c6493aB1B51A742aB161507Ba3`
+3. **Solana (SOL):** `HAkjcc35TKD4txDjtQ75jZBPk4eNtecGtAW45a78SCeN`
+
+</details>
 <details>
 <summary><b>Запуск игры</b></summary>
 
