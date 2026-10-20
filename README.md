@@ -3,7 +3,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Rust](https://img.shields.io/badge/Rust-1.70+-orange.svg)](https://www.rust-lang.org/)
 [![Tauri](https://img.shields.io/badge/Tauri-2-green.svg)](https://tauri.app)
-[![Version](https://img.shields.io/badge/version-2.0.0%20rc1-blue.svg)](https://github.com/halfik24/ArizonaLauncher/releases)
+[![Version](https://img.shields.io/badge/version-2.0.0--beta-blue.svg)](https://github.com/halfik24/ArizonaLauncher/releases)
 [![Status](https://img.shields.io/badge/status-WIP-brightgreen.svg)](https://github.com/halfik24/ArizonaLauncher)
 
 > Современный лаунчер для Arizona RP на Rust + Tauri 2. Полная переработка v1 (Python): быстрый запуск, нативный интерфейс, установщик без прав администратора.
@@ -11,7 +11,7 @@
 ## Установка
 
 1. Откройте [Releases](https://github.com/halfik24/ArizonaLauncher/releases)
-2. Скачайте `Arizona RP Launcher_2.0.0-rc1_x64-setup.exe`
+2. Скачайте установщик `Arizona RP Launcher_2.0.0-beta.<build>_x64-setup.exe` — `<build>` это номер сборки по дате и времени, например `20261020.1435`
 3. Запустите — установка занимает пару секунд, **права администратора не нужны**
 4. При первом запуске откроется мастер настройки (путь к игре, обои)
 

@@ -119,7 +119,7 @@ dependencies = [
 
 [[package]]
 name = "arizona-launcher"
-version = "2.0.0-rc1-new"
+version = "2.0.0-beta"
 dependencies = [
  "anyhow",
  "base64 0.22.1",

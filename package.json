@@ -1,11 +1,13 @@
 {
   "name": "arizona-launcher",
-  "version": "2.0.0-rc1-new",
+  "version": "2.0.0-beta",
   "private": true,
   "scripts": {
     "tauri": "tauri",
     "dev": "tauri dev",
-    "build": "tauri build"
+    "build": "node tools/build.js",
+    "set-version": "node tools/set-version.js",
+    "set-version:build": "node tools/set-version.js --build"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2"

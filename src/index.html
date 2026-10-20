@@ -2,6 +2,7 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
+    <script src="version.js"></script>
     <script src="tauri-bridge.js"></script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Arizona RP Launcher</title>
@@ -7005,7 +7006,7 @@
                         <span>Launcher</span>
                         <div class="version-stable">
                             <span class="vs-arrow">ver</span>
-                            <span class="ver-num">v2.0.0 rc1</span>
+                            <span class="ver-num" data-appver></span>
                         </div>
             </div>
         </div>
@@ -7755,7 +7756,7 @@
                         <div class="about-logo" id="aboutLogo" title="Приветственный экран"
                              onclick="openFirstLaunch()"><img src="app-icon.png" alt="Arizona RP Launcher"></div>
                         <div class="about-name">Arizona RP Launcher</div>
-                        <div class="about-version">v2.0.0 rc1</div>
+                        <div class="about-version" data-appver></div>
                         <div class="s-card-desc" style="text-align:center;">
                             Лаунчер для Arizona RP: патчи, параметры запуска, скрипты Moonloader и бэкапы конфига.
                         </div>
@@ -7814,7 +7815,7 @@
                         <div class="debug-section-title"><i data-lucide="package"></i> Лаунчер</div>
                         <div class="debug-row">
                             <span class="debug-label">Версия приложения</span>
-                            <span class="debug-value" id="dbgAppVersion">v2.0.0 rc1</span>
+                            <span class="debug-value" id="dbgAppVersion" data-appver></span>
                         </div>
                         <div class="debug-row">
                             <span class="debug-label">Конфиг</span>
@@ -8439,6 +8440,26 @@
     </div>
 
     <script>
+        // ── Версия приложения ─────────────────────────────────────────────
+        // Единственный источник — window.__APP_VERSION__ из src/version.js,
+        // который генерирует tools/set-version.js (база + номер сборки по дате
+        // и времени). Захардкоженных строк версии в разметке быть не должно.
+        const APP_VERSION = window.__APP_VERSION__ || '';
+
+        /** Строка версии для интерфейса ("v2.0.0-beta.20261020.1435"). */
+        function appVersion() { return APP_VERSION; }
+
+        /** Проставляет версию во все статичные узлы с [data-appver]. */
+        function fillAppVersionNodes() {
+            if (!APP_VERSION) return;
+            document.querySelectorAll('[data-appver]').forEach(function (el) {
+                el.textContent = APP_VERSION;
+            });
+        }
+        // Узлы с [data-appver] стоят выше этого скрипта, поэтому заполняем сразу
+        // (без ожидания DOMContentLoaded — иначе пустой текст успевает мигнуть).
+        fillAppVersionNodes();
+
         // Глобальные переменные
 
         const nicknameInput = document.getElementById('nicknameInput');
@@ -15733,7 +15754,7 @@
                         _setDebugEl('dbgPythonVersion',  d.python_version  || '—');
                         
                         // Лаунчер
-                        _setDebugEl('dbgAppVersion',     d.app_version     || 'v2.0.0 rc1');
+                        _setDebugEl('dbgAppVersion',     d.app_version     || appVersion());
                         _setDebugEl('dbgConfigPath',     d.config_path     || '—');
                         _setDebugEl('dbgDocsPath',       d.docs_path       || '—');
                         
@@ -15765,7 +15786,7 @@
             _setDebugEl('dbgOsVersion',         'Доступно только в приложении');
             _setDebugEl('dbgArchitecture',      'Доступно только в приложении');
             _setDebugEl('dbgPythonVersion',     'Доступно только в приложении');
-            _setDebugEl('dbgAppVersion',        'v2.0.0 rc1');
+            _setDebugEl('dbgAppVersion',        appVersion());
             _setDebugEl('dbgConfigPath',        'Доступно только в приложении');
             _setDebugEl('dbgDocsPath',          'Доступно только в приложении');
             _setDebugEl('dbgGamePath',          'Доступно только в приложении');
@@ -16260,7 +16281,7 @@
                     <div class="fl-welcome-ver">
                         Arizona RP Launcher · 
                         <div class="version-stable">
-                            <span class="version-stable-text">v2.0.0 rc1</span>
+                            <span class="version-stable-text">${appVersion()}</span>
                         </div>
                     </div>
                     <div class="fl-welcome-desc">Неофициальный лаунчер с расширенными возможностями: профили, темы, моды и многое другое. Давай быстро настроим всё для тебя.</div>
