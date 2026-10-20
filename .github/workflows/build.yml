@@ -12,7 +12,10 @@ name: build
 on:
   push:
     branches: [rust-rewrite, main]
-    tags: ['v*']
+    # Стабильные релизы: v2.0.0-beta.123 — собираются и подписываются.
+    # Ночные сборки: nightly-YYYYMMDD — собираются, но НЕ подписываются
+    # (условие подписи проверяет префикс refs/tags/v).
+    tags: ['v*', 'nightly-*']
   workflow_dispatch:
     inputs:
       sign:
@@ -73,6 +76,11 @@ jobs:
           if-no-files-found: error
 
       # ── Подпись через SignPath ────────────────────────────────────────────
+      # Подписываются только СТАБИЛЬНЫЕ релизы — теги вида v2.0.0-beta.123
+      # (startsWith 'refs/tags/v'). Ночные сборки помечаются тегами
+      # nightly-YYYYMMDD и подписи не получают: тратить запросы SignPath
+      # на каждую ночную сборку незачем. Ручной запуск (workflow_dispatch)
+      # подписан — им проверяют сам пайплайн.
       # Шаг пропускается, если секрет не задан: CI остаётся полезным (сборка
       # и артефакт), пока проект в SignPath не настроен.
       - name: Check SignPath credentials
@@ -90,7 +98,7 @@ jobs:
 
       - name: Submit signing request to SignPath
         id: signpath
-        if: steps.sp-creds.outputs.available == 'true' && (startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch')
+        if: steps.sp-creds.outputs.available == 'true' && (startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.sign))
         uses: signpath/github-action-submit-signing-request@v3
         with:
           api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
@@ -104,7 +112,7 @@ jobs:
           output-artifact-directory: signed
 
       - name: Upload signed installer
-        if: steps.sp-creds.outputs.available == 'true' && (startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch')
+        if: steps.sp-creds.outputs.available == 'true' && (startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.sign))
         uses: actions/upload-artifact@v4
         with:
           name: installer-signed
