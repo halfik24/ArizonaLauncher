@@ -1,0 +1,110 @@
+name: build
+
+# Сборка Tauri-лаунчера на GitHub-hosted раннере + подпись NSIS-установщика через SignPath.
+#
+# Для OSS-программы SignPath проверяет, что артефакт собрал именно GitHub Actions
+# на их собственном (не self-hosted) раннере. Поэтому подпись возможна только из CI,
+# локально собранный exe SignPath подписывать не станет.
+#
+# Сборка гоняется на каждый push в рабочую ветку (контроль, что ничего не сломалось),
+# подпись — только на тегах или вручную (workflow_dispatch), чтобы не жечь лимиты SignPath.
+
+on:
+  push:
+    branches: [rust-rewrite, main]
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      sign:
+        description: 'Подписать установщик через SignPath'
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install frontend deps
+        run: npm ci
+
+      - name: Build Tauri (NSIS)
+        run: npm run build
+
+      - name: Prepare artifact
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path out | Out-Null
+          # Имя установщика содержит пробелы и версию — кладём под стабильным именем,
+          # чтобы артефакт-конфигурация SignPath и релизные ассеты не зависели от версии.
+          $setup = Get-ChildItem "src-tauri/target/release/bundle/nsis/*-setup.exe" |
+                   Select-Object -First 1
+          if (-not $setup) { throw "NSIS-установщик не найден" }
+          Copy-Item $setup.FullName "out/ArizonaRP-Launcher-Setup.exe"
+          Get-ChildItem out | Format-Table Name, Length
+
+      - name: Upload unsigned installer
+        id: upload-unsigned
+        uses: actions/upload-artifact@v4
+        with:
+          name: installer-unsigned
+          path: out/ArizonaRP-Launcher-Setup.exe
+          if-no-files-found: error
+
+      # ── Подпись через SignPath ────────────────────────────────────────────
+      # Шаг пропускается, если секрет не задан: CI остаётся полезным (сборка
+      # и артефакт), пока проект в SignPath не настроен.
+      - name: Check SignPath credentials
+        id: sp-creds
+        shell: pwsh
+        env:
+          SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
+        run: |
+          if ($env:SIGNPATH_API_TOKEN) {
+            "available=true" >> $env:GITHUB_OUTPUT
+          } else {
+            "available=false" >> $env:GITHUB_OUTPUT
+            Write-Host "::warning::SIGNPATH_API_TOKEN не задан — подпись пропущена"
+          }
+
+      - name: Submit signing request to SignPath
+        id: signpath
+        if: steps.sp-creds.outputs.available == 'true' && (startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch')
+        uses: signpath/github-action-submit-signing-request@v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          # PLACEHOLDER: подставить реальные значения из настроек проекта в SignPath.
+          organization-id: 'YOUR_SIGNPATH_ORGANIZATION_ID'
+          project-slug: 'YOUR_SIGNPATH_PROJECT_SLUG'
+          signing-policy-slug: 'YOUR_SIGNPATH_SIGNING_POLICY_SLUG'
+          artifact-configuration-slug: 'nsis-installer'
+          github-artifact-id: ${{ steps.upload-unsigned.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: signed
+
+      - name: Upload signed installer
+        if: steps.sp-creds.outputs.available == 'true' && (startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch')
+        uses: actions/upload-artifact@v4
+        with:
+          name: installer-signed
+          path: signed/ArizonaRP-Launcher-Setup.exe
+          if-no-files-found: error

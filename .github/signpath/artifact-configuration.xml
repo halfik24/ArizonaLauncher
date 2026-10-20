@@ -1,0 +1,32 @@
+<!--
+  Артефакт-конфигурация SignPath для NSIS-установщика ArizonaLauncher.
+
+  Что подписываем: только сам установщик ArizonaRP-Launcher-Setup.exe (это PE-файл).
+  Ограничение SignPath: NSIS не входит в поддерживаемые composite-форматы
+  (в отличие от MSI/AppX/MSIX), поэтому «deep signing» внутренних exe невозможно —
+  распаковать NSIS-архив, подписать вложенный arizona-launcher.exe и запаковать обратно
+  SignPath не умеет. Подписывается только верхний уровень — установщик.
+
+  Подписанный основной exe внутри установленного приложения:
+  вариант А — перейти на MSI-бандл (Tauri умеет, тогда deep signing доступен),
+  вариант Б — подписывать exe отдельной политикой до упаковки в NSIS (двухпроходная схема).
+
+  Файл нужно загрузить в SignPath в настройках проекта и указать его slug
+  как artifact-configuration-slug в .github/workflows/build.yml
+  (там сейчас стоит 'nsis-installer').
+
+  Корневой элемент <zip-file>: upload-artifact@v4 по умолчанию упаковывает артефакт в ZIP,
+  а корень конфигурации обязан соответствовать реальной структуре артефакта.
+  Если перейдёте на archive: false — замените корень на <pe-file> и поставьте
+  skip-decompress: true в шаге подписи.
+-->
+<artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
+  <zip-file>
+    <pe-file path="ArizonaRP-Launcher-Setup.exe">
+      <authenticode-sign
+        hash-algorithm="sha256"
+        description="Arizona RP Launcher"
+        description-url="https://github.com/halfik24/ArizonaLauncher" />
+    </pe-file>
+  </zip-file>
+</artifact-configuration>
