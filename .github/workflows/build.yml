@@ -54,12 +54,14 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path out | Out-Null
-          # Имя установщика содержит пробелы и версию — кладём под стабильным именем,
-          # чтобы артефакт-конфигурация SignPath и релизные ассеты не зависели от версии.
+          # Сохраняем исходное имя NSIS (пробелы + версия со сборкой),
+          # чтобы скачанный артефакт сразу показывал свою сборку.
+          # Внутри артефакта лежит ровно один файл — wildcard в
+          # artifact-configuration.xml SignPath его находит.
           $setup = Get-ChildItem "src-tauri/target/release/bundle/nsis/*-setup.exe" |
                    Select-Object -First 1
           if (-not $setup) { throw "NSIS-установщик не найден" }
-          Copy-Item $setup.FullName "out/ArizonaRP-Launcher-Setup.exe"
+          Copy-Item $setup.FullName "out/$($setup.Name)"
           Get-ChildItem out | Format-Table Name, Length
 
       - name: Upload unsigned installer
@@ -67,7 +69,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: installer-unsigned
-          path: out/ArizonaRP-Launcher-Setup.exe
+          path: out/*-setup.exe
           if-no-files-found: error
 
       # ── Подпись через SignPath ────────────────────────────────────────────
@@ -106,5 +108,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: installer-signed
-          path: signed/ArizonaRP-Launcher-Setup.exe
+          path: signed/*-setup.exe
           if-no-files-found: error

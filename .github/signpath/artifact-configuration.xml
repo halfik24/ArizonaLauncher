@@ -1,7 +1,10 @@
 <!--
   Артефакт-конфигурация SignPath для NSIS-установщика ArizonaLauncher.
 
-  Что подписываем: только сам установщик ArizonaRP-Launcher-Setup.exe (это PE-файл).
+  Что подписываем: только сам установщик (это PE-файл). Имя содержит версию
+  со сборкой (2.0.0-beta.YYYYMMDD.HHMM) и пробелы, поэтому путь задан
+  wildcard'ом: по умолчанию max-matches=1 — внутри артефакта обязан лежать
+  ровно один файл под маской.
   Ограничение SignPath: NSIS не входит в поддерживаемые composite-форматы
   (в отличие от MSI/AppX/MSIX), поэтому «deep signing» внутренних exe невозможно —
   распаковать NSIS-архив, подписать вложенный arizona-launcher.exe и запаковать обратно
@@ -22,7 +25,7 @@
 -->
 <artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
   <zip-file>
-    <pe-file path="ArizonaRP-Launcher-Setup.exe">
+    <pe-file path="Arizona RP Launcher_*-setup.exe">
       <authenticode-sign
         hash-algorithm="sha256"
         description="Arizona RP Launcher"
