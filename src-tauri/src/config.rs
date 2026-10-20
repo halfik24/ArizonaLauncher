@@ -258,6 +258,10 @@ pub struct AppState {
     /// Флаг паузы активной задачи: true — качка на паузе (задача ждёт).
     /// Сбрасывается при старте каждой новой задачи.
     pub game_update_pause: Mutex<Option<std::sync::Arc<std::sync::atomic::AtomicBool>>>,
+    /// Последняя папка, выбранная пользователем в нативном диалоге
+    /// select_game_path без игры (код EMPTY_FOLDER): install_game_to_folder
+    /// принимает только её — consent живёт на нативной стороне, а не в вебвью.
+    pub last_picked_empty_folder: Mutex<Option<PathBuf>>,
 }
 
 impl AppState {
@@ -279,6 +283,7 @@ impl AppState {
             news_revalidating: std::sync::atomic::AtomicBool::new(false),
             game_update_cancel: Mutex::new(None),
             game_update_pause: Mutex::new(None),
+            last_picked_empty_folder: Mutex::new(None),
         }
     }
 

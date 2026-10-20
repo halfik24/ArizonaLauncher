@@ -376,8 +376,25 @@ pub async fn auto_detect_paths(state: State<'_, AppState>) -> Result<serde_json:
     }))
 }
 
+/// Ручная установка путей (легаси-команда, фронт её не зовёт). Те же ворота,
+/// что у select_game_path/auto_detect: game должен существовать как gta_sa.exe,
+/// лаунчер — по ресурсу версии (util::is_arizona_launcher, как в find_launcher_exe).
 #[tauri::command]
 pub fn set_game_paths(state: State<'_, AppState>, game: String, launcher: String) -> Result<serde_json::Value, String> {
+    let game_exe = std::path::Path::new(&game);
+    let is_game_exe = game_exe
+        .file_name()
+        .map(|n| n.to_string_lossy().eq_ignore_ascii_case("gta_sa.exe"))
+        .unwrap_or(false);
+    if !is_game_exe || !game_exe.is_file() {
+        return util::fail_message("Путь к игре должен указывать на существующий gta_sa.exe");
+    }
+    if !launcher.is_empty() {
+        let launcher_exe = std::path::Path::new(&launcher);
+        if !launcher_exe.is_file() || !util::is_arizona_launcher(launcher_exe) {
+            return util::fail_message("Путь к лаунчеру должен указывать на exe лаунчера Arizona (проверка по ресурсу версии)");
+        }
+    }
     util::update_config(&state, |cfg| {
         cfg.game_path = game;
         cfg.launcher_path = launcher;
@@ -415,6 +432,11 @@ pub async fn select_game_path(
     let game_exe = folder.join("gta_sa.exe");
     if !game_exe.exists() {
         // Папка без игры: маркер для фронта — подтверждение и установка сюда.
+        // Запоминаем выбор: install_game_to_folder примет только папку,
+        // реально выбранную пользователем в этом нативном диалоге.
+        if let Ok(mut picked) = state.last_picked_empty_folder.lock() {
+            *picked = Some(folder.canonicalize().unwrap_or_else(|_| folder.clone()));
+        }
         return Ok(serde_json::json!({
             "success": false,
             "code": "EMPTY_FOLDER",
@@ -2562,6 +2584,20 @@ fn patches_download_urls(version: &str) -> Vec<String> {
     ]
 }
 
+/// Версия патчей подставляется в шаблон URL зеркал — только безопасный
+/// фрагмент: `v` + цифры/точки/подчёркивания, без `/`, `\`, `..` и схем,
+/// иначе аргумент выводит запрос за пределы закреплённого репозитория
+/// (нормализация dot-сегментов в URL). Реальные значения: "v1", "v2".
+fn is_safe_patches_version(version: &str) -> bool {
+    !version.is_empty()
+        && version.len() <= 16
+        && version.starts_with('v')
+        && !version.contains("..")
+        && version
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '_')
+}
+
 fn check_patches_files_inner(state: &AppState) -> serde_json::Value {
     if util::game_path(state).is_empty() {
         return serde_json::json!({
@@ -3021,6 +3057,11 @@ pub async fn download_and_install_patches(
     version: Option<String>,
 ) -> Result<serde_json::Value, String> {
     let version = version.unwrap_or_else(|| "v2".to_string());
+    // Версия вставляется в URL архива — без проверки ею можно вывести запрос
+    // за пределы закреплённого репозитория (см. is_safe_patches_version).
+    if !is_safe_patches_version(&version) {
+        return util::fail_message(format!("Недопустимая версия патчей: {version}"));
+    }
     if util::game_path(&state).is_empty() {
         return util::fail_message("game_path не установлен");
     }
@@ -3122,7 +3163,9 @@ pub async fn get_patches_latest_version() -> Result<serde_json::Value, String> {
             }
         };
         let version = util::decode_text_bytes(&bytes).trim().to_string();
-        if status == reqwest::StatusCode::OK && !version.is_empty() && version.starts_with('v') {
+        // Версия из version.txt идёт из закреплённого репозитория, но всё
+        // равно подставляется в URL — проверяем тем же правилом.
+        if status == reqwest::StatusCode::OK && is_safe_patches_version(&version) {
             return Ok(serde_json::json!({
                 "success": true,
                 "version": version,
@@ -3137,6 +3180,11 @@ pub async fn get_patches_latest_version() -> Result<serde_json::Value, String> {
 #[tauri::command]
 pub async fn check_patches_available(version: Option<String>) -> Result<serde_json::Value, String> {
     let version = version.unwrap_or_else(|| "v2".to_string());
+    // Аргумент вебвью подставляется в URL зеркал — та же проверка, что в
+    // download_and_install_patches.
+    if !is_safe_patches_version(&version) {
+        return util::fail_message(format!("Недопустимая версия патчей: {version}"));
+    }
     let mut headers = reqwest::header::HeaderMap::new();
     headers.insert(
         reqwest::header::USER_AGENT,
@@ -3326,8 +3374,14 @@ pub fn import_patches(app: tauri::AppHandle, state: State<'_, AppState>) -> Resu
     }))
 }
 
+/// Максимум размера JSON-файла патчей — лимит фронта на drag&drop (5 МБ).
+const MAX_PATCHES_JSON_BYTES: usize = 5 * 1024 * 1024;
+
 /// Принимает .json файл (base64 из drag&drop) и кладёт его как
-/// #ArizonaPatches.json в preloading_plugins; старый файл уходит в бэкап.
+/// #ArizonaPatches.json в preloading_plugins. Политика как у import_patches:
+/// только JSON-объект с настройками (bool-значения), вложенный формат
+/// {"patches": {...}} разворачивается до плоского map — иначе файл сломает
+/// редактор патчей. Запись через write_patches_inner: бэкап + pretty-сериализация.
 #[tauri::command]
 pub fn install_patches_file(
     state: State<'_, AppState>,
@@ -3337,24 +3391,45 @@ pub fn install_patches_file(
     if util::game_path(&state).is_empty() {
         return util::fail_message("Путь к игре не установлен");
     }
-    let plugins = plugins_dir(&state);
-    if let Err(e) = std::fs::create_dir_all(&plugins) {
-        return util::fail_message(format!("Не удалось создать preloading_plugins: {e}"));
-    }
-    let dest = plugins.join("#ArizonaPatches.json");
-    // Бэкап старого файла перед заменой
-    if dest.exists() {
-        create_patches_backup(&state, "before_drop");
-    }
     use base64::Engine;
     let content = match base64::engine::general_purpose::STANDARD.decode(content_b64.trim()) {
         Ok(b) => b,
         Err(e) => return util::fail_message(format!("Некорректный base64: {e}")),
     };
-    if let Err(e) = std::fs::write(&dest, &content) {
-        return util::fail_message(format!("Не удалось записать файл: {e}"));
+    if content.len() > MAX_PATCHES_JSON_BYTES {
+        return util::fail_message(format!(
+            "Файл слишком большой: {} байт (лимит {} МБ)",
+            content.len(),
+            MAX_PATCHES_JSON_BYTES / 1024 / 1024
+        ));
     }
-    log::info!("install_patches_file: установлен {} ({} байт, из {filename})", dest.display(), content.len());
+    let raw = match String::from_utf8(content) {
+        Ok(s) => s,
+        Err(_) => return util::fail_message("Файл не является текстом UTF-8"),
+    };
+    let cleaned = match util::clean_patches_text(&raw) {
+        Ok(c) => c,
+        Err(e) => return util::fail_message(format!("Неверный формат JSON: {e}")),
+    };
+    let data: serde_json::Value = match serde_json::from_str(&cleaned) {
+        Ok(d) => d,
+        Err(e) => return util::fail_message(format!("Неверный формат JSON: {e}")),
+    };
+    // Та же политика, что у import_patches/install_patch_preset: только объект
+    // с настройками (bool-значения), в #ArizonaPatches.json пишется плоский map.
+    let Some(flat) = patches_flat(&data) else {
+        return util::fail_message("Файл не содержит настроек патчей");
+    };
+    let bool_count = flat.values().filter(|v| v.as_bool().is_some()).count();
+    if bool_count == 0 {
+        return util::fail_message("Файл не содержит настроек патчей");
+    }
+    let flat_val = serde_json::Value::Object(flat);
+    let written = write_patches_inner(&state, &flat_val);
+    if written.get("success").and_then(|s| s.as_bool()) != Some(true) {
+        return Ok(written);
+    }
+    log::info!("install_patches_file: установлено {bool_count} настроек из {filename}");
     Ok(serde_json::json!({"success": true, "message": format!("Патчи обновлены из {filename}")}))
 }
 
@@ -3971,6 +4046,9 @@ pub async fn install_game_api(
 
 /// Установка игры в конкретную папку без диалога выбора
 /// (для «Указать путь вручную» → пустая папка → подтверждение).
+/// Принимается только папка, выбранная пользователем в нативном диалоге
+/// select_game_path (код EMPTY_FOLDER) — consent хранится в AppState,
+/// как у install_game_api (там его даёт сам диалог).
 #[tauri::command]
 pub async fn install_game_to_folder(
     app: tauri::AppHandle,
@@ -3990,6 +4068,24 @@ pub async fn install_game_to_folder(
     let target = PathBuf::from(&folder);
     if !target.is_dir() {
         return util::fail_message("Папка не существует");
+    }
+    let target = match target.canonicalize() {
+        Ok(t) => t,
+        Err(e) => return util::fail_message(format!("Не удалось разрешить путь папки: {e}")),
+    };
+    // Consent: папка должна совпадать с последним выбором в нативном диалоге.
+    let consented = state
+        .last_picked_empty_folder
+        .lock()
+        .map(|picked| picked.as_ref() == Some(&target))
+        .unwrap_or(false);
+    if !consented {
+        return util::fail_message("Папка не подтверждена выбором в диалоге — укажите её через «Указать путь вручную»");
+    }
+    // Пустая папка, как в маркере EMPTY_FOLDER: папка с игрой обновляется
+    // или чинится, а не переустанавливается насквозь.
+    if target.join("gta_sa.exe").exists() {
+        return util::fail_message("В папке уже есть gta_sa.exe — используйте обновление или починку игры");
     }
     let future = future.unwrap_or_else(|| game_update_future(&state));
     log::info!("game_update: установка в указанную папку {}", target.display());
@@ -4394,6 +4490,12 @@ pub async fn start_launcher_install(
     let folder = std::path::Path::new(&folder_path);
     if !folder.is_dir() {
         return util::fail_message("Папка игры не найдена");
+    }
+    // Папка обязана быть папкой игры: без gta_sa.exe ставить лаунчер некуда.
+    // Раньше action "error" от install_action_for_folder не прерывал установку
+    // (abort только на "none") — веб-вызов мог развернуть архив в любую папку.
+    if !folder.join("gta_sa.exe").exists() {
+        return util::fail_message("gta_sa.exe не найден — укажите папку с игрой");
     }
     // Дополнительная проверка: нужная версия уже стоит — не качаем
     // (чисто файловая проверка: установку вызывают явно, метод не важен)
@@ -5943,5 +6045,30 @@ mod image_url_tests {
         assert!(check_image_url("http://[fd00::1]/x.png").is_err());
         assert!(check_image_url("http://[fe80::1]/x.png").is_err());
         assert!(check_image_url("http://[::ffff:192.168.0.1]/x.png").is_err());
+    }
+}
+
+#[cfg(test)]
+mod patches_version_tests {
+    use super::is_safe_patches_version;
+
+    #[test]
+    fn accepts_real_release_versions() {
+        assert!(is_safe_patches_version("v2"));
+        assert!(is_safe_patches_version("v1"));
+        assert!(is_safe_patches_version("v2_1"));
+    }
+
+    #[test]
+    fn rejects_url_escape_attempts() {
+        assert!(!is_safe_patches_version(""));
+        assert!(!is_safe_patches_version("2"));
+        assert!(!is_safe_patches_version("../../owner/repo/main/arizonapatches_v9"));
+        assert!(!is_safe_patches_version("v2/../../owner/repo/main/file"));
+        assert!(!is_safe_patches_version("v2\\evil"));
+        assert!(!is_safe_patches_version("https://evil.example/x"));
+        assert!(!is_safe_patches_version("v2:main"));
+        assert!(!is_safe_patches_version("v..2"));
+        assert!(!is_safe_patches_version(&"v".repeat(17)));
     }
 }
