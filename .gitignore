@@ -8,3 +8,6 @@ src-tauri/gen/
 
 # runtime-конфиг патчей (создаётся при работе, не исходник)
 src-tauri/#ArizonaPatches.json
+
+# локальные релизные артефакты (сборки)
+dist/
