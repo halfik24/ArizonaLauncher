@@ -2472,7 +2472,13 @@ fn create_patches_backup(state: &AppState, label: &str) -> Option<PathBuf> {
     } else {
         format!("_{}", label)
     };
-    let dst = backup_dir.join(format!("patches_{}{}.json", ts, suffix));
+    let mut dst = backup_dir.join(format!("patches_{}{}.json", ts, suffix));
+    // Два бэкапа в одну секунду не должны молча перезаписывать друг друга
+    let mut n = 1u32;
+    while dst.exists() {
+        dst = backup_dir.join(format!("patches_{}{}_{}.json", ts, suffix, n));
+        n += 1;
+    }
     std::fs::copy(&src, &dst).ok()?;
 
     // Чистим старые бэкапы: максимум 15. Сортировка по имени (timestamp в имени =
@@ -5558,7 +5564,9 @@ const WALLPAPER_EXTS: [&str; 5] = ["jpg", "jpeg", "png", "webp", "bmp"];
 
 /// Папки с обоями, в порядке приоритета:
 /// 1. `wallpapers/` рядом с exe — пользовательская, создаётся автоматически;
-/// 2. `src/wallpapers/` — встроенные обои из ресурсов (видны в dev-сборке).
+/// 2. `../wallpapers/` (корень репо) — встроенные обои из ресурсов. Обои
+///    лежат ВНЕ src/, чтобы не поставляться дважды: во frontendDist
+///    (вшивание в бинарник) и в bundle.resources (17 МБ дублем).
 fn wallpapers_dirs() -> Vec<PathBuf> {
     let mut dirs = Vec::new();
     if let Some(exe) = std::env::current_exe().ok() {
@@ -5568,7 +5576,6 @@ fn wallpapers_dirs() -> Vec<PathBuf> {
     }
     let bundled = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("..")
-        .join("src")
         .join("wallpapers");
     if bundled.is_dir() {
         dirs.push(bundled);

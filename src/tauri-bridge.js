@@ -171,10 +171,6 @@
     "select_bg_image"
   ];
 
-  function toCamel(s) {
-    return s.replace(/_([a-z0-9])/g, function (_, c) { return c.toUpperCase(); });
-  }
-
   function resolveInvoke() {
     var t = window.__TAURI__;
     if (t && t.core && typeof t.core.invoke === 'function') return t.core.invoke;

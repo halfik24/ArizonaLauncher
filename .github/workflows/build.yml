@@ -50,6 +50,16 @@ jobs:
       - name: Install frontend deps
         run: npm ci
 
+      # Релизный тег (v2.0.0-beta.123) задаёт версию сборки: раньше версия
+      # штамповалась по часам раннера и не была связана с тегом — баг-репорт
+      # нельзя было сопоставить с релизом. Ночные теги оставляют штамп по времени.
+      - name: Set version from tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+        run: node tools/set-version.js --set "$env:TAG_NAME"
+
       - name: Build Tauri (NSIS)
         run: npm run build
 
@@ -81,20 +91,29 @@ jobs:
       # nightly-YYYYMMDD и подписи не получают: тратить запросы SignPath
       # на каждую ночную сборку незачем. Ручной запуск (workflow_dispatch)
       # подписан — им проверяют сам пайплайн.
-      # Шаг пропускается, если секрет не задан: CI остаётся полезным (сборка
-      # и артефакт), пока проект в SignPath не настроен.
+      # Шаг пропускается, пока не настроены секрет/переменные: CI остаётся
+      # полезным (сборка и артефакт). Настройка (Settings → Secrets/Variables):
+      #   Secret  SIGNPATH_API_TOKEN
+      #   Var     SIGNPATH_ORGANIZATION_ID, SIGNPATH_PROJECT_SLUG,
+      #           SIGNPATH_SIGNING_POLICY_SLUG
       - name: Check SignPath credentials
         id: sp-creds
         shell: pwsh
         env:
           SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
+          SIGNPATH_ORGANIZATION_ID: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
         run: |
-          if ($env:SIGNPATH_API_TOKEN) {
-            "available=true" >> $env:GITHUB_OUTPUT
-          } else {
+          if (-not $env:SIGNPATH_API_TOKEN) {
             "available=false" >> $env:GITHUB_OUTPUT
             Write-Host "::warning::SIGNPATH_API_TOKEN не задан — подпись пропущена"
+            exit 0
           }
+          if (-not $env:SIGNPATH_ORGANIZATION_ID) {
+            "available=false" >> $env:GITHUB_OUTPUT
+            Write-Host "::warning::vars.SIGNPATH_ORGANIZATION_ID не задан (Settings → Variables → Actions) — подпись пропущена"
+            exit 0
+          }
+          "available=true" >> $env:GITHUB_OUTPUT
 
       - name: Submit signing request to SignPath
         id: signpath
@@ -102,10 +121,9 @@ jobs:
         uses: signpath/github-action-submit-signing-request@v3
         with:
           api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
-          # PLACEHOLDER: подставить реальные значения из настроек проекта в SignPath.
-          organization-id: 'YOUR_SIGNPATH_ORGANIZATION_ID'
-          project-slug: 'YOUR_SIGNPATH_PROJECT_SLUG'
-          signing-policy-slug: 'YOUR_SIGNPATH_SIGNING_POLICY_SLUG'
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
           artifact-configuration-slug: 'nsis-installer'
           github-artifact-id: ${{ steps.upload-unsigned.outputs.artifact-id }}
           wait-for-completion: true

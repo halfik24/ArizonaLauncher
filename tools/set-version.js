@@ -101,8 +101,19 @@ function run() {
   const args = process.argv.slice(2);
   const withBuild = args.includes('--build');
   const printOnly = args.includes('--print');
+  // --set <версия|v-тег>: явная версия — CI передаёт тег релиза
+  // (v2.0.0-beta.123 → 2.0.0-beta.123), чтобы версия сборки совпадала с тегом
+  const setIdx = args.indexOf('--set');
+  const explicit = setIdx !== -1 ? args[setIdx + 1] : null;
 
-  const version = resolveVersion(withBuild);
+  const version = explicit
+    ? String(explicit).replace(/^v/, '').trim()
+    : resolveVersion(withBuild);
+  if (!version) {
+    console.error('[set-version] --set требует аргумент-версию');
+    process.exitCode = 1;
+    return;
+  }
 
   if (printOnly) {
     console.log(version);

@@ -48,7 +48,7 @@
       "icons/icon.ico"
     ],
     "resources": {
-      "../src/wallpapers": "wallpapers"
+      "../wallpapers": "wallpapers"
     },
     "windows": {
       "nsis": {
