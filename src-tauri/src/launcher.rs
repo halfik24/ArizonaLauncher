@@ -977,6 +977,16 @@ fn icon_data_uri(icon_url: &str, server_id: &str) -> String {
 
 /// Python `_prefetch_all_icons`: фоновая докачка недостающих иконок в файловый кэш.
 async fn prefetch_icons(servers: Vec<serde_json::Value>) {
+    // Таймауты обязательны: один зависший хост навсегда останавливал
+    // последовательный prefetch — иконки остальных серверов не качались
+    let client = match reqwest::Client::builder()
+        .connect_timeout(std::time::Duration::from_secs(5))
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+    {
+        Ok(c) => c,
+        Err(_) => return,
+    };
     for s in &servers {
         let icon_url = s
             .get("original_icon")
@@ -1008,10 +1018,11 @@ async fn prefetch_icons(servers: Vec<serde_json::Value>) {
             }
         }
 
-        if let Ok(resp) = reqwest::get(icon_url).await {
+        if let Ok(resp) = client.get(icon_url).send().await {
             if resp.status().is_success() {
                 if let Ok(bytes) = resp.bytes().await {
-                    if !bytes.is_empty() {
+                    // 2 МБ с запасом на любую иконку сервера
+                    if !bytes.is_empty() && bytes.len() <= 2 * 1024 * 1024 {
                         std::fs::write(&local_path, &bytes).ok();
                     }
                 }
@@ -1732,6 +1743,47 @@ fn check_image_url(url: &str) -> Result<(), String> {
 
 /// Лимит размера скачиваемой картинки (защита от OOM на data: URL).
 const MAX_IMAGE_BYTES: u64 = 10 * 1024 * 1024; // 10 MB
+
+/// Лимиты для скачивания из внешних каталогов (пресеты/скрипты/либы/«другое»).
+const MAX_PRESET_BYTES: u64 = 5 * 1024 * 1024; // JSON пресета
+const MAX_SCRIPT_BYTES: u64 = 20 * 1024 * 1024; // .lua скрипт
+const MAX_LIB_BYTES: u64 = 256 * 1024 * 1024; // zip библиотеки (ассеты бывают большими)
+const MAX_OTHER_BYTES: u64 = 128 * 1024 * 1024; // dll «другого» (DxVK и пр.)
+
+/// Скачивание URL из внешних каталогов: та же SSRF-политика, что у картинок
+/// (http/https, публичный хост), плюс жёсткий лимит размера с стримингом.
+/// Раньше эти команды читали ответ целиком в память без ограничения —
+/// скомпрометированный вебвью мог уйти в OOM или дернуть внутренние адреса.
+async fn fetch_catalog_url(url: &str, max_bytes: u64) -> Result<Vec<u8>, String> {
+    check_image_url(url)?;
+    let mut headers = reqwest::header::HeaderMap::new();
+    headers.insert(
+        reqwest::header::USER_AGENT,
+        reqwest::header::HeaderValue::from_static("Mozilla/5.0"),
+    );
+    let resp = util::http_request(
+        reqwest::Method::GET,
+        url,
+        headers,
+        std::time::Duration::from_secs(60),
+    )
+    .await?;
+    if resp.status() != reqwest::StatusCode::OK {
+        return Err(format!("HTTP {}", resp.status()));
+    }
+    if resp.content_length().unwrap_or(0) > max_bytes {
+        return Err("Файл слишком большой".to_string());
+    }
+    let mut resp = resp;
+    let mut bytes: Vec<u8> = Vec::new();
+    while let Some(chunk) = resp.chunk().await.map_err(|e| e.to_string())? {
+        if bytes.len() as u64 + chunk.len() as u64 > max_bytes {
+            return Err("Файл слишком большой".to_string());
+        }
+        bytes.extend_from_slice(&chunk);
+    }
+    Ok(bytes)
+}
 
 /// Скачивать картинку по URL и отдавать как data: URL в base64.
 /// SSRF-защита: схема только http/https, хост не из приватных диапазонов,
@@ -3024,6 +3076,10 @@ fn extract_patches_zip(
         return Err(format!("Слишком много файлов в архиве: {}", archive.len()));
     }
     const WANT: [&str; 2] = ["#ArizonaPatches.json", "#ArizonaPatches.dll"];
+    // Суммарный лимит распаковки: от zip-бомбы защищал только лимит числа
+    // записей — архив с двумя гигантскими файлами заполнил бы диск
+    const MAX_TOTAL: u64 = 64 * 1024 * 1024;
+    let mut total: u64 = 0;
     let plugins_real = plugins
         .canonicalize()
         .map_err(|e| format!("preloading_plugins не найдена: {e}"))?;
@@ -3056,6 +3112,10 @@ fn extract_patches_zip(
         let mut src = archive
             .by_index(i)
             .map_err(|e| format!("Ошибка чтения архива: {e}"))?;
+        total += src.size();
+        if total > MAX_TOTAL {
+            return Err("Архив слишком большой".to_string());
+        }
         let mut dst = std::fs::File::create(&dest)
             .map_err(|e| format!("Не удалось записать файл: {e}"))?;
         std::io::copy(&mut src, &mut dst)
@@ -3525,30 +3585,11 @@ pub async fn install_patch_preset(
     if util::game_path(&state).is_empty() {
         return util::fail_message("Путь к патчам не установлен. Сначала укажи путь к игре.");
     }
-    let mut headers = reqwest::header::HeaderMap::new();
-    headers.insert(
-        reqwest::header::USER_AGENT,
-        reqwest::header::HeaderValue::from_static("Mozilla/5.0"),
-    );
-    let resp = match util::http_request(
-        reqwest::Method::GET,
-        &url,
-        headers,
-        std::time::Duration::from_secs(15),
-    )
-    .await
-    {
-        Ok(r) => r,
+    let bytes = match fetch_catalog_url(&url, MAX_PRESET_BYTES).await {
+        Ok(b) => b,
         Err(e) => {
             return Ok(serde_json::json!({"success": false, "message": format!("Ошибка загрузки: {e}"), "stage": "downloading"}))
         }
-    };
-    if resp.status() != reqwest::StatusCode::OK {
-        return Ok(serde_json::json!({"success": false, "message": format!("Ошибка загрузки: HTTP {}", resp.status()), "stage": "downloading"}));
-    }
-    let bytes = match resp.bytes().await {
-        Ok(b) => b,
-        Err(e) => return util::fail_message(format!("Ошибка загрузки: {e}")),
     };
     let raw = util::decode_text_bytes(&bytes);
     let cleaned = match util::clean_patches_text(&raw) {
@@ -4890,27 +4931,7 @@ pub async fn install_moonloader_script(
         Err(e) => return util::fail_message(e),
     };
     // Скачиваем скрипт
-    let mut headers = reqwest::header::HeaderMap::new();
-    headers.insert(
-        reqwest::header::USER_AGENT,
-        reqwest::header::HeaderValue::from_static("Mozilla/5.0"),
-    );
-    let resp = match util::http_request(
-        reqwest::Method::GET,
-        &url,
-        headers,
-        std::time::Duration::from_secs(30),
-    )
-    .await
-    {
-        Ok(r) => r,
-        Err(e) => return util::fail_message(format!("Ошибка загрузки: {e}")),
-    };
-    let status = resp.status();
-    if status != reqwest::StatusCode::OK {
-        return util::fail_message(format!("Ошибка загрузки: HTTP {status}"));
-    }
-    let bytes = match resp.bytes().await {
+    let bytes = match fetch_catalog_url(&url, MAX_SCRIPT_BYTES).await {
         Ok(b) => b,
         Err(e) => return util::fail_message(format!("Ошибка загрузки: {e}")),
     };
@@ -5154,9 +5175,10 @@ fn extract_lib_zip(bytes: &[u8], lib_dir: &std::path::Path) -> Result<Vec<String
             continue;
         }
         let raw = entry.name().replace('\\', "/");
-        // Защита от zip-slip
+        // Защита от zip-slip: компонент ".." (подстрока ".." в имени вида
+        // `ver..1.lua` — легитимна и раньше отбрасывалась)
         if raw.starts_with('/')
-            || raw.contains("..")
+            || raw.split('/').any(|s| s == "..")
             || raw.chars().take(2).any(|c| c == ':')
         {
             log::warn!("extract_lib_zip: пропущен небезопасный путь: {raw}");
@@ -5239,27 +5261,7 @@ pub async fn install_library(
         }));
     }
     // Скачивание
-    let mut headers = reqwest::header::HeaderMap::new();
-    headers.insert(
-        reqwest::header::USER_AGENT,
-        reqwest::header::HeaderValue::from_static("Mozilla/5.0"),
-    );
-    let resp = match util::http_request(
-        reqwest::Method::GET,
-        &url,
-        headers,
-        std::time::Duration::from_secs(30),
-    )
-    .await
-    {
-        Ok(r) => r,
-        Err(e) => return util::fail_message(format!("Ошибка загрузки: {e}")),
-    };
-    let status = resp.status();
-    if status != reqwest::StatusCode::OK {
-        return util::fail_message(format!("Ошибка загрузки: HTTP {status}"));
-    }
-    let bytes = match resp.bytes().await {
+    let bytes = match fetch_catalog_url(&url, MAX_LIB_BYTES).await {
         Ok(b) => b,
         Err(e) => return util::fail_message(format!("Ошибка загрузки: {e}")),
     };
@@ -5465,26 +5467,7 @@ pub async fn install_other_file(
         Ok(n) => n,
         Err(e) => return util::fail_message(e),
     };
-    let mut headers = reqwest::header::HeaderMap::new();
-    headers.insert(
-        reqwest::header::USER_AGENT,
-        reqwest::header::HeaderValue::from_static("Mozilla/5.0"),
-    );
-    let resp = match util::http_request(
-        reqwest::Method::GET,
-        &url,
-        headers,
-        std::time::Duration::from_secs(60),
-    )
-    .await
-    {
-        Ok(r) => r,
-        Err(e) => return util::fail_message(format!("Ошибка загрузки: {e}")),
-    };
-    if resp.status() != reqwest::StatusCode::OK {
-        return util::fail_message(format!("Ошибка загрузки: HTTP {}", resp.status()));
-    }
-    let bytes = match resp.bytes().await {
+    let bytes = match fetch_catalog_url(&url, MAX_OTHER_BYTES).await {
         Ok(b) => b,
         Err(e) => return util::fail_message(format!("Ошибка загрузки: {e}")),
     };

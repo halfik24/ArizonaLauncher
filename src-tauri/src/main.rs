@@ -18,6 +18,10 @@ fn init_logging() {
     }
     if let Ok(meta) = std::fs::metadata(&log_path) {
         if meta.len() > 2 * 1024 * 1024 {
+            // .old мог остаться залоченным — сначала убираем, затем rename;
+            // при неудаче лог продолжит писаться в тот же файл (без ротации,
+            // но и без потери)
+            let _ = std::fs::remove_file(log_path.with_extension("log.old"));
             let _ = std::fs::rename(&log_path, log_path.with_extension("log.old"));
         }
     }
