@@ -33,7 +33,6 @@ fn init_logging() {
     }
     #[cfg(not(debug_assertions))]
     {
-        use std::io::Write;
         match std::fs::OpenOptions::new()
             .create(true)
             .append(true)
