@@ -87,7 +87,11 @@ impl Default for LauncherSettings {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+// default на контейнере: конфиг без одного из полей (обрезанный файл,
+// конфиг от другой версии) грузится с остальными данными нетронутыми,
+// а не падает целиком — раньше падение приводило к LauncherConfig::default()
+// и первое сохранение затирало оригинал (ник/пути/настройки).
+#[serde(rename_all = "camelCase", default)]
 pub struct LauncherConfig {
     pub last_nickname: String,
     pub last_server: u32,
@@ -267,6 +271,10 @@ pub struct AppState {
 impl AppState {
     pub fn new() -> Self {
         let documents_path = dirs::document_dir()
+            // Documents недоступен (перенаправление сломано и т.п.) — пишем в
+            // %LOCALAPPDATA%; "." означал бы Program Files у установленного
+            // приложения, где записи нет
+            .or_else(dirs::data_local_dir)
             .unwrap_or_else(|| PathBuf::from("."))
             .join("ArizonaLauncher");
         fs::create_dir_all(&documents_path).ok();

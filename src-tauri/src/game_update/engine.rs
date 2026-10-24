@@ -303,7 +303,17 @@ pub async fn run(
                                 via = Some(label);
                                 break;
                             }
-                            let h = downloader::md5_file(path.clone()).await?;
+                            let h = match downloader::md5_file(path.clone()).await {
+                                Ok(h) => h,
+                                Err(e) => {
+                                    // Секундный лок файла антивирусом не должен
+                                    // ронять часовую установку: считаем хэш
+                                    // несовпавшим и пробуем другой CDN
+                                    log(format!("md5 не прочитался после качки с {label} CDN: {rel}: {e:#}"));
+                                    fs::remove_file(&path).ok();
+                                    continue;
+                                }
+                            };
                             if h == item.entry.hash {
                                 via = Some(label);
                                 break;

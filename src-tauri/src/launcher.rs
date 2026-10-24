@@ -435,7 +435,7 @@ pub async fn select_game_path(
         // Запоминаем выбор: install_game_to_folder примет только папку,
         // реально выбранную пользователем в этом нативном диалоге.
         if let Ok(mut picked) = state.last_picked_empty_folder.lock() {
-            *picked = Some(folder.canonicalize().unwrap_or_else(|_| folder.clone()));
+            *picked = Some(canonicalize_norm(&folder).unwrap_or_else(|_| folder.clone()));
         }
         return Ok(serde_json::json!({
             "success": false,
@@ -2800,8 +2800,15 @@ fn write_patches_inner(state: &AppState, data: &serde_json::Value) -> serde_json
     if path.as_os_str().is_empty() {
         return serde_json::json!({"success": false, "message": "Path not set"});
     }
+    // Бэкап обязателен: если он не создался (файл залочен), старый конфиг
+    // не затираем — пользователь не теряет настройки из-за транзиентного сбоя
     if path.exists() {
-        create_patches_backup(state, "");
+        if create_patches_backup(state, "").is_none() {
+            return serde_json::json!({
+                "success": false,
+                "message": "Не удалось создать бэкап (файл занят?) — запись отменена"
+            });
+        }
     }
     let mut buf: Vec<u8> = Vec::new();
     {
@@ -2817,9 +2824,15 @@ fn write_patches_inner(state: &AppState, data: &serde_json::Value) -> serde_json
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).ok();
     }
-    match std::fs::write(&path, &buf) {
+    // Атомарная запись (tmp + rename): обрыв по питанию/крэшу не оставляет
+    // битый #ArizonaPatches.json — как у config.json
+    let tmp = path.with_extension("json.tmp");
+    match std::fs::write(&tmp, &buf).and_then(|_| std::fs::rename(&tmp, &path)) {
         Ok(_) => serde_json::json!({"success": true, "message": "Saved"}),
-        Err(e) => serde_json::json!({"success": false, "message": e.to_string()}),
+        Err(e) => {
+            let _ = std::fs::remove_file(&tmp);
+            serde_json::json!({"success": false, "message": e.to_string()})
+        }
     }
 }
 
@@ -3698,8 +3711,26 @@ fn game_update_limit(state: &AppState) -> u64 {
         .unwrap_or(0);
     match mb {
         0 => 0,
-        n => n.max(1) * 1_048_576,
+        // saturating: значение из extra-настроек может быть любым —
+        // переполнение в debug паниковало бы всю команду
+        n => n.max(1).saturating_mul(1_048_576),
     }
+}
+
+/// canonicalize без verbatim-префикса `\\?\` (и `\\?\UNC\`): canonicalize на
+/// Windows возвращает именно его, а такие пути ломают explorer/open и режут
+/// глаз в конфиге/логах. Используется для путей, попадающих в config.json
+/// и сравнение consent (обе стороны обязаны нормализоваться одинаково).
+fn canonicalize_norm(p: &Path) -> std::io::Result<PathBuf> {
+    let c = p.canonicalize()?;
+    let s = c.as_os_str().to_string_lossy();
+    if let Some(x) = s.strip_prefix(r"\\?\UNC\") {
+        return Ok(PathBuf::from(format!(r"\\{x}")));
+    }
+    if let Some(x) = s.strip_prefix(r"\\?\") {
+        return Ok(PathBuf::from(x.to_string()));
+    }
+    Ok(c)
 }
 
 /// Целевая папка игры: game_path в конфиге — путь до exe, файлы манифеста
@@ -3757,6 +3788,17 @@ fn release_game_job(state: &AppState) {
     }
     if let Ok(mut p) = state.game_update_pause.lock() {
         *p = None;
+    }
+}
+
+/// Отпускает задачу при выходе из scope — в том числе при панике движка:
+/// без этого паника между claim и release навсегда оставляла слот
+/// занятым («Установка/обновление уже выполняется» до перезапуска).
+struct GameJobGuard<'a>(&'a AppState);
+
+impl Drop for GameJobGuard<'_> {
+    fn drop(&mut self) {
+        release_game_job(self.0);
     }
 }
 
@@ -3878,6 +3920,8 @@ fn spawn_game_job(
 
     tauri::async_runtime::spawn(async move {
         let state = app.state::<AppState>();
+        // Отпустит задачу при любом выходе из таска, включая панику engine::run
+        let _job_guard = GameJobGuard(&state);
         let started = std::time::Instant::now();
         log::info!("game_update: старт ({})", job.mode.title());
 
@@ -3987,7 +4031,6 @@ fn spawn_game_job(
             }
         }
         on_event(Event::Finished { ok, text });
-        release_game_job(&state);
     });
 
     Ok(serde_json::json!({"success": true, "started": true}))
@@ -4077,7 +4120,7 @@ pub async fn install_game_to_folder(
     if !target.is_dir() {
         return util::fail_message("Папка не существует");
     }
-    let target = match target.canonicalize() {
+    let target = match canonicalize_norm(&target) {
         Ok(t) => t,
         Err(e) => return util::fail_message(format!("Не удалось разрешить путь папки: {e}")),
     };

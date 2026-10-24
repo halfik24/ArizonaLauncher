@@ -235,7 +235,13 @@ pub fn plan(
                 });
             }
         });
-        let flags = flags.into_inner().unwrap_or_default();
+        // Паника воркера отравила бы лок — тогда все непроверенные файлы
+        // честно считаем несовпавшими (false нужной длины), иначе flags[i]
+        // ниже — index out of bounds
+        let flags = match flags.into_inner() {
+            Ok(f) => f,
+            Err(_) => vec![false; pending.len()],
+        };
         for (i, pw) in pending.iter_mut().enumerate() {
             let Some(item) = pw.take() else { continue };
             let hash_ok = flags[i];
