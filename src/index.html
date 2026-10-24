@@ -1646,6 +1646,27 @@
             flex: 1;
             min-width: 0;
         }
+        .cre-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.65);
+            backdrop-filter: blur(6px);
+            z-index: 1100;
+            align-items: center;
+            justify-content: center;
+        }
+        .cre-overlay.open { display: flex; }
+
+        .cre-modal {
+            background: rgba(14, 16, 24, 0.99);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 16px;
+            width: min(480px, 92vw);
+            box-shadow: 0 24px 80px rgba(0,0,0,0.75);
+            overflow: hidden;
+            animation: creIn 0.35s cubic-bezier(0.34, 1.3, 0.64, 1);
+        }
 
         @keyframes creIn {
             0%   { opacity: 0; transform: scale(0.85); }
@@ -1698,13 +1719,6 @@
             to   { opacity: 1; }
         }
 
-        /* Используется .layout-float-bar — раньше keyframes не существовало
-           и анимация молча не применялась */
-        @keyframes fadeIn {
-            from { opacity: 0; }
-            to   { opacity: 1; }
-        }
-
         @keyframes overlayFadeOut {
             from { opacity: 1; }
             to   { opacity: 0; }
@@ -1729,6 +1743,8 @@
             from { opacity: 1; transform: translateY(0); }
             to   { opacity: 0; transform: translateY(30px); }
         }
+        .cre-overlay.closing         { animation: overlayFadeOut 0.25s ease forwards; }
+        .cre-overlay.closing .cre-modal { animation: creOut 0.25s cubic-bezier(0.4, 0, 1, 1) forwards; }
 
         .profiles-overlay.closing            { animation: overlayFadeOut 0.25s ease forwards; }
         .profiles-overlay.closing .profiles-modal { animation: creOut 0.25s cubic-bezier(0.4, 0, 1, 1) forwards; }
@@ -1747,6 +1763,99 @@
 
         /* Закрытие «Модов» — та же длительность/кривая, что у настроек и папки */
         .mods-modal.closing { animation: modsSink 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards; }
+
+        .cre-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 18px 22px 16px;
+            border-bottom: 1px solid rgba(255,255,255,0.06);
+        }
+
+        .cre-title {
+            font-family: 'Montserrat Alternates', sans-serif;
+            font-size: 15px;
+            color: rgba(255,255,255,0.9);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .cre-body {
+            padding: 10px 0 4px;
+        }
+
+        .cre-row {
+            display: flex;
+            align-items: center;
+            padding: 10px 22px;
+            gap: 14px;
+            cursor: pointer;
+            transition: background 0.15s;
+            border-bottom: 1px solid rgba(255,255,255,0.03);
+        }
+        .cre-row:last-child { border-bottom: none; }
+        .cre-row:hover { background: rgba(255,255,255,0.035); }
+
+        .cre-bit-badge {
+            width: 28px; height: 28px;
+            border-radius: 7px;
+            background: rgba(0, 120, 212, 0.15);
+            border: 1px solid rgba(0, 140, 255, 0.2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Montserrat Alternates', sans-serif;
+            font-size: 10px;
+            color: rgba(100, 180, 255, 0.7);
+            flex-shrink: 0;
+        }
+
+        .cre-info { flex: 1; min-width: 0; }
+
+        .cre-effect-name {
+            font-family: 'Montserrat Alternates', sans-serif;
+            font-size: 13px;
+            color: rgba(255,255,255,0.85);
+        }
+
+        .cre-effect-hint {
+            font-family: 'Montserrat Alternates', sans-serif;
+            font-size: 10px;
+            color: rgba(255,255,255,0.3);
+            margin-top: 2px;
+        }
+
+        .cre-value-display {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 22px;
+            margin-top: 2px;
+            border-top: 1px solid rgba(255,255,255,0.06);
+            background: rgba(255,255,255,0.025);
+        }
+
+        .cre-value-label {
+            font-family: 'Montserrat Alternates', sans-serif;
+            font-size: 11px;
+            color: rgba(255,255,255,0.35);
+        }
+
+        .cre-value-number {
+            font-family: 'Montserrat Alternates', monospace, sans-serif;
+            font-size: 14px;
+            color: rgba(120, 200, 255, 0.9);
+            letter-spacing: 1px;
+        }
+
+        .cre-footer {
+            display: flex;
+            gap: 8px;
+            padding: 14px 22px 18px;
+        }
+
+        .cre-footer .s-btn { flex: 1; height: 40px; }
 
         /* Edit Profile — секции */
         .ep-section-title {
@@ -1810,6 +1919,63 @@
         .ep-lua-item input:not(:checked) + .s-toggle { opacity: 0.4; }
         .ep-lua-item input:checked ~ .s-toggle { background: rgba(var(--accent2-rgb), 0.55); border-color: rgba(var(--accent2-rgb), 0.44); }
         .ep-lua-item input:checked ~ .s-toggle::after { background: white; transform: translateX(16px); }
+
+        /* Переопределяем s-toggle внутри cre-row */
+        .cre-row .s-toggle { flex-shrink: 0; }
+
+        /* Бинарный дисплей */
+        .cre-bits-display {
+            display: flex;
+            gap: 3px;
+            align-items: center;
+        }
+        .cre-bit-cell {
+            width: 22px; height: 22px;
+            border-radius: 5px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: monospace;
+            font-size: 12px;
+            font-weight: bold;
+            transition: all 0.2s;
+        }
+        .cre-bit-cell.on {
+            background: rgba(var(--accent2-rgb), 0.24);
+            color: rgba(255,255,255,0.92);
+            border: 1px solid rgba(var(--accent2-rgb), 0.32);
+        }
+        .cre-bit-cell.off {
+            background: rgba(255,255,255,0.04);
+            color: rgba(255,255,255,0.2);
+            border: 1px solid rgba(255,255,255,0.07);
+        }
+        .cre-bit-cell.fixed {
+            background: rgba(255,255,255,0.06);
+            color: rgba(255,255,255,0.3);
+            border: 1px solid rgba(255,255,255,0.08);
+        }
+
+        /* Кнопка открытия модала из чекбоксов патчей */
+        .patch-cre-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 3px 10px;
+            background: rgba(var(--accent-rgb), 0.20);
+            border: 1px solid rgba(var(--accent2-rgb), 0.28);
+            border-radius: 6px;
+            color: rgba(255, 255, 255, 0.86);
+            font-family: 'Montserrat Alternates', sans-serif;
+            font-size: 10px;
+            cursor: pointer;
+            transition: all 0.18s;
+            white-space: nowrap;
+            margin-left: 8px;
+        }
+        .patch-cre-btn:hover {
+            background: rgba(var(--accent2-rgb), 0.26);
+            border-color: rgba(var(--accent2-rgb), 0.50);
         }
         .settings-panel {
             display: none;
@@ -4333,6 +4499,10 @@
         .lib-banner-btn:disabled { opacity: 0.55; cursor: not-allowed; }
         .lib-banner-btn svg { width: 12px !important; height: 12px !important; }
 
+        @media (max-width: 900px) {
+            .lib-grid { grid-template-columns: 1fr; }
+        }
+
         .ml-installed-card {
             display: flex;
             align-items: center;
@@ -6815,6 +6985,17 @@
         <div class="ph-dropdown hide" id="phDropdown"></div>
     </div>
 
+    <!-- Toast контейнер для глобальных уведомлений -->
+    <div id="toastContainer" style="position:fixed; top:20px; right:20px; z-index:9999; display:flex; flex-direction:column; gap:8px; max-width:360px;"></div>
+    <style>
+        .dll-toast { display:flex; align-items:flex-start; gap:10px; padding:12px 14px; border-radius:8px; background:rgba(255,68,68,0.15); border:1px solid rgba(255,68,68,0.3); box-shadow:0 4px 20px rgba(0,0,0,0.4); animation:slideIn 0.3s ease; cursor:default; overflow:hidden; transition:width 0.35s ease, padding 0.35s ease, border-radius 0.35s ease, opacity 0.35s ease, background 0.35s ease, border-color 0.35s ease, max-height 0.35s ease; width:100%; }
+        .dll-toast.collapsed { width:36px; height:36px; padding:0; border-radius:50%; background:rgba(255,68,68,0.35); border-color:rgba(255,68,68,0.5); cursor:pointer; justify-content:center; align-items:center; max-height:36px; }
+        .dll-toast .dll-toast-full { transition:opacity 0.25s ease; }
+        .dll-toast.collapsed .dll-toast-full { opacity:0; width:0; height:0; overflow:hidden; margin:0; padding:0; position:absolute; }
+        .dll-toast .dll-toast-pill { display:none; width:18px; height:18px; color:#ff4444; flex-shrink:0; transition:opacity 0.25s ease; }
+        .dll-toast.collapsed .dll-toast-pill { display:block; }
+    </style>
+
 
     <div id="container">
         <div class="interface">
@@ -8041,6 +8222,30 @@
             </div>
         </div>
 
+        <!-- Custom Render Effects modal -->
+        <div class="cre-overlay" id="creOverlay" role="dialog" aria-modal="true" aria-labelledby="creTitle" onclick="if(event.target===this)closeCRE()">
+            <div class="cre-modal">
+                <div class="cre-header">
+                    <div class="cre-title" id="creTitle"><i data-lucide="sparkles"></i> Кастомные эффекты рендеринга</div>
+                    <button class="close-btn" onclick="closeCRE()" aria-label="Закрыть">×</button>
+                </div>
+                <div class="cre-body">
+                    <div id="creRows"></div>
+                    <div class="cre-value-display">
+                        <span class="cre-value-label">Итоговое значение CustomRenderEffects</span>
+                        <div style="display:flex;align-items:center;gap:10px;">
+                            <div class="cre-bits-display" id="creBitsDisplay"></div>
+                            <span class="cre-value-number" id="creValueNumber">63</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="cre-footer">
+                    <button class="s-btn" onclick="closeCRE()">Отмена</button>
+                    <button class="s-btn primary" onclick="saveCRE()"><i data-lucide="check"></i> Применить</button>
+                </div>
+            </div>
+        </div>
+
         <!-- Profiles Modal -->
         <div class="profiles-overlay" id="profilesOverlay" role="dialog" aria-modal="true" aria-labelledby="profilesTitle" onclick="if(event.target===this)closeProfilesModal()">
             <div class="profiles-modal">
@@ -8125,7 +8330,15 @@
                             <div style="display:flex;gap:10px;margin-top:10px;align-items:center;">
                                 <div style="display:flex;align-items:center;gap:6px;">
                                     <span class="ep-label" style="margin:0;">Память</span>
-                                    <select id="ep_memory" class="cso-field-input" style="width:80px;height:30px;font-size:11px;">
+                                    <div class="s-select" id="epMemorySelect" style="width:80px;">
+                                        <button class="s-select-btn" id="epMemoryBtn" type="button" aria-haspopup="listbox" aria-expanded="false" style="height:30px;font-size:11px;">
+                                            <span class="s-select-val" id="epMemoryVal">4096</span>
+                                            <svg class="s-select-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+                                        </button>
+                                        <div class="s-select-pop" id="epMemoryPop" role="listbox"></div>
+                                    </div>
+                                    <!-- источник значений; нативный попап не стилизуется (белый список/скроллбар) -->
+                                    <select id="ep_memory" class="s-select-native">
                                         <option value="1024">1024</option>
                                         <option value="2048">2048</option>
                                         <option value="3072">3072</option>
@@ -9149,6 +9362,7 @@
             setCdnBtns(document.getElementById('cdnInput')?.value || '0,0,0');
             cdnInitReels();
             memInit();
+            epMemInit();   // кастомный селект памяти в редакторе профиля
             applyDebugVisibility();   // вкладка Debug скрыта, пока жук не тапнут 5 раз
             perfMark('events bound');
 
@@ -10651,7 +10865,7 @@
             try {
                 if (window.pywebview && window.pywebview.api.list_installed_libraries) {
                     const r = await window.pywebview.api.list_installed_libraries();
-                    if (r && r.success) window._libInstalled = r.data || [];
+                    if (r && r.success) { window._libInstalled = r.data || []; window._libInstalledLoaded = true; }
                 }
                 if (!window._mlLibCatalog) {
                     if (window.pywebview && window.pywebview.api.fetch_libraries_catalog) {
@@ -10964,6 +11178,54 @@
             }
             window._libLoaded = false;
             await loadLibrariesTab();
+        }
+
+        async function installMlScript(idx, btn) {
+            const item = window._mlCatalog?.[idx];
+            if (!item) return;
+            const status = document.getElementById(`mlInstStatus_${idx}`);
+
+            const setState = (cls, text, color) => {
+                btn.disabled = true;
+                btn.className = `mods-install-btn ${cls}`;
+                btn.innerHTML = text;
+                if (status) { status.innerHTML = text; status.style.color = color; }
+                if (window.lucide) {
+                    refreshLucideIcons();
+                }
+            };
+
+            if (!item.url || !item.file) {
+                if (status) { status.innerHTML = '<i data-lucide="x-circle"></i> Нет ссылки или имени файла'; status.style.color = 'rgba(255,100,100,0.9)'; }
+                return;
+            }
+
+            try {
+                setState('downloading', '<i data-lucide="loader"></i> Скачивается...', 'rgba(255,200,100,0.9)');
+
+                if (window.pywebview && window.pywebview.api.install_moonloader_script) {
+                    setState('installing', '<i data-lucide="settings"></i> Устанавливается...', 'rgba(210,150,255,0.9)');
+                    const result = await window.pywebview.api.install_moonloader_script(item.url, item.file);
+                    if (result.success) {
+                        setState('done', '<i data-lucide="check-circle"></i> Готово', 'rgba(100,220,140,0.9)');
+                        if (status) { status.innerHTML = '<i data-lucide="check-circle"></i> ' + result.message; status.style.color = 'rgba(100,220,140,0.9)'; }
+                    } else {
+                        throw new Error(result.message);
+                    }
+                } else {
+                    demoGuard('install_moonloader_script');
+                    await new Promise(r => setTimeout(r, 600));
+                    setState('installing', '<i data-lucide="settings"></i> Устанавливается...', 'rgba(210,150,255,0.9)');
+                    await new Promise(r => setTimeout(r, 400));
+                    setState('done', '<i data-lucide="check-circle"></i> Готово', 'rgba(100,220,140,0.9)');
+                    if (status) { status.innerHTML = '<i data-lucide="check-circle"></i> (демо)'; status.style.color = 'rgba(100,220,140,0.9)'; }
+                }
+            } catch(e) {
+                btn.disabled = false;
+                btn.className = 'mods-install-btn';
+                btn.innerHTML = '<i data-lucide="download"></i> Установить';
+                if (status) { status.innerHTML = '<i data-lucide="x-circle"></i> ' + escapeHtml(e.message); status.style.color = 'rgba(255,100,100,0.9)'; }
+            }
         }
 
         async function installMlScriptCard(idx, btn) {
@@ -11393,6 +11655,31 @@
             }
         }
 
+        /** Подтянуть список установленных библиотек, если его ещё не грузили.
+            ВАЖНО: window._libInstalled инициализируется ПУСТЫМ массивом при
+            загрузке страницы (truthy!) — флаг загруженности ведём отдельный.
+            Обычно список грузит вкладка «Библиотеки», но карточка скрипта
+            открывается и без неё. */
+        async function _ensureLibInstalledLoaded() {
+            if (window._libInstalledLoaded) return;
+            window._libInstalledLoaded = true;   // защита от параллельных вызовов
+            try {
+                if (window.pywebview && window.pywebview.api.list_installed_libraries) {
+                    const r = await window.pywebview.api.list_installed_libraries();
+                    if (r && r.success) {
+                        window._libInstalled = r.data || [];
+                    } else {
+                        window._libInstalledLoaded = false;   // неудача — можно повторить
+                    }
+                } else {
+                    window._libInstalledLoaded = false;
+                }
+            } catch (e) {
+                window._libInstalledLoaded = false;
+                console.warn('list_installed_libraries:', e);
+            }
+        }
+
         function _refreshDetailLibsIfOpen() {
             if (_sdCurrentIdx !== null) {
                 const catalog = _sdCatalogType === 'other' ? window._othersCatalog : window._mlCatalog;
@@ -11459,6 +11746,12 @@
             }
 
             _renderDetailLibs(item);
+            // Список установленных библиотек раньше грузился только вкладкой
+            // «Библиотеки» — до её посещения карточка помечала все библиотеки
+            // неустановленными («Установить» вместо «Готово»)
+            if (!window._libInstalledLoaded) {
+                _ensureLibInstalledLoaded().then(() => { if (_sdCurrentIdx !== null) _refreshDetailLibsIfOpen(); });
+            }
             _updateDetailButtons(idx);
             document.getElementById('scriptDetailOverlay').classList.add('open');
             if (window.lucide) refreshLucideIcons();
@@ -12189,6 +12482,10 @@
                         } else {
                             showNotification('Путь к игре установлен', 'success');
                         }
+                    } else if (result.needs_install) {
+                        // Нужна установка — показываем модал
+                        closeFolderModal();
+                        openInstallModal(result.folder, result.missing);
                     } else if (result.message !== 'Папка не выбрана') {
                         showNotification(apiMsg(result.message) || 'Ошибка', 'error');
                     }
@@ -13826,6 +14123,8 @@
         function tbCloseToTray() {
             if (window.pywebview && window.pywebview.api.minimize_to_tray) {
                 window.pywebview.api.minimize_to_tray();
+            } else if (window.pywebview && window.pywebview.api.hide_window) {
+                window.pywebview.api.hide_window();
             }
         }
         async function _syncMaxState() {
@@ -13867,7 +14166,7 @@
             // Интерактивные зоны — тянуть окно от них нельзя
             const INTERACTIVE = 'button, input, select, textarea, label, a, ' +
                 '.left-panel, .right-panel, .settings-panel, .status-bar, ' +
-                '#profilesHoverWidget, .modal, .cs-dropdown, ' +
+                '#profilesHoverWidget, #toastContainer, .modal, .cs-dropdown, ' +
                 '.resize-handle, #tbButtons, .launch-item, .wp-picker-list, ' +
                 '.notification, #notificationContainer, ' +
                 // Карточки каталогов/модов — div'ы с click-обработчиком
@@ -15178,6 +15477,116 @@
             });
         })();
         // ══════════════════════════════════════════════
+        //  CUSTOM RENDER EFFECTS — битовая маска
+        // ══════════════════════════════════════════════
+        const CRE_BITS = [
+            { bit: 2,  value: 4,   name: 'Пост-обработка',              hint: 'Эффекты постпроцессинга' },
+            { bit: 3,  value: 8,   name: 'Трейсеры и чекпоинты',        hint: 'Визуальные маркеры трейсеров' },
+            { bit: 4,  value: 16,  name: 'Таргеты на персонаже',         hint: 'Индикаторы прицеливания' },
+            { bit: 5,  value: 32,  name: 'Эффекты оружия и выстрелы',   hint: 'Дульное пламя, гильзы, вспышки' },
+            { bit: 6,  value: 64,  name: 'Кровь, дымка и искры',        hint: 'Попадания, взрывы, окружение' },
+            { bit: 7,  value: 128, name: 'Следы от шин',                 hint: 'Тормозной путь и следы на дороге' },
+        ];
+
+        // Биты 0 и 1 (значения 1 и 2) — не описаны, храним и восстанавливаем
+        const CRE_FIXED_MASK = 0b11; // биты 0 и 1
+
+        let _creCurrentValue = 63; // рабочее значение пока модал открыт
+
+        function openCRE() {
+            _creCurrentValue = typeof patchesData['CustomRenderEffects'] === 'number'
+                ? patchesData['CustomRenderEffects']
+                : 63;
+            buildCRERows();
+            updateCREDisplay();
+            document.getElementById('creOverlay').classList.add('open');
+        }
+
+        function closeCRE() {
+            _closeWithAnim(document.getElementById('creOverlay'), () => {
+                document.getElementById('creOverlay').classList.remove('open');
+            });
+        }
+
+        function saveCRE() {
+            patchesData['CustomRenderEffects'] = _creCurrentValue;
+            closeCRE();
+            showNotification('<i data-lucide="check"></i> Эффекты применены (значение: ' + _creCurrentValue + ')', 'success');
+        }
+
+        function buildCRERows() {
+            const container = document.getElementById('creRows');
+            container.innerHTML = '';
+
+            CRE_BITS.forEach(cfg => {
+                const row = document.createElement('label');
+                row.className = 'cre-row';
+
+                const isOn = !!(_creCurrentValue & cfg.value);
+
+                const badge = document.createElement('div');
+                badge.className = 'cre-bit-badge';
+                badge.textContent = cfg.value;
+
+                const info = document.createElement('div');
+                info.className = 'cre-info';
+                info.innerHTML = `<div class="cre-effect-name">${cfg.name}</div><div class="cre-effect-hint">${cfg.hint}</div>`;
+
+                const cb = document.createElement('input');
+                cb.type = 'checkbox';
+                cb.checked = isOn;
+                cb.style.cssText = 'position:absolute;opacity:0;width:0;height:0;pointer-events:none;';
+                cb.dataset.bitValue = cfg.value;
+
+                const toggle = document.createElement('div');
+                toggle.className = 's-toggle' + (isOn ? ' on' : '');
+
+                cb.addEventListener('change', () => {
+                    toggle.classList.toggle('on', cb.checked);
+                    if (cb.checked) {
+                        _creCurrentValue |= cfg.value;
+                    } else {
+                        _creCurrentValue &= ~cfg.value;
+                    }
+                    updateCREDisplay();
+                });
+
+                row.appendChild(badge);
+                row.appendChild(info);
+                row.appendChild(cb);
+                row.appendChild(toggle);
+                container.appendChild(row);
+            });
+
+            // Создаём 6 ячеек бинарного дисплея (биты 7..2, без зарезервированных 0 и 1)
+            const disp = document.getElementById('creBitsDisplay');
+            disp.innerHTML = '';
+            for (let i = 2; i <= 7; i++) {
+                const bitVal = 1 << i;
+                const cell = document.createElement('div');
+                cell.className = 'cre-bit-cell';
+                cell.dataset.bit = i;
+                cell.title = CRE_BITS.find(c => c.value === bitVal)?.name || `Бит ${i+1}`;
+                disp.appendChild(cell);
+            }
+        }
+
+        function updateCREDisplay() {
+            document.getElementById('creValueNumber').textContent = _creCurrentValue;
+
+            const disp = document.getElementById('creBitsDisplay');
+            const cells = disp.querySelectorAll('.cre-bit-cell');
+            cells.forEach(cell => {
+                const i = parseInt(cell.dataset.bit);
+                const bitVal = 1 << i;
+                const isSet = !!(_creCurrentValue & bitVal);
+                cell.textContent = isSet ? '1' : '0';
+                cell.classList.toggle('on', isSet);
+                cell.classList.toggle('off', !isSet);
+            });
+        }
+
+        // ══════════════════════════════════════════════
         //  AUTOSAVE TO ACTIVE PROFILE
         // ══════════════════════════════════════════════
         async function _autosaveToActiveProfile(patches, launchParams) {
@@ -15334,6 +15743,7 @@
                 document.getElementById('ep_enableGrass').checked = !!lp.enable_grass;
                 document.getElementById('ep_ldo').checked         = !!lp.ldo;
                 document.getElementById('ep_memory').value        = String(Math.min(4096, parseInt(lp.memory, 10) || 4096));
+                epMemSync();
 
                 // CDN (дефолт конфига — «1,1,1», как в настройках)
                 const cdn = (lp.cdn || '1,1,1').split(',').map(s => s.trim() === '1' ? 1 : 0);
@@ -15634,6 +16044,55 @@
             const sel = document.getElementById('memoryInput');
             const val = document.getElementById('memorySelectVal');
             const pop = document.getElementById('memorySelectPop');
+            if (!sel || !val) return;
+            if (sel.value === '' || ![...sel.options].some(o => o.value === sel.value)) {
+                sel.value = '4096';
+            }
+            val.textContent = sel.value;
+            if (pop) pop.querySelectorAll('.s-select-item').forEach(i =>
+                i.classList.toggle('sel', i.dataset.v === sel.value));
+        }
+
+        // ── Тот же паттерн для селекта памяти в редакторе профиля:
+        //    нативный <select> в WebView2 даёт белый список и белый скроллбар
+        //    (нативный попап не стилизуется) ──
+        function epMemInit() {
+            const sel = document.getElementById('ep_memory');
+            const wrap = document.getElementById('epMemorySelect');
+            const btn = document.getElementById('epMemoryBtn');
+            const pop = document.getElementById('epMemoryPop');
+            if (!sel || !wrap || !btn || !pop) return;
+            const check = '<svg class="s-select-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
+            pop.innerHTML = [...sel.options].map(o =>
+                `<button class="s-select-item" type="button" data-v="${o.value}" role="option">${o.value}${check}</button>`
+            ).join('');
+            pop.querySelectorAll('.s-select-item').forEach(item => {
+                item.addEventListener('click', () => {
+                    sel.value = item.dataset.v;
+                    epMemSync();
+                    wrap.classList.remove('open');
+                    btn.setAttribute('aria-expanded', 'false');
+                });
+            });
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (wrap.classList.contains('open')) {
+                    wrap.classList.remove('open');
+                    btn.setAttribute('aria-expanded', 'false');
+                    return;
+                }
+                wrap.classList.add('open');
+                btn.setAttribute('aria-expanded', 'true');
+            });
+            document.addEventListener('click', (e) => { if (!wrap.contains(e.target)) wrap.classList.remove('open'); });
+            document.addEventListener('keydown', (e) => { if (e.key === 'Escape') wrap.classList.remove('open'); });
+            epMemSync();
+        }
+
+        function epMemSync() {
+            const sel = document.getElementById('ep_memory');
+            const val = document.getElementById('epMemoryVal');
+            const pop = document.getElementById('epMemoryPop');
             if (!sel || !val) return;
             if (sel.value === '' || ![...sel.options].some(o => o.value === sel.value)) {
                 sel.value = '4096';
@@ -16250,6 +16709,14 @@
                     }
                 } else { showNotification('Доступно только в приложении', 'error'); }
             } catch(e) { showNotification('Ошибка: ' + (e && e.message || e), 'error'); }
+        }
+
+        function _flTriggerInstall() {
+            const d = _flData || {};
+            // Не закрываем FL-панель — прячем её за install modal
+            // После установки она вернётся с обновлённым статусом
+            _flInstallPending = true;
+            openInstallModal(d.folder, d.missing);
         }
 
         // ══════════════════════════════════════════════
