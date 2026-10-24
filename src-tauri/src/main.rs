@@ -54,6 +54,16 @@ fn main() {
     );
 
     tauri::Builder::default()
+        // Обязателен первым: второй экземпляр не запускается, а показывает
+        // окно первого. Иначе два лаунчера параллельно пишут config.json
+        // и могут одновременно вести установку в одну папку игры.
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            if let Some(win) = app.get_webview_window("main") {
+                let _ = win.show();
+                let _ = win.unminimize();
+                let _ = win.set_focus();
+            }
+        }))
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())

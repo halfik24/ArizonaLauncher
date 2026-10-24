@@ -13,6 +13,9 @@ use super::manifest::Root;
 
 const UA: &str = "ArizonaLauncher/2.0";
 
+/// Сколько готовы ждать один чанк ответа («залипшее» соединение).
+const CHUNK_TIMEOUT: Duration = Duration::from_secs(30);
+
 pub fn client() -> reqwest::Client {
     reqwest::Client::builder()
         .connect_timeout(Duration::from_secs(15))
@@ -179,16 +182,27 @@ pub async fn download_to(
     let mut due: Option<std::time::Instant> = None;
     let mut resp = resp;
     loop {
+        if cancel.load(Ordering::Relaxed) {
+            drop(f);
+            // .part НЕ трогаем — при повторном запуске допишем с места обрыва
+            bail!("отменено");
+        }
         // Пауза: стоим на месте, пока фронт не снимет. .part не трогаем —
         // после снятия качаем дальше с того же байта.
         if wait_while_paused(pause, cancel, &mut || {}) {
             drop(f);
             bail!("отменено");
         }
-        let chunk = resp
-            .chunk()
-            .await
-            .context("чтение ответа")?;
+        // Таймаут на каждый чанк: connect_timeout не спасает от «залипшего»
+        // соединения, когда TCP жив, но сервер молчит — без этого качка
+        // (и кнопка «Отменить», которая проверяется между чанками) висит часами
+        let chunk = match tokio::time::timeout(CHUNK_TIMEOUT, resp.chunk()).await {
+            Ok(c) => c.context("чтение ответа")?,
+            Err(_) => {
+                drop(f);
+                bail!("чтение ответа: сервер молчит дольше {} с", CHUNK_TIMEOUT.as_secs());
+            }
+        };
         let Some(chunk) = chunk else {
             break;
         };

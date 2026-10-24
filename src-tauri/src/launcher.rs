@@ -860,14 +860,20 @@ pub async fn start_game(
 /// статус-бар); edge тогда останется для GTA-watcher'а, который по нему
 /// разворачивает окно лаунчера после закрытия игры.
 #[tauri::command]
-pub fn is_gta_running(consume_exit: Option<bool>) -> Result<serde_json::Value, String> {
+pub async fn is_gta_running(consume_exit: Option<bool>) -> Result<serde_json::Value, String> {
     static GTA_WAS_RUNNING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-    let mut sys = sysinfo::System::new();
-    sys.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
-    let running = sys
-        .processes()
-        .values()
-        .any(|p| p.name().to_string_lossy().eq_ignore_ascii_case("gta_sa.exe"));
+    // Полный снапшот процессов — десятки мс; фронт опрашивает раз в 3 с,
+    // поэтому уводим его со main-потока (sync-команды в Tauri 2 исполняются
+    // на нём) в blocking-пул
+    let running = tauri::async_runtime::spawn_blocking(|| {
+        let mut sys = sysinfo::System::new();
+        sys.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
+        sys.processes()
+            .values()
+            .any(|p| p.name().to_string_lossy().eq_ignore_ascii_case("gta_sa.exe"))
+    })
+    .await
+    .map_err(|e| e.to_string())?;
     // was_running: игра была запущена на прошлый вызов, а сейчас вышла —
     // фронт по этому флагу возвращает окно лаунчера после выхода из GTA.
     if consume_exit.unwrap_or(true) {
@@ -3255,8 +3261,10 @@ pub async fn check_patches_update_status() -> Result<serde_json::Value, String> 
 }
 
 /// Экспорт настроек патчей в JSON-файл через системный диалог сохранения.
+/// async: blocking_save_file из sync-команды исполняется на main-потоке и
+/// блокирует его на всё время открытого диалога (окно «Не отвечает»).
 #[tauri::command]
-pub fn export_patches(app: tauri::AppHandle, data: serde_json::Value) -> Result<serde_json::Value, String> {
+pub async fn export_patches(app: tauri::AppHandle, data: serde_json::Value) -> Result<serde_json::Value, String> {
     use tauri_plugin_dialog::DialogExt;
 
     let ts = chrono::Local::now().format("%Y%m%d_%H%M%S");
@@ -3301,7 +3309,7 @@ pub fn export_patches(app: tauri::AppHandle, data: serde_json::Value) -> Result<
 /// Только читает и валидирует файл — запись делает фронтенд (после показа
 /// diff-подтверждения), бэкап перед записью создаёт write_patches_inner.
 #[tauri::command]
-pub fn import_patches(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<serde_json::Value, String> {
+pub async fn import_patches(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<serde_json::Value, String> {
     use tauri_plugin_dialog::DialogExt;
 
     let picked = app
@@ -4397,11 +4405,9 @@ async fn launcher_install_run(
         || !has_preloading_plugins(folder);
 
     if install_type == "upgrade_to_v8" {
-        // Старые процессы лаунчеров блокируют удаление их exe
-        kill_all_launchers();
-    }
-    if install_launcher {
-        remove_old_launcher_exes(folder);
+        // Старые процессы лаунчеров блокируют удаление их exe — но убиваем
+        // их только ПОСЛЕ успешной загрузки нового архива (см. ниже)
+        log::info!("launcher_install_run: upgrade_to_v8, отложенное завершение старых процессов");
     }
 
     // ── Этап 1: архив лаунчера (ZipCrypto, пароль) ──
@@ -4415,6 +4421,19 @@ async fn launcher_install_run(
             "Скачивание архива лаунчера...",
         )
         .await?;
+        // Старые exe удаляем только теперь: обрыв сети при скачивании больше
+        // не оставляет пользователя без рабочего лаунчера. sysinfo-снапшот
+        // и sleep(1s) внутри — уводим с воркера рантайма.
+        let folder_owned = folder.to_path_buf();
+        let upgrade = install_type == "upgrade_to_v8";
+        tauri::async_runtime::spawn_blocking(move || {
+            if upgrade {
+                kill_all_launchers();
+            }
+            remove_old_launcher_exes(&folder_owned);
+        })
+        .await
+        .map_err(|e| e.to_string())?;
         emit_install_progress(app, "extract", 82, "Распаковка архива...");
         let mode = if install_type == "choose_version" {
             ZipExtractMode::All
@@ -5660,9 +5679,10 @@ pub fn get_wallpaper_full(filename: String) -> Result<serde_json::Value, String>
 }
 
 /// Диалог выбора картинки для фона лаунчера → base64 data URL
-/// (Python select_bg_image).
+/// (Python select_bg_image). async — чтобы blocking_pick_file не
+/// исполнялся на main-потоке (см. export_patches).
 #[tauri::command]
-pub fn select_bg_image(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
+pub async fn select_bg_image(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
     use tauri_plugin_dialog::DialogExt;
 
     let picked = app

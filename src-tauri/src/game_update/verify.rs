@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 
 use super::downloader::{md5_file_blocking, mtime_secs};
 use super::manifest::{Entry, Flat, Kind};
@@ -42,13 +42,18 @@ pub struct Plan {
 /// repair=true — считать md5 у всех файлов (режим «Починить»).
 /// cache — rel -> md5 из прошлых прогонов (наш собственный кэш).
 /// on_scan — прогресс по хэшируемым файлам: (bytes_done, bytes_total, current).
+/// cancel — досрочный выход (частичный план; вызывающий обязан проверить
+/// флаг сам и отбросить результат — без этого «Отменить» не действует,
+/// пока MD5-скан больших папок не закончится).
 pub fn plan(
     flat: &Flat,
     target: &Path,
     repair: bool,
     cache: &HashMap<String, String>,
     on_scan: Option<&(dyn Fn(u64, u64, &str) + Send + Sync)>,
+    cancel: Option<&AtomicBool>,
 ) -> Plan {
+    let cancelled = || cancel.is_some_and(|c| c.load(Ordering::Relaxed));
     let mut p = Plan::default();
     let mut scanned_bytes: u64 = 0;
     /// Файлы, чей md5 ещё не посчитан (2-я фаза, параллельные воркеры).
@@ -62,6 +67,9 @@ pub fn plan(
     let mut pending: Vec<Option<Pending>> = Vec::new();
 
     for e in &flat.entries {
+        if cancelled() {
+            break;
+        }
         // res-записи лаунчер берёт только при починке
         if e.res && !repair {
             continue;
@@ -204,6 +212,9 @@ pub fn plan(
         std::thread::scope(|s| {
             for _ in 0..workers {
                 s.spawn(|| loop {
+                    if cancelled() {
+                        break;
+                    }
                     let i = next.fetch_add(1, Ordering::Relaxed);
                     if i >= pending.len() {
                         break;
@@ -298,7 +309,7 @@ mod tests {
             bytes: 18,
             ..Default::default()
         };
-        let p = plan(&flat, dir.path(), false, &HashMap::new(), None);
+        let p = plan(&flat, dir.path(), false, &HashMap::new(), None, None);
         assert_eq!(p.download_count, 2);
         assert_eq!(p.download_bytes, 13);
         // ok.img: дата в манифесте 0 не новее локальной, локальная новее -> DateFix
@@ -316,7 +327,7 @@ mod tests {
         // date_change = 0 -> need_hash = false (дата манифеста не новее),
         // значит хэш не считается вовсе
         flat.entries.push(entry("a.img", 5, "whatever", 0));
-        let p = plan(&flat, dir.path(), false, &HashMap::new(), None);
+        let p = plan(&flat, dir.path(), false, &HashMap::new(), None, None);
         assert_eq!(p.hashed, 0);
         assert_eq!(p.date_fix, 1); // mtime новее -> DateFix
 
@@ -324,12 +335,12 @@ mod tests {
         const FUTURE_DATE: i64 = 4_000_000_000;
         let mut flat2 = Flat::default();
         flat2.entries.push(entry("a.img", 5, &md5, FUTURE_DATE));
-        let p2 = plan(&flat2, dir.path(), false, &HashMap::new(), None);
+        let p2 = plan(&flat2, dir.path(), false, &HashMap::new(), None, None);
         assert_eq!(p2.hashed, 1);
         assert_eq!(p2.ok, 1);
         assert_eq!(p2.date_fix, 1); // хэш верный, ставим дату
 
-        let p3 = plan(&flat2, dir.path(), false, &HashMap::from([("a.img".to_string(), md5.clone())]), None);
+        let p3 = plan(&flat2, dir.path(), false, &HashMap::from([("a.img".to_string(), md5.clone())]), None, None);
         assert_eq!(p3.hashed, 0); // из кэша
         assert_eq!(p3.ok, 1);
     }
@@ -342,9 +353,9 @@ mod tests {
             res_entries: 1,
             ..Default::default()
         };
-        let p = plan(&flat, dir.path(), false, &HashMap::new(), None);
+        let p = plan(&flat, dir.path(), false, &HashMap::new(), None, None);
         assert_eq!(p.download_count, 0);
-        let p = plan(&flat, dir.path(), true, &HashMap::new(), None);
+        let p = plan(&flat, dir.path(), true, &HashMap::new(), None, None);
         assert_eq!(p.download_count, 1); // нет файла + repair
     }
 
@@ -363,7 +374,7 @@ mod tests {
         let root: manifest::Root = serde_json::from_str(json).unwrap();
         let flat = manifest::flatten(&root, true);
         let dir = tempfile::tempdir().unwrap();
-        let p = plan(&flat, dir.path(), false, &HashMap::new(), None);
+        let p = plan(&flat, dir.path(), false, &HashMap::new(), None, None);
         assert_eq!(p.download_count, 1);
     }
 }

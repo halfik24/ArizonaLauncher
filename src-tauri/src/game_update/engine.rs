@@ -130,7 +130,7 @@ pub async fn build_plan(
             current: format!("проверка: {current}"),
             speed: 0,
         });
-    }));
+    }), Some(cancel));
     log(format!(
         "Проверено: в порядке {}, md5 пересчитано {}",
         plan.ok, plan.hashed
@@ -143,7 +143,10 @@ pub async fn build_plan(
         plan.date_fix,
         plan.delete_count
     ));
-    let _ = cancel; // в check отмен не бывает — план считается быстро
+    // Скан уважает cancel — но план тогда частичный, использовать его нельзя
+    if cancel.load(Ordering::Relaxed) {
+        bail!("отменено пользователем");
+    }
     Ok((flat, plan))
 }
 
