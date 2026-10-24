@@ -20,7 +20,9 @@ pub fn get_config(state: State<'_, AppState>) -> Result<serde_json::Value, Strin
         "last_server": cfg.last_server,
         "launch_params": cfg.launch_params,
         "paths_configured": paths_ok,
-        "launcher_version": "v8"
+        // Реальная версия из папки игры (как get_launcher_version), а не
+        // константа "v8"
+        "launcher_version": detect_launcher_version(&state)
     }))
 }
 
@@ -1322,7 +1324,7 @@ async fn fetch_servers(state: &AppState) -> serde_json::Value {
         Ok(r) => r,
         Err(e) => {
             log::error!("Server fetch error: {e}");
-            return cached_data.map(serde_json::Value::Array).unwrap_or(serde_json::Value::Null);
+            return cached_data.map(serde_json::Value::Array).unwrap_or_else(|| serde_json::Value::Array(Vec::new()));
         }
     };
 
@@ -1335,12 +1337,12 @@ async fn fetch_servers(state: &AppState) -> serde_json::Value {
                 c.ts = now;
             }
         }
-        return cached_data.map(serde_json::Value::Array).unwrap_or(serde_json::Value::Null);
+        return cached_data.map(serde_json::Value::Array).unwrap_or_else(|| serde_json::Value::Array(Vec::new()));
     }
 
     if !resp.status().is_success() {
         log::error!("Server fetch HTTP {}", resp.status());
-        return cached_data.map(serde_json::Value::Array).unwrap_or(serde_json::Value::Null);
+        return cached_data.map(serde_json::Value::Array).unwrap_or_else(|| serde_json::Value::Array(Vec::new()));
     }
 
     let etag_new = resp
@@ -1358,7 +1360,7 @@ async fn fetch_servers(state: &AppState) -> serde_json::Value {
         Ok(v) => v,
         Err(e) => {
             log::error!("Server fetch parse error: {e}");
-            return cached_data.map(serde_json::Value::Array).unwrap_or(serde_json::Value::Null);
+            return cached_data.map(serde_json::Value::Array).unwrap_or_else(|| serde_json::Value::Array(Vec::new()));
         }
     };
 
@@ -1368,14 +1370,14 @@ async fn fetch_servers(state: &AppState) -> serde_json::Value {
             _ => match data.as_array() {
                 Some(a) => a,
                 None => {
-                    return cached_data.map(serde_json::Value::Array).unwrap_or(serde_json::Value::Null)
+                    return cached_data.map(serde_json::Value::Array).unwrap_or_else(|| serde_json::Value::Array(Vec::new()))
                 }
             },
         }
     } else if let Some(a) = data.as_array() {
         a
     } else {
-        return cached_data.map(serde_json::Value::Array).unwrap_or(serde_json::Value::Null);
+        return cached_data.map(serde_json::Value::Array).unwrap_or_else(|| serde_json::Value::Array(Vec::new()));
     };
 
     let servers = normalize_servers(server_list);
@@ -5374,6 +5376,18 @@ pub fn uninstall_library(
 /// root/asi — корень игры, cleo — CLEO, moonloader — moonloader, plugins — plugins.
 /// Отсутствующие папки создаются (как в Python _resolve_dest).
 fn resolve_dest(state: &AppState, destination: &str) -> Result<PathBuf, String> {
+    resolve_dest_no_create(state, destination).map(|dir| {
+        if !dir.is_dir() {
+            std::fs::create_dir_all(&dir)
+                .map_err(|e| format!("Не удалось создать папку {}: {e}", dir.display()))?;
+        }
+        Ok(dir)
+    })?
+}
+
+/// resolve_dest без создания папок — для read-only проверок
+/// (check_other_installed раньше плодил пустые CLEO/plugins в папке игры).
+fn resolve_dest_no_create(state: &AppState, destination: &str) -> Result<PathBuf, String> {
     let game_dir = util::game_dir(state)
         .ok_or_else(|| "Путь к игре не установлен — укажи его в настройках".to_string())?;
     let dir = match destination.to_ascii_lowercase().as_str() {
@@ -5384,10 +5398,6 @@ fn resolve_dest(state: &AppState, destination: &str) -> Result<PathBuf, String> 
         "moonloader" => moonloader_dir(state)?,
         other => return Err(format!("Неизвестное назначение: {other}")),
     };
-    if !dir.is_dir() {
-        std::fs::create_dir_all(&dir)
-            .map_err(|e| format!("Не удалось создать папку {}: {e}", dir.display()))?;
-    }
     Ok(dir)
 }
 
@@ -5516,7 +5526,9 @@ pub fn check_other_installed(
     filename: String,
     destination: String,
 ) -> Result<serde_json::Value, String> {
-    let installed = resolve_dest(&state, &destination)
+    // resolve_dest_no_create: проверка «установлен ли» не должна плодить
+    // пустые CLEO/plugins в папке игры
+    let installed = resolve_dest_no_create(&state, &destination)
         .ok()
         .and_then(|dir| safe_script_filename(&filename).ok().map(|n| dir.join(n)))
         .map(|p| p.exists())

@@ -7716,8 +7716,8 @@
                                 <div class="sb-pos-row" id="sbPosRow">
                                     <button class="sb-pos-btn" data-pos="bottom" onclick="setStatusBarPos('bottom')">Внизу</button>
                                     <button class="sb-pos-btn" data-pos="top" onclick="setStatusBarPos('top')">Вверху</button>
-                                    <button class="sb-pos-btn" data-pos="left" onclick="setStatusBarPos('left')">Слево</button>
-                                    <button class="sb-pos-btn" data-pos="right" onclick="setStatusBarPos('right')">Справо</button>
+                                    <button class="sb-pos-btn" data-pos="left" onclick="setStatusBarPos('left')">Слева</button>
+                                    <button class="sb-pos-btn" data-pos="right" onclick="setStatusBarPos('right')">Справа</button>
                                 </div>
                             </div>
                             <div class="sb-pos-wrap">
@@ -8657,7 +8657,16 @@
         async function _saveProfiles() {
             try {
                 if (window.pywebview && window.pywebview.api.save_profiles) {
-                    await window.pywebview.api.save_profiles(_profiles, _activeProfileId);
+                    const res = await window.pywebview.api.save_profiles(_profiles, _activeProfileId);
+                    if (res && res.success === false) {
+                        // Бэк не записал — дублируем в localStorage, иначе
+                        // профили терялись молча (return до fallback)
+                        console.warn('save_profiles отклонён бэком:', res.message);
+                        try {
+                            localStorage.setItem('arp_profiles', JSON.stringify(_profiles));
+                            localStorage.setItem('arp_active_profile', _activeProfileId || '');
+                        } catch {}
+                    }
                     return;
                 }
             } catch (e) {
@@ -10543,6 +10552,10 @@
                 if (window.pywebview && window.pywebview.api.delete_moonloader_script) {
                     result = await window.pywebview.api.delete_moonloader_script(name);
                 } else {
+                    // В Tauri команда обязана быть в бридже — иначе это ошибка,
+                    // а не фейковый «удалён» (демо-режим только для браузера)
+                    demoGuard('delete_moonloader_script');
+                    await new Promise(r => setTimeout(r, 400));
                     result = { success: true };
                 }
                 if (result && result.success) {
@@ -10881,7 +10894,7 @@
                 const catalog = window._mlCatalog || [];
                 for (const item of catalog) {
                     if (!item.libraries || !item.file) continue;
-                    const fileName = String(item.file).toLowerCase().split('/').pop();
+                    const fileName = String(item.file).toLowerCase().replace(/\\/g, '/').split('/').pop();
                     if (!installedScripts.has(fileName)) continue;
                     const libs = String(item.libraries).split(',').map(s => s.trim()).filter(Boolean);
                     for (const libName of libs) {
@@ -11250,7 +11263,7 @@
                     if (result.success) {
                         btn.innerHTML = '<i data-lucide="check-circle"></i> Установлено';
                         btn.className = 'ml-card-install-btn done';
-                        window._installedScriptFiles.add(item.file.toLowerCase().split('/').pop());
+                        window._installedScriptFiles.add(item.file.toLowerCase().replace(/\\/g, '/').split('/').pop());
                         const card = btn.closest('.ml-catalog-card');
                         if (card) {
                             const badge = card.querySelector('.ml-card-status-badge');
@@ -12083,6 +12096,20 @@
 
                 const status = await api.check_patches_status();
                 renderPatchStatusUI(status, method);
+
+                // Автопроверка обновлений патчей: в Python событие приходило
+                // извне (_onPatchesUpdateAvailable), в Tauri его никто не
+                // эмитил — баннер был мёртв. Сравниваем версию манифеста
+                // с установленной сами.
+                if (api.check_patches_update_status && status && status.installed_version) {
+                    try {
+                        const upd = await api.check_patches_update_status();
+                        if (upd && upd.success && upd.released
+                            && upd.latest_version && upd.latest_version !== status.installed_version) {
+                            showPatchUpdateBanner(upd.latest_version);
+                        }
+                    } catch (e) { console.warn('check_patches_update_status:', e); }
+                }
             } catch (e) {
                 console.error('checkPatchesStatus error:', e);
             }
@@ -12437,6 +12464,9 @@
         function openInstallModal(folder, missing) {
             // Если folder не передан, пытаемся получить из _flData
             _installFolder = folder || (_flData && _flData.folder) || '';
+            // Тип установки из прошлой модалки не должен протекать в эту
+            // (после отмены upgrade запускался бы с чужим installType)
+            _installAction = null;
             _resetInstallModal();
 
             // Показываем radio-карточку v8, сразу выбираем
@@ -12913,7 +12943,7 @@
         }
 
         // Уведомления
-        function showNotification(message, type = 'info') {
+        function showNotification(message, type = 'info', duration = 0) {
             const container = document.getElementById('notificationContainer');
             if (!container) return;
             const notification = document.createElement('div');
@@ -12927,10 +12957,10 @@
             const closeNotification = () => {
                 if (isClosing) return;
                 isClosing = true;
-                
+
                 // Отменяем автозакрытие если оно ещё не сработало
                 if (autoCloseTimer) clearTimeout(autoCloseTimer);
-                
+
                 notification.style.animation = 'slideOut 0.3s ease-out forwards';
                 setTimeout(() => notification.remove(), 300);
             };
@@ -12938,8 +12968,12 @@
             // Закрытие по клику
             notification.addEventListener('click', closeNotification);
 
-            // Автозакрытие через 3 секунды
-            autoCloseTimer = setTimeout(closeNotification, 3000);
+            // Автозакрытие: явная длительность (3-й аргумент, его уже передают
+            // ~15 вызовов) > ошибки 6 с (длинный текст) > обычные 3 с
+            autoCloseTimer = setTimeout(
+                closeNotification,
+                duration > 0 ? duration : (type === 'error' ? 6000 : 3000)
+            );
         }
 
         // Баннер обновления патчей (появляется сверху при автопроверке)
@@ -15519,8 +15553,29 @@
             if (!_activeProfileId) return;
             const idx = _profiles.findIndex(p => p.id === _activeProfileId);
             if (idx === -1) return;
-            _profiles[idx].patches = JSON.parse(JSON.stringify(patches));
-            _profiles[idx].launch_params = JSON.parse(JSON.stringify(launchParams));
+            // Полный снапшот (как _createProfileFrom): раньше сохранялись
+            // только патчи и параметры — «Применить» на активном профиле
+            // откатывал включённые скрипты и способ запуска к состоянию
+            // на момент создания профиля
+            const p = _profiles[idx];
+            p.patches = JSON.parse(JSON.stringify(patches));
+            p.launch_params = JSON.parse(JSON.stringify(launchParams));
+            try {
+                if (window.pywebview) {
+                    if (window.pywebview.api.get_moonloader_scripts) {
+                        const mr = await window.pywebview.api.get_moonloader_scripts();
+                        if (mr && mr.success) {
+                            p.lua_enabled = (mr.scripts || []).filter(s => s.enabled).map(s => s.name);
+                        }
+                    }
+                    if (window.pywebview.api.get_launch_method) {
+                        const lm = await window.pywebview.api.get_launch_method();
+                        if (lm && lm.success && (lm.method === 'native' || lm.method === 'air')) {
+                            p.launch_method = lm.method;
+                        }
+                    }
+                }
+            } catch (e) { console.warn('autosave snapshot:', e); }
             await _saveProfiles();
         }
 
@@ -15590,7 +15645,7 @@
                         item.innerHTML = `
                             <span class="ph-item-icon">${p.icon || '<i data-lucide="user"></i>'}</span>
                             <div class="ph-item-info">
-                                <div class="ph-item-name">${p.name}</div>
+                                <div class="ph-item-name">${escapeHtml(p.name)}</div>
                                 <div class="ph-item-meta">${meta}</div>
                             </div>
                             ${isActive ? '<span class="ph-item-active-badge"><i data-lucide="check"></i> Активен</span>' : ''}
@@ -16494,7 +16549,9 @@
                         return;
                     }
                     if (r.success) {
-                        _flData = { auto_found: true, check_status: 'ok', game_path: r.message, folder: r.folder, missing: [] };
+                        // game_path — именно путь (folder + gta_sa.exe), а не
+                        // текст «Путь установлен: …» из r.message
+                        _flData = { auto_found: true, check_status: 'ok', game_path: (r.folder ? r.folder.replace(/[\\/]+$/, '') + '\\gta_sa.exe' : ''), folder: r.folder, missing: [] };
                         _flRender();
                         showNotification('<i data-lucide="check-circle"></i> Путь к игре установлен', 'success');
                         await loadSavedData();
