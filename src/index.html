@@ -1113,6 +1113,25 @@
             background: rgba(255, 255, 255, 0.3);
         }
 
+        /* Тёмный скроллбар для тел модалок (редактор профиля и другие
+           re-use .cre-body): системный скроллбар WebView2 — белый */
+        .cre-body::-webkit-scrollbar {
+            width: 5px;
+        }
+
+        .cre-body::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .cre-body::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.18);
+            border-radius: 3px;
+        }
+
+        .cre-body::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.28);
+        }
+
         .news-tab-content {
             display: none;
         }
@@ -7765,6 +7784,8 @@
                     <div class="s-card">
                         <div class="s-card-title"><i data-lucide="link"></i> Ссылки</div>
                         <div class="s-btn-row" style="margin-top:4px;">
+                            <button class="s-btn" onclick="openExternal('https://t.me/halfik24')"><i data-lucide="send"></i> Автор в Telegram</button>
+                            <button class="s-btn" onclick="openExternal('https://t.me/HalfikChannel')"><i data-lucide="megaphone"></i> Telegram-канал</button>
                             <button class="s-btn" onclick="openExternal('https://github.com/halfik24/ArizonaLauncher')"><i data-lucide="github"></i> GitHub лаунчера</button>
                             <button class="s-btn" onclick="openExternal('https://github.com/halfik24/ArzLaunchRepo')"><i data-lucide="package"></i> Каталог скриптов</button>
                         </div>
@@ -8330,8 +8351,8 @@
                             <div style="display:flex;gap:10px;margin-top:10px;align-items:center;">
                                 <div style="display:flex;align-items:center;gap:6px;">
                                     <span class="ep-label" style="margin:0;">Память</span>
-                                    <div class="s-select" id="epMemorySelect" style="width:80px;">
-                                        <button class="s-select-btn" id="epMemoryBtn" type="button" aria-haspopup="listbox" aria-expanded="false" style="height:30px;font-size:11px;">
+                                    <div class="s-select" id="epMemorySelect" style="width:80px;margin-left:0;">
+                                        <button class="s-select-btn" id="epMemoryBtn" type="button" aria-haspopup="listbox" aria-expanded="false" style="width:100%;height:30px;font-size:11px;">
                                             <span class="s-select-val" id="epMemoryVal">4096</span>
                                             <svg class="s-select-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
                                         </button>
