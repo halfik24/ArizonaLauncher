@@ -8472,6 +8472,10 @@
         const checkboxGroup = document.getElementById('checkboxGroup');
 
         let patchesData = {};
+        // true, если при открытии настроек read_patches не смог прочитать
+        // конфиг — сохранение/экспорт патчей блокируются (saveSettings/doExport),
+        // иначе «Сохранить» запишет дефолты схемы поверх реального файла.
+        let _patchesReadFailed = false;
         let currentNickname = '';
         let currentServer = '';
         let serversData = [];
@@ -9407,6 +9411,25 @@
             try {
                 if (window.pywebview && window.pywebview.api.check_launcher_update) {
                     const update = await window.pywebview.api.check_launcher_update();
+                    // needs_update у check_launcher_update — только про установку/
+                    // апгрейд лаунчера v8 (состояние файлов игры проверяет
+                    // check_update_api). Подтягиваем полный install_info в
+                    // _installActionBtn: иначе клик по «Обновить» провалится в
+                    // startDownloadUpdate() и запустит обновление игры вместо
+                    // модалки установки лаунчера (с мгновенным ложным
+                    // «Обновление установлено!» при актуальных файлах).
+                    if (update && update.needs_update && update.folder &&
+                        window.pywebview.api.get_install_action_api) {
+                        try {
+                            const r = await window.pywebview.api.get_install_action_api(update.folder);
+                            const info = (r && r.success) ? r.install_info : null;
+                            if (info && info.action && info.action !== 'none' && info.action !== 'error') {
+                                _installActionBtn = { folder: update.folder, info };
+                            }
+                        } catch (e) {
+                            console.warn('get_install_action_api:', e);
+                        }
+                    }
                     checkLauncherInstallationUI(true, null, update);
                 }
             } catch (e) {
@@ -10441,9 +10464,12 @@
                     const item = document.createElement('div');
                     item.className = 'ml-installed-card';
                     // Имя файла может содержать кавычки/угловые — экранируем
-                    // и для onclick встраиваем через JSON.stringify
+                    // и для onclick встраиваем через JSON.stringify.
+                    // Кавычки JSON-делимитеров обязаны стать &quot;: атрибут
+                    // ограничен двойными кавычками, иначе парсер закроет его
+                    // на первой кавычке имени и onclick сломается.
                     const sName = escapeHtml(script.name);
-                    const sNameJs = JSON.stringify(script.name);
+                    const sNameJs = JSON.stringify(script.name).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
                     item.innerHTML = `
                         <div class="ml-installed-icon">${icon}</div>
                         <div class="ml-installed-info">
@@ -10973,9 +10999,13 @@
                 card.className = 'lib-card is-installed' + (catalogNames.has(String(lib.name).toLowerCase()) ? ' is-catalog' : '');
                 const fileCount = (lib.files || []).length;
                 const sizeStr = lib.size > 1024 * 1024 ? `${(lib.size / (1024 * 1024)).toFixed(1)} МБ` : `${Math.max(1, Math.round(lib.size / 1024))} КБ`;
+                // _escJsArg (как в renderLibCatalog): _mlEscape уже превратил '
+                // в &#39;, поэтому последующий .replace(/'/g,...) — no-op, а
+                // развёрнутая парсером кавычка ломала бы JS-строку в onclick
+                const safeName = _escJsArg(lib.name);
                 card.innerHTML = `${_libCard(lib.name, `${fileCount} файл · ${sizeStr}`, null, null)}
                 <div class="lib-card-foot">
-                    <button class="lib-card-btn danger" onclick="uninstallLib('${_mlEscape(lib.name).replace(/'/g, "\\'")}', this)">
+                    <button class="lib-card-btn danger" onclick="uninstallLib('${safeName}', this)">
                         <i data-lucide="trash-2"></i> Удалить
                     </button>
                 </div>`;
@@ -13127,6 +13157,10 @@
 
         async function doExport() {
             try {
+                if (_patchesReadFailed) {
+                    setImportStatus('<i data-lucide="alert-triangle"></i> Конфиг патчей не прочитан — экспорт заблокирован, переоткрой настройки', '#ff0');
+                    return;
+                }
                 if (window.pywebview && window.pywebview.api.export_patches) {
                     const result = await window.pywebview.api.export_patches(patchesData);
                     if (result.success) {
@@ -13191,6 +13225,7 @@
                     setImportStatus('<i data-lucide="x-circle"></i> Ошибка записи: ' + apiMsg(saveResult.message), '#f44');
                     return;
                 }
+                _patchesReadFailed = false;   // импорт перезаписал конфиг валидными данными
                 _pendingImport = null;
                 const m = document.getElementById('__genericModal');
                 if (m && m._close) m._close();
@@ -14251,6 +14286,11 @@
                     const n = r.files != null ? r.files : '?';
                     showNotification('<i data-lucide="download"></i> Вышло обновление игры: ' + n + ' файлов (' + gb + ' ГБ). Нажми «Обновить» на главном.', 'info');
                     if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
+                    // Уведомление ссылается на кнопку «Обновить» на главной,
+                    // но при старте её никто не рисует (loadSavedData не
+                    // вызывается из init) — показываем сами, тот же поток,
+                    // что и у ручной проверки из настроек (checkGameUpdate).
+                    if (typeof checkLauncherInstallation === 'function') checkLauncherInstallation(true, gamePath);
                 }
             } catch (e) { /* тихо: падение стартовой проверки не должно мешать */ }
         }
@@ -14944,9 +14984,16 @@
                 (window.pywebview?.api?.get_launcher_version?.()) || Promise.resolve(null)
             ]);
 
-            // 3. Читаем сохранённые настройки, дополняем дефолтами схемы
-            if (patchesResult && patchesResult.success === true) {
+            // 3. Читаем сохранённые настройки, дополняем дефолтами схемы.
+            //    При ошибке чтения (файл залочен игрой/бит) не подставляем
+            //    дефолты молча: UI их покажет, но сохранение/экспорт патчей
+            //    заблокированы по _patchesReadFailed.
+            _patchesReadFailed = !(patchesResult && patchesResult.success === true);
+            if (!_patchesReadFailed) {
                 patchesData = patchesResult.data;
+            } else if (patchesResult && patchesResult.message) {
+                console.warn('read_patches:', patchesResult.message);
+                showNotification('Не удалось прочитать конфиг патчей: ' + patchesResult.message, 'error');
             }
             patchesData = applySchemaDefaults(_patchesSchema, patchesData);
 
@@ -15082,8 +15129,12 @@
                     let patchesOk = true;
                     let paramsOk = true;
 
-                    // Сохраняем ArizonaPatches
-                    if (window.pywebview.api.write_patches) {
+                    // Сохраняем ArizonaPatches. Если конфиг не был прочитан при
+                    // открытии настроек — не пишем дефолты поверх реального файла
+                    if (_patchesReadFailed) {
+                        patchesOk = false;
+                        showNotification('Конфиг патчей не прочитан — сохранение заблокировано, переоткрой настройки', 'error');
+                    } else if (window.pywebview.api.write_patches) {
                         const result = await window.pywebview.api.write_patches(patchesData);
                         patchesOk = result.success;
                         if (!result.success) {
