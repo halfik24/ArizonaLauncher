@@ -864,18 +864,38 @@ pub async fn start_game(
 #[tauri::command]
 pub async fn is_gta_running(consume_exit: Option<bool>) -> Result<serde_json::Value, String> {
     static GTA_WAS_RUNNING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-    // Полный снапшот процессов — десятки мс; фронт опрашивает раз в 3 с,
-    // поэтому уводим его со main-потока (sync-команды в Tauri 2 исполняются
-    // на нём) в blocking-пул
-    let running = tauri::async_runtime::spawn_blocking(|| {
-        let mut sys = sysinfo::System::new();
-        sys.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
-        sys.processes()
-            .values()
-            .any(|p| p.name().to_string_lossy().eq_ignore_ascii_case("gta_sa.exe"))
-    })
-    .await
-    .map_err(|e| e.to_string())?;
+    // Кэш снапшота ~1.2 с: статус-бар (5 с) и GTA-watcher (3 с) опрашивают
+    // независимо — близкие по времени вызовы делят один проход перечисления
+    // процессов вместо двух
+    static GTA_SNAPSHOT: std::sync::Mutex<Option<(std::time::Instant, bool)>> =
+        std::sync::Mutex::new(None);
+
+    let cached = (|| {
+        let g = GTA_SNAPSHOT.lock().ok()?;
+        let (t, r) = g.as_ref()?;
+        (t.elapsed() < std::time::Duration::from_millis(1200)).then_some(*r)
+    })();
+    let running = match cached {
+        Some(r) => r,
+        None => {
+            // Полный снапшот процессов — десятки мс; фронт опрашивает раз в 3 с,
+            // поэтому уводим его со main-потока (sync-команды в Tauri 2 исполняются
+            // на нём) в blocking-пул
+            let r = tauri::async_runtime::spawn_blocking(|| {
+                let mut sys = sysinfo::System::new();
+                sys.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
+                sys.processes()
+                    .values()
+                    .any(|p| p.name().to_string_lossy().eq_ignore_ascii_case("gta_sa.exe"))
+            })
+            .await
+            .map_err(|e| e.to_string())?;
+            if let Ok(mut g) = GTA_SNAPSHOT.lock() {
+                *g = Some((std::time::Instant::now(), r));
+            }
+            r
+        }
+    };
     // was_running: игра была запущена на прошлый вызов, а сейчас вышла —
     // фронт по этому флагу возвращает окно лаунчера после выхода из GTA.
     if consume_exit.unwrap_or(true) {
@@ -1418,6 +1438,8 @@ pub async fn get_servers_and_news(app: tauri::AppHandle, state: State<'_, AppSta
 }
 
 /// Тело `get_launcher_news`: 3 fallback URL на GitHub, utf-8 → windows-1251.
+/// Зеркала опрашиваются ПАРАЛЛЕЛЬНО: при лежащем GitHub последовательный
+/// перебор держал загрузку до ~60 с (3 × 20 с таймаут) — теперь worst case 20 с.
 async fn fetch_launcher_news() -> serde_json::Value {
     let urls = [
         "https://raw.githubusercontent.com/halfik24/ArzLaunchRepo/main/updatenews.txt",
@@ -1425,8 +1447,7 @@ async fn fetch_launcher_news() -> serde_json::Value {
         "https://github.com/halfik24/ArzLaunchRepo/raw/main/updatenews.txt",
     ];
 
-    for url in urls {
-        log::info!("Пробуем загрузить новости: {url}");
+    let fetch_one = |url: &'static str| async move {
         let mut headers = reqwest::header::HeaderMap::new();
         headers.insert(
             reqwest::header::CACHE_CONTROL,
@@ -1440,7 +1461,7 @@ async fn fetch_launcher_news() -> serde_json::Value {
             reqwest::header::USER_AGENT,
             reqwest::header::HeaderValue::from_static("Mozilla/5.0"),
         );
-        let resp = match util::http_request(
+        match util::http_request(
             reqwest::Method::GET,
             url,
             headers,
@@ -1448,25 +1469,29 @@ async fn fetch_launcher_news() -> serde_json::Value {
         )
         .await
         {
-            Ok(r) => r,
-            Err(e) => {
-                log::error!("Ошибка при загрузке с {url}: {e}");
-                continue;
+            Ok(resp) => {
+                let status = resp.status();
+                match resp.bytes().await {
+                    Ok(b) => Some((status, util::decode_text_bytes(&b))),
+                    Err(e) => {
+                        log::error!("Новости {url}: чтение — {e}");
+                        None
+                    }
+                }
             }
-        };
-        log::info!("Статус ответа: {}", resp.status());
-        let status = resp.status();
-        let bytes = match resp.bytes().await {
-            Ok(b) => b,
             Err(e) => {
-                log::error!("Ошибка при чтении с {url}: {e}");
-                continue;
+                log::error!("Новости {url}: {e}");
+                None
             }
-        };
-        // utf-8, иначе windows-1251 (с заменой невалидных байтов, как errors='replace')
-        let text = util::decode_text_bytes(&bytes);
-        if status == reqwest::StatusCode::OK && !text.trim().is_empty() {
-            return serde_json::json!({"success": true, "text": text});
+        }
+    };
+    let (a, b, c) = tokio::join!(fetch_one(urls[0]), fetch_one(urls[1]), fetch_one(urls[2]));
+    // Приоритет результата — как порядок зеркал
+    for res in [a, b, c] {
+        if let Some((status, text)) = res {
+            if status == reqwest::StatusCode::OK && !text.trim().is_empty() {
+                return serde_json::json!({"success": true, "text": text});
+            }
         }
     }
 
@@ -5611,6 +5636,29 @@ fn find_wallpaper(filename: &str) -> Option<PathBuf> {
         .find(|path| path.is_file())
 }
 
+/// Кэш кодированных обоев: ключ (имя, размер, mtime). Замена файла с тем же
+/// именем инвалидирует запись, а stat-проверка на порядки дешевле декода —
+/// превью (ресайз + кодирование ~11 картинок) пересобирались при каждом
+/// открытии настроек/онбординга.
+fn wall_cache_key(path: &std::path::Path, filename: &str) -> (String, u64, i64) {
+    match std::fs::metadata(path) {
+        Ok(md) => (
+            filename.to_string(),
+            md.len(),
+            crate::game_update::downloader::mtime_secs(&md),
+        ),
+        Err(_) => (filename.to_string(), 0, 0),
+    }
+}
+
+static WALL_THUMB_CACHE: std::sync::Mutex<Option<std::collections::HashMap<(String, u64, i64), String>>> =
+    std::sync::Mutex::new(None);
+
+/// Полные обои тяжёлые (мегабайты) — держим последние 3 (LRU).
+static WALL_FULL_CACHE: std::sync::Mutex<Vec<((String, u64, i64), String)>> =
+    std::sync::Mutex::new(Vec::new());
+const WALL_FULL_CACHE_MAX: usize = 3;
+
 fn wallpaper_data_url(filename: &str) -> Result<serde_json::Value, String> {
     let path = match find_wallpaper(filename) {
         Some(p) => p,
@@ -5682,13 +5730,23 @@ pub fn get_wallpapers() -> Result<serde_json::Value, String> {
 /// При ошибке декодирования — отдаём оригинал (fallback, как в Python без PIL).
 #[tauri::command]
 pub fn get_wallpaper_thumb(filename: String) -> Result<serde_json::Value, String> {
-    let thumb = find_wallpaper(&filename)
-        .and_then(|p| std::fs::read(&p).ok())
-        .and_then(|bytes| thumb_data_url(&bytes, 500));
-    match thumb {
-        Some(url) => Ok(serde_json::json!({"success": true, "data_url": url})),
-        None => wallpaper_data_url(&filename),
+    if let Some(path) = find_wallpaper(&filename) {
+        let key = wall_cache_key(&path, &filename);
+        if let Some(hit) = WALL_THUMB_CACHE
+            .lock()
+            .ok()
+            .and_then(|c| c.as_ref().and_then(|m| m.get(&key).cloned()))
+        {
+            return Ok(serde_json::json!({"success": true, "data_url": hit}));
+        }
+        if let Some(url) = std::fs::read(&path).ok().and_then(|b| thumb_data_url(&b, 500)) {
+            if let Ok(mut c) = WALL_THUMB_CACHE.lock() {
+                c.get_or_insert_with(Default::default).insert(key, url.clone());
+            }
+            return Ok(serde_json::json!({"success": true, "data_url": url}));
+        }
     }
+    wallpaper_data_url(&filename)
 }
 
 /// Сжимает картинку до maxpx по большей стороне → data URL
@@ -5720,6 +5778,33 @@ fn thumb_data_url(bytes: &[u8], maxpx: u32) -> Option<String> {
 
 #[tauri::command]
 pub fn get_wallpaper_full(filename: String) -> Result<serde_json::Value, String> {
+    // LRU-кэш: повторное применение тех же обоев не перечитывает и не
+    // перекодирует мегабайтный файл в base64
+    if let Some(path) = find_wallpaper(&filename) {
+        let key = wall_cache_key(&path, &filename);
+        let hit = WALL_FULL_CACHE.lock().ok().and_then(|mut c| {
+            let pos = c.iter().position(|(k, _)| *k == key)?;
+            let entry = c.remove(pos);
+            c.insert(0, entry.clone());
+            Some(entry.1)
+        });
+        if let Some(url) = hit {
+            return Ok(serde_json::json!({"success": true, "data_url": url}));
+        }
+        let res = wallpaper_data_url(&filename);
+        if let Ok(v) = &res {
+            let ok = v.get("success").and_then(|s| s.as_bool()).unwrap_or(false);
+            if ok {
+                if let Some(url) = v.get("data_url").and_then(|u| u.as_str()) {
+                    if let Ok(mut c) = WALL_FULL_CACHE.lock() {
+                        c.insert(0, (key, url.to_string()));
+                        c.truncate(WALL_FULL_CACHE_MAX);
+                    }
+                }
+            }
+        }
+        return res;
+    }
     wallpaper_data_url(&filename)
 }
 

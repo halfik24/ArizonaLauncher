@@ -9390,10 +9390,10 @@
             await initLauncherSettings();
             perfMark('launcherSettings + wallpapers loaded');
 
-            await loadInitData();
+            // Параллельно: сохранённые данные не зависят от серверов/новостей,
+            // последовательные await удваивали время старта
+            await Promise.all([loadInitData(), loadServersAndNews()]);
             perfMark('savedData loaded');
-
-            await loadServersAndNews();
             perfMark('serversAndNews loaded');
 
             perfMark('all done');
