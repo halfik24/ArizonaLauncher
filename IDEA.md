@@ -118,8 +118,8 @@ CDP-тесты UI: временно добавить `--remote-debugging-port=92
 single-instance + потоковая модель (async-диалоги, таймаут качки, отмена
 во время MD5-скана), защита данных (serde default, panic-safe guard,
 атомарная запись патчей), SSRF+лимиты для URL-каталогов, CSP, UX-фиксы
-(профили, уведомления, баннер обновлений патчей), CI (SignPath через vars,
-версия из тега), дедуп обоев (перенесены в `wallpapers/` в корне репо —
+(профили, уведомления, баннер обновлений патчей), CI (версия из тега),
+дедуп обоев (перенесены в `wallpapers/` в корне репо —
 не попадают во frontendDist).
 
 Все 11 заглушек из аудита 18.10 реализованы (download_and_install_patches,
@@ -130,9 +130,6 @@ select_bg_image и пр.), бридж полный: 96/96 команд main.rs �
 Осталось из известного:
 - живой UI-прогон после CSP-правки (обои/иконки/новости/каталоги) —
   `npm run dev` и пройтись по экранам;
-- настройка SignPath в GitHub (Secret SIGNPATH_API_TOKEN + Variables
-  SIGNPATH_ORGANIZATION_ID/PROJECT_SLUG/SIGNING_POLICY_SLUG) до первого
-  релизного тега;
 - пункт 5 старого плана: драйверы DX/VCRedist (манифест drivers/ на CDN);
 - новости: 3 URL последовательно по 20 с при лежащем GitHub (минор);
 - `updatenews.txt` в корне — черновик новостей для ArzLaunchRepo (не код).

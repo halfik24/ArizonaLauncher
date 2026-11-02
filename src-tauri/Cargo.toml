@@ -2,6 +2,7 @@
 name = "arizona-launcher"
 version = "2.0.0-beta"
 edition = "2021"
+license = "MIT"
 
 [dependencies]
 tauri = { version = "2", features = ["tray-icon"] }
