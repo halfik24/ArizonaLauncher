@@ -52,10 +52,12 @@
     },
     "windows": {
       "nsis": {
+        "installerIcon": "icons/icon.ico",
+        "headerImage": "../src/header.bmp",
+        "sidebarImage": "../src/wizard.bmp",
         "installMode": "currentUser",
         "languages": ["Russian", "Belarusian", "Ukrainian", "English"],
-        "displayLanguageSelector": true,
-        "sidebarImage": "../src/wizard.bmp"
+        "displayLanguageSelector": true
       }
     }
   }
