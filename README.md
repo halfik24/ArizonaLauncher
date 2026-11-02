@@ -79,20 +79,22 @@
 
 </details>
 
-## Релизы
+<details>
+<summary><b>Релизы</b></summary>
 
 CI собирает установщик на каждый push в `rust-rewrite`/`main` и на каждый тег:
 
 | Вид тега | Пример | Что происходит |
 | --- | --- | --- |
-| Стабильный | `v2.0.0-beta.123` | Сборка по тегу, версия берётся из тега |
+| Стабильный | `v2.0.0-beta.123` | Сборка по тегу, версия берётся из тега, публикуется [Release](https://github.com/halfik24/ArizonaLauncher/releases) с установщиком |
 | Ночной | `nightly-20261020` | Сборка со штампом версии по времени (хранение артефакта — стандартные для GitHub 90 дней) |
 
 Установщики не имеют цифровой подписи: Windows SmartScreen может показывать предупреждение при первом запуске — это ожидаемо для сборок без сертификата.
 
-Стабильные теги `v*` публикуются на вкладке [Releases](https://github.com/halfik24/ArizonaLauncher/releases) с установщиком в файле релиза.
+</details>
 
-## Сборка из исходников
+<details>
+<summary><b>Сборка из исходников</b></summary>
 
 Нужны [Rust](https://rustup.rs) (стабильный), Node.js 20+ и [Microsoft C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/).
 
@@ -106,11 +108,16 @@ npm run build        # релиз + установщик (src-tauri/target/relea
 
 Тесты бэкенда: `cargo test` в `src-tauri/`.
 
-## Диагностика
+</details>
+
+<details>
+<summary><b>Диагностика</b></summary>
 
 Лог: `Документы\ArizonaLauncher\launcher.log` (кнопка «Открыть лог» в лаунчере).
 
 Структура проекта, известные проблемы и планы — в [IDEA.md](IDEA.md).
+
+</details>
 
 ## Лицензия
 
