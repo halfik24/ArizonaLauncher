@@ -11,7 +11,7 @@ name: build
 
 on:
   push:
-    branches: [rust-rewrite, main]
+    branches: [main]
     tags: ['v*', 'nightly-*']
   workflow_dispatch:
 
