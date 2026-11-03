@@ -9,6 +9,31 @@
 
 > Лаунчер для Arizona RP на Rust + Tauri 2. Полная переработка v1 на Python/pywebview: нативный бэкенд, быстрый запуск, установщик без прав администратора.
 
+## Скриншоты
+
+<table>
+  <tr>
+    <td width="50%" align="center">
+      <img src="site/assets/launcher-main.jpg" alt="Главный экран лаунчера: никнейм, выбор сервера и кнопка запуска"><br>
+      <sub><b>Главный экран</b> — никнейм, сервер, запуск</sub>
+    </td>
+    <td width="50%" align="center">
+      <img src="site/assets/launcher-settings.jpg" alt="Настройки: слева список разделов, справа параметры лаунчера"><br>
+      <sub><b>Настройки</b> — разделы слева, параметры справа</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" align="center">
+      <img src="site/assets/launcher-mods.jpg" alt="Окно модов: список Lua-скриптов с тумблерами включения"><br>
+      <sub><b>Моды</b> — Lua-скрипты с тумблерами</sub>
+    </td>
+    <td width="50%" align="center">
+      <img src="site/assets/launcher-profiles.jpg" alt="Профили: выпадающий список с переключением и удалением профилей"><br>
+      <sub><b>Профили</b> — переключение и удаление</sub>
+    </td>
+  </tr>
+</table>
+
 ## Установка
 
 1. Откройте [Releases](https://github.com/halfik24/ArizonaLauncher/releases)

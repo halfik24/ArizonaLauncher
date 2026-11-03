@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Arizona RP Launcher — удобный запуск Arizona RP</title>
+<meta name="description" content="Лаунчер для Arizona RP на Rust + Tauri 2. Запуск игры, патчи, каталоги модов, профили и кастомные обои. Установка без прав администратора.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Arizona RP Launcher — удобный запуск Arizona RP">
+<meta property="og:description" content="Запуск игры в два клика, патчи, каталоги модов и профили — без прав администратора, на Rust + Tauri 2.">
+<meta property="og:image" content="assets/icon.png">
+<meta name="theme-color" content="#0b0d14">
+<link rel="icon" href="assets/icon.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar__inner">
+    <img class="topbar__logo" src="assets/icon.png" alt="" width="34" height="34">
+    <span class="topbar__name">Arizona RP Launcher</span>
+    <nav class="topbar__nav">
+      <a href="#features">Возможности</a>
+      <a href="#download">Скачать</a>
+      <a href="#faq">FAQ</a>
+      <a href="#donate">Донаты</a>
+    </nav>
+  </div>
+</header>
+
+<section class="hero">
+
+  <div class="hero__copy">
+    <h1>Лаунчер для <em>Arizona RP</em></h1>
+    <p class="hero__sub">Запуск игры в два клика, патчи, каталоги модов и профили —
+    без прав администратора, на Rust + Tauri 2.</p>
+    <div class="hero__cta">
+      <a class="btn btn--primary" href="#download">Скачать</a>
+      <a class="btn btn--ghost" href="#features">Возможности</a>
+    </div>
+    <span class="hero__version">свежий релиз — <a href="https://github.com/halfik24/ArizonaLauncher/releases/latest">v2.0.0-beta.1</a></span>
+  </div>
+
+  <div class="demo" role="group" aria-label="Скриншоты лаунчера">
+    <div class="shots">
+      <figure class="shot is-active"><img src="assets/launcher-main.jpg" alt="Главный экран лаунчера: никнейм, выбор сервера и кнопка запуска" fetchpriority="high" decoding="async"></figure>
+      <figure class="shot"><img src="assets/launcher-settings.jpg" alt="Настройки: слева список разделов, справа параметры лаунчера" loading="lazy" decoding="async"></figure>
+      <figure class="shot"><img src="assets/launcher-mods.jpg" alt="Окно модов: список Lua-скриптов с тумблерами включения" loading="lazy" decoding="async"></figure>
+      <figure class="shot"><img src="assets/launcher-profiles.jpg" alt="Профили: выпадающий список с переключением и удалением профилей" loading="lazy" decoding="async"></figure>
+      <button class="demo__nav demo__nav--prev" type="button" aria-label="Предыдущий скриншот">‹</button>
+      <button class="demo__nav demo__nav--next" type="button" aria-label="Следующий скриншот">›</button>
+    </div>
+    <div class="demo__dots" role="group" aria-label="Переключение скриншотов"></div>
+  </div>
+</section>
+
+<section class="section" id="features">
+  <h2 class="section__title">Возможности</h2>
+  <div class="grid">
+    <article class="card">
+      <h3>Два режима запуска</h3>
+      <p>Нативно без патчей или через лаунчер Air с плагином. Работа с плагином
+      пока не готова, так что «выбор без выбора» — сейчас только нативный режим.</p>
+    </article>
+    <article class="card">
+      <h3>Профили</h3>
+      <p>Разные наборы настроек, сохранение никнейма и сервера — переключение в один клик.</p>
+    </article>
+    <article class="card">
+      <h3>Патчи</h3>
+      <p>Патчи вызывают краши игры, поэтому лаунчер сам вырубает dll. Настроек патчера
+      пока нет — сорри.</p>
+    </article>
+    <article class="card">
+      <h3>Каталоги с GitHub</h3>
+      <p>Луаскрипты, библиотеки MoonLoader и дополнительные файлы обновляются без
+      перевыпуска лаунчера.</p>
+    </article>
+    <article class="card">
+      <h3>Кастомные обои</h3>
+      <p>Встроенная коллекция плюс свои изображения — интерфейс подцветится под обои.</p>
+    </article>
+    <article class="card">
+      <h3>Трей и статус-бар</h3>
+      <p>Рамка окна в стиле лаунчера, сворачивание в трей, онлайн серверов в реальном
+      времени и лог для диагностики.</p>
+    </article>
+  </div>
+</section>
+
+<section class="section download" id="download">
+  <a class="btn btn--big" href="https://github.com/halfik24/ArizonaLauncher/releases/latest"
+     target="_blank" rel="noopener">Скачать установщик</a>
+  <p>Windows 10/11 x64 • установка без прав администратора • WebView2 ставится автоматически</p>
+  <p class="download__warn">Установщик без цифровой подписи: SmartScreen может предупреждать при
+  первом запуске — нажмите «Подробнее», затем «Выполнить в любом случае».</p>
+</section>
+
+<section class="section" id="faq">
+  <h2 class="section__title">Вопросы и ответы</h2>
+  <div class="faq">
+    <details>
+      <summary>Это безопасно?</summary>
+      <p>Исходный код открыт: лаунчер собирается в CI из публичного репозитория
+      на каждый коммит, вы сами можете собрать его из исходников.</p>
+    </details>
+    <details>
+      <summary>Нужны ли права администратора?</summary>
+      <p>Нет. Установка и работа идут от имени текущего пользователя, прав админа
+      не требуется.</p>
+    </details>
+    <details>
+      <summary>Какой лаунчер Air нужен?</summary>
+      <p>Нативный запуск работает вообще без Air. Air нужен для будущего режима
+      с плагином — когда доработаем, поддержка будет только у Air v8.</p>
+    </details>
+    <details>
+      <summary>Что с патчами?</summary>
+      <p>Сейчас применение патчей вызывает краши игры, поэтому лаунчер сам вырубает
+      dll после игры. Настройки патчера появятся в будущих версиях.</p>
+    </details>
+    <details>
+      <summary>Где найти лог для диагностики?</summary>
+      <p>Documents\ArizonaLauncher\launcher.log — или кнопка «Открыть лог» прямо
+      в лаунчере.</p>
+    </details>
+    <details>
+      <summary>Как помочь проекту?</summary>
+      <p>Популярнее всего донаты — реквизиты чуть ниже. Открытые PR и баг-репорты
+      приветствуются так же.</p>
+    </details>
+  </div>
+</section>
+
+<section class="section donate" id="donate">
+  <h2 class="section__title">Поддержать разработку</h2>
+  <p class="donate__lead">Лаунчер бесплатный и Open Source. Любая поддержка помогает мне откладывать
+  деньги на оборудование и дальше развивать проект.</p>
+  <div class="wallets">
+    <div class="wallet"><b>Bitcoin (BTC)</b><code>bc1pfk8stmu8ttutwvcegg8hkdaaqfs3t83wrlc4fnv7a934mac59m6qnrx5v3</code><button class="copy" type="button"><svg class="copy__check" viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12.5l5 5 10-11"/></svg><span class="copy__label" aria-live="polite">Скопировать</span></button></div>
+    <div class="wallet"><b>Ethereum (ETH)</b><code>0x9a7f1a6f1E2F18c6493aB1B51A742aB161507Ba3</code><button class="copy" type="button"><svg class="copy__check" viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12.5l5 5 10-11"/></svg><span class="copy__label" aria-live="polite">Скопировать</span></button></div>
+    <div class="wallet"><b>Solana (SOL)</b><code>HAkjcc35TKD4txDjtQ75jZBPk4eNtecGtAW45a78SCeN</code><button class="copy" type="button"><svg class="copy__check" viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12.5l5 5 10-11"/></svg><span class="copy__label" aria-live="polite">Скопировать</span></button></div>
+  </div>
+</section>
+
+<footer class="footer">
+  <span>© 2026 halfik24 • MIT</span>
+  <a href="https://github.com/halfik24/ArizonaLauncher">GitHub</a>
+  <a href="https://github.com/halfik24/ArzLaunchRepo">Каталоги модов</a>
+</footer>
+
+<script src="script.js"></script>
+<!-- че ты тут лазишь а? -->
+</body>
+</html>
