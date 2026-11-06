@@ -4,8 +4,8 @@
 // печатает таблицу и пишет last-result.json.
 //
 // Использование:
-//   node tools/canvas-bench/run.js [cycles]   — полный прогон
-//   node tools/canvas-bench/run.js --serve    — только сервер (внешний браузер)
+//   node tools/canvas-bench/run.js [cycles] [set] — set: heavy (дефолт) | light
+//   node tools/canvas-bench/run.js --serve        — только сервер (внешний браузер)
 'use strict';
 
 const http = require('http');
@@ -14,6 +14,7 @@ const path = require('path');
 
 const PORT = Number(process.env.BENCH_PORT || 9444);
 const CYCLES = parseInt(process.argv[2] || '5', 10);
+const SET = process.argv[3] || undefined;   // heavy (дефолт) | light
 const ROOT = path.resolve(__dirname, '..', '..');
 const PAGE = '/tools/canvas-bench/bench.html';
 const URL = `http://127.0.0.1:${PORT}${PAGE}`;
@@ -121,7 +122,8 @@ function table(results) {
   try {
     await page.goto(URL, { waitUntil: 'load', timeout: 30000 });
     const t0 = Date.now();
-    const res = await page.evaluate(cycles => window.runBench(cycles), CYCLES);
+    const res = await page.evaluate(
+      ([cycles, set]) => window.runBench(cycles, set), [CYCLES, SET]);
     console.log('\n=== циклов: ' + CYCLES + ', ' +
       Math.round((Date.now() - t0) / 1000) + 'с ===');
     console.log(table(res.variants || {}));

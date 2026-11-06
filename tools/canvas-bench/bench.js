@@ -1,10 +1,17 @@
 'use strict';
-// Стенд сравнения рендер-путей для анимации «панель поверх размытого фона»:
-//   dom-blur    — HTML/CSS + backdrop-filter (baseline лаунчера, режим full)
-//   dom-noblur  — контроль: тот же DOM без backdrop-filter
-//   c2d-live    — canvas 2D, blur каждый кадр через ctx.filter
-//   c2d-baked   — canvas 2D, blur запечён один раз, кадр = drawImage
-//   webgl-live  — WebGL, blur шейдером каждый кадр (2 прохода по FBO)
+// Стенд сравнения рендер-путей для анимации «панель поверх размытого фона».
+// Два набора вариантов (runBench(cycles, set)):
+//   'heavy' (дефолт) — DOM-сцена со сложностью лаунчера:
+//     hv-full        — панель min(940,95vw), backdrop live всю анимацию,
+//                      element-filter blur(14px) в keyframes, V22 гасит
+//                      7 внешних блюров, язычок новостей едет news-away
+//                      (режим full — дефолт лаунчера)
+//     hv-baked       — идея №1: запечённый фон-блюр вместо live backdrop
+//     hv-smooth      — backdrop панели/навигации выключен на время rise/sink
+//     hv-noblur      — контроль без backdrop и без element-filter (пол)
+//     hv-full-nov22  — full без V22 (внешние блюры живут, «как до фикса»)
+//   'light' — исходный набор, рендер-пути на простой сцене:
+//     dom-blur / dom-noblur / c2d-live / c2d-baked / webgl-live
 // Замер: N циклов открыть/закрыть, сбор длин кадров rAF — методика
 // tools/perf-anim-ab.js (фазы open-anim/close-anim, пороги 33/50/100мс).
 
@@ -481,6 +488,124 @@ class WGL {
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   }
 }
+//── heavy-сцена: DOM со сложностью лаунчера ──
+// keyframes settingsRise/Sink один в один из src/index.html: scale 1.08 +
+// opacity + element-filter blur(14px), 0.4s cubic-bezier(0.4,0,0.2,1).
+// Element-blur остаётся во всех режимах (кроме контрольного hv-noblur) —
+// как в лаунчере («глубина остаётся во всех режимах»).
+const hvScene = document.getElementById('hvScene');
+const hvPanel = document.getElementById('hvPanel');
+const hvRight = document.getElementById('hvRight');
+const hvBaked = document.getElementById('hvBaked');
+
+const KF_RISE = [
+  { opacity: 0, transform: 'translate(-50%,-50%) scale(1.08)', filter: 'blur(14px)' },
+  { opacity: 1, transform: 'translate(-50%,-50%) scale(1)',    filter: 'blur(0)' },
+];
+const KF_SINK = [
+  { opacity: 1, transform: 'translate(-50%,-50%) scale(1)',    filter: 'blur(0)' },
+  { opacity: 0, transform: 'translate(-50%,-50%) scale(1.08)', filter: 'blur(14px)' },
+];
+// hv-noblur (пол): только вылет/затухание, без element-filter
+const stripF = kf => kf.map(k => ({ opacity: k.opacity, transform: k.transform }));
+const KF_RISE_NB = stripF(KF_RISE), KF_SINK_NB = stripF(KF_SINK);
+
+let hvRiseT = 0, hvSinkT = 0, hvV22T = 0;
+
+// Идея №1: запечённый фон-блюр — размытая копия обоев под панелью,
+// рисуется один раз в setup(). Обои cover-ятся по вьюпорту и тайлятся
+// 3×3, чтобы у границ холста не осталось прозрачности; холст больше
+// панели на 3σ (PADF) — фейд гаусса у его кромки остаётся за кромкой
+// панели (панель обрезает холст через overflow:hidden).
+function bakeHvBg() {
+  const pw = Math.min(940, VW * 0.95), ph = Math.min(VH * 0.86, 680);
+  const CW = Math.round(pw + 2 * PADF), CH = Math.round(ph + 2 * PADF);
+  const W = Math.round(CW * DPR), H = Math.round(CH * DPR);
+  const tmp = document.createElement('canvas');
+  tmp.width = W; tmp.height = H;
+  const tx = tmp.getContext('2d');
+  const s = Math.max(VW / IMG.width, VH / IMG.height);
+  const iw = IMG.width * s * DPR, ih = IMG.height * s * DPR;
+  const ox = (W - iw) / 2, oy = (H - ih) / 2;
+  for (let ky = -1; ky <= 1; ky++)
+    for (let kx = -1; kx <= 1; kx++)
+      tx.drawImage(IMG, ox + kx * iw, oy + ky * ih, iw, ih);
+  hvBaked.width = W; hvBaked.height = H;
+  hvBaked.style.width = CW + 'px';
+  hvBaked.style.height = CH + 'px';
+  const bx = hvBaked.getContext('2d');
+  bx.filter = `blur(${BLUR * DPR}px) saturate(1.2)`;
+  bx.drawImage(tmp, 0, 0);
+  bx.filter = 'none';
+  bx.fillStyle = 'rgba(11,13,20,0.7)';        // тинт панели поверх блюра
+  bx.fillRect(0, 0, W, H);
+}
+
+// Открытие/закрытие — тайминги из openSettings/closeSettings/_closeWithAnim:
+// display+news-away+anim-rise на старте (anim-rise снимают через 500мс),
+// V22 (settings-anim) держится 550мс, при закрытии язычок возвращается
+// сразу (показ интерфейса в _closeWithAnim), closing+display:none через 440мс.
+function hvAnimate(dir, o) {
+  hvPanel.getAnimations().forEach(a => a.cancel());
+  clearTimeout(hvRiseT); clearTimeout(hvSinkT); clearTimeout(hvV22T);
+  if (dir) {
+    hvPanel.style.display = 'flex';
+    hvRight.classList.add('news-away');
+    hvPanel.classList.remove('closing');
+    hvPanel.classList.add('anim-rise');
+    hvRiseT = setTimeout(() => hvPanel.classList.remove('anim-rise'), 500);
+    hvPanel.animate(o.noblur ? KF_RISE_NB : KF_RISE,
+      { duration: DUR, easing: 'cubic-bezier(0.4,0,0.2,1)', fill: 'forwards' });
+  } else {
+    hvRight.classList.remove('news-away');
+    hvPanel.classList.remove('anim-rise');
+    hvPanel.classList.add('closing');
+    hvPanel.animate(o.noblur ? KF_SINK_NB : KF_SINK,
+      { duration: DUR, easing: 'cubic-bezier(0.4,0,0.2,1)', fill: 'forwards' });
+    hvSinkT = setTimeout(() => {
+      hvPanel.classList.remove('closing');
+      hvPanel.style.display = 'none';
+    }, 440);
+  }
+  if (o.v22) {
+    hvScene.classList.add('settings-anim');
+    hvV22T = setTimeout(() => hvScene.classList.remove('settings-anim'), 550);
+  }
+}
+
+function hvVariant(name, o) {
+  const renderer = o.noblur ? 'DOM без блюров (пол)'
+    : o.baked ? 'DOM + запечённый фон-блюр (идея №1)'
+    : o.smooth ? 'DOM, backdrop выкл на время анимации (smooth)'
+    : o.v22 === false ? 'DOM full без V22 (внешние блюры живут)'
+    : 'DOM + backdrop live + element-blur (full)';
+  return {
+    name, renderer,
+    async setup() { if (o.baked) bakeHvBg(); },
+    show() {
+      hvScene.classList.add('on');
+      hvScene.classList.toggle('m-baked', !!o.baked);
+      hvScene.classList.toggle('m-smooth', !!o.smooth);
+      hvScene.classList.toggle('m-noblur', !!o.noblur);
+      hvScene.classList.remove('settings-anim');
+      hvRight.classList.remove('news-away');
+      hvPanel.getAnimations().forEach(a => a.cancel());
+      hvPanel.classList.remove('anim-rise', 'closing');
+      hvPanel.style.display = 'none';         // закрытое состояние до циклов
+    },
+    hide() {
+      hvPanel.getAnimations().forEach(a => a.cancel());
+      clearTimeout(hvRiseT); clearTimeout(hvSinkT); clearTimeout(hvV22T);
+      hvScene.classList.remove('on', 'settings-anim', 'm-baked', 'm-smooth', 'm-noblur');
+      hvPanel.classList.remove('anim-rise', 'closing');
+      hvPanel.style.display = 'none';
+      hvRight.classList.remove('news-away');
+    },
+    open() { hvAnimate(1, o); },
+    close() { hvAnimate(0, o); },
+  };
+}
+
 //── замер: сбор кадров rAF + longtask, фазы как в perf-anim-ab ──
 function collectStart() {
   const frames = [];
@@ -574,22 +699,40 @@ async function measure(v, cycles) {
   };
 }
 
-//── список вариантов ──
-const VARIANTS = [
-  domVariant('dom-blur', false),
-  domVariant('dom-noblur', true),
-  new C2D('cv2d', false),
-  new C2D('cvbaked', true),
-  new WGL(),
-];
+//── наборы вариантов ──
+const SETS = {
+  // DOM-сцена со сложностью лаунчера (см. заголовок)
+  heavy: [
+    hvVariant('hv-full', { v22: true }),
+    hvVariant('hv-baked', { baked: true, v22: true }),
+    hvVariant('hv-smooth', { smooth: true, v22: true }),
+    hvVariant('hv-noblur', { noblur: true, v22: true }),
+    hvVariant('hv-full-nov22', { v22: false }),
+  ],
+  // простая сцена, рендер-пути (исходный набор стенда)
+  light: [
+    domVariant('dom-blur', false),
+    domVariant('dom-noblur', true),
+    new C2D('cv2d', false),
+    new C2D('cvbaked', true),
+    new WGL(),
+  ],
+};
 
-window.runBench = async function (cycles) {
+window.runBench = async function (cycles, set) {
+  set = SETS[set] ? set : 'heavy';
+  const list = SETS[set];
   await IMGREADY;
   const res = {
-    meta: { vw: VW, vh: VH, dpr: DPR, pw: PW, ph: PH, blur: BLUR, cycles },
+    meta: {
+      vw: VW, vh: VH, dpr: DPR, pw: PW, ph: PH,
+      hpw: Math.round(Math.min(940, VW * 0.95)),
+      hph: Math.round(Math.min(VH * 0.86, 680)),
+      blur: BLUR, cycles, set,
+    },
     variants: {},
   };
-  for (const v of VARIANTS) {
+  for (const v of list) {
     hud.textContent = 'setup: ' + v.name;
     try {
       await v.setup();

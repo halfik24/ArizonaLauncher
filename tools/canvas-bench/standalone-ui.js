@@ -3,6 +3,7 @@
 // прямо на странице (на home-pc нет раннера — всё показываем в браузере).
 (() => {
   const CYCLES = Number(new URLSearchParams(location.search).get('cycles')) || 5;
+  const SET = new URLSearchParams(location.search).get('set') || 'heavy';
   const esc = s => String(s).replace(/[&<>]/g, c =>
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
 
@@ -18,10 +19,10 @@
   ].join(';');
   card.innerHTML =
     '<h2 style="margin:0 0 6px;font-size:18px">' +
-    'canvas-bench: DOM+backdrop-filter vs canvas2D vs WebGL</h2>' +
+    'canvas-bench: тяжёлая DOM-сцена лаунчера (backdrop/блюр/анимации)</h2>' +
     '<div id="ac-status" style="color:#9fb0cc;margin-bottom:12px">' +
-    CYCLES + ' циклов, ~1 минута. Во время теста держите это окно ' +
-    'на переднем плане и не переключайтесь.</div>' +
+    'Набор «' + SET + '», ' + CYCLES + ' циклов, ~1–2 минуты. Во время теста ' +
+    'держите это окно на переднем плане и не переключайтесь.</div>' +
     '<div id="ac-out"></div>' +
     '<button id="ac-run" style="margin-top:14px;padding:9px 22px;font:600 14px ' +
     '"Segoe UI",system-ui,sans-serif;color:#fff;background:#2563eb;' +
@@ -59,8 +60,9 @@
         .map(h => '<th style="padding:2px 10px 2px 0">' + h + '</th>').join('') +
       '</tr>' + rows + '</table>' +
       '<div style="color:#9fb0cc;font-size:12px;margin-top:10px">' + rend +
-      '<div>meta: ' + m.vw + '×' + m.vh + ' @dpr' + m.dpr + ', blur ' +
-      m.blur + 'px, циклов ' + m.cycles + '</div>' +
+      '<div>meta: ' + m.vw + '×' + m.vh + ' @dpr' + m.dpr + ', панель ' +
+      (m.hpw || '-') + '×' + (m.hph || '-') + ', blur ' +
+      m.blur + 'px, набор ' + esc(m.set || '-') + ', циклов ' + m.cycles + '</div>' +
       '<div>UA: ' + esc(navigator.userAgent) + '</div></div>' +
       '<div style="display:flex;gap:10px;margin-top:12px">' +
       '<button id="ac-copy" style="' + btnCss + '">Скопировать JSON</button>' +
@@ -97,7 +99,7 @@
     out.innerHTML = '';
     const hud = document.getElementById('hud');
     try {
-      const res = await window.runBench(CYCLES);
+      const res = await window.runBench(CYCLES, SET);
       window.__acRes = res;
       const errs = Object.entries(res.variants).filter(([, r]) => r.error);
       status.textContent = errs.length

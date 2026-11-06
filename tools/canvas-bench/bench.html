@@ -30,6 +30,141 @@
     border-radius:50%;background:#fff}
   .p-sw.off{background:#5b6474}
   .p-sw.off::after{right:auto;left:3px}
+
+  /* ═══ heavy-сцена: воспроизводит нагрузку лаунчера ═══
+     Панель min(940px,95vw)×min(86vh,680px) с backdrop blur(24px),
+     анимация settingsRise/Sink (scale 1.08 + opacity + element-filter
+     blur(14px)), навигация со своим blur(12px), 7 внешних стеклянных
+     элементов (гасятся V22 на время анимации), язычок новостей
+     уезжает news-away. */
+  #hvScene .hv-panel{position:absolute;top:50%;left:50%;
+    transform:translate(-50%,-50%);
+    width:min(940px,95vw);height:min(86vh,680px);
+    background:rgba(11,13,20,.7);
+    backdrop-filter:blur(24px) saturate(1.2);
+    -webkit-backdrop-filter:blur(24px) saturate(1.2);
+    border:1px solid rgba(255,255,255,.1);border-radius:18px;
+    box-shadow:0 8px 40px rgba(0,0,0,.4);
+    overflow:hidden;opacity:0;display:flex;z-index:1000}
+  /* baked: live-backdrop заменён запечённой картинкой; noblur: контроль */
+  #hvScene.m-baked .hv-panel,#hvScene.m-noblur .hv-panel{
+    backdrop-filter:none;-webkit-backdrop-filter:none}
+  /* smooth: блюр панели и навигации гаснет только на время rise/sink */
+  #hvScene.m-smooth .hv-panel{
+    transition:backdrop-filter .2s ease,-webkit-backdrop-filter .2s ease}
+  #hvScene.m-smooth .hv-panel.closing{transition:none}
+  #hvScene.m-smooth .hv-panel.anim-rise,
+  #hvScene.m-smooth .hv-panel.closing,
+  #hvScene.m-smooth .hv-panel.anim-rise .hv-nav,
+  #hvScene.m-smooth .hv-panel.closing .hv-nav{
+    backdrop-filter:none;-webkit-backdrop-filter:none}
+  /* V22: как body.settings-anim в лаунчере — на 0.55с гаснет backdrop всех
+     слоёв вокруг панели (titlebar, ph, version, fab, status, язычок новостей),
+     сами элементы остаются видимыми; панель и её подэлементы правило не трогает */
+  #hvScene.settings-anim *:not(.hv-panel):not(.hv-panel *){
+    backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
+  /* запечённый фон-блюр (идея №1): показывается только в m-baked */
+  #hvScene .hv-baked{display:none;position:absolute;left:50%;top:50%;
+    transform:translate(-50%,-50%);z-index:0}
+  #hvScene.m-baked .hv-baked{display:block}
+  #hvScene .hv-nav{width:210px;flex-shrink:0;box-sizing:border-box;
+    background:rgba(255,255,255,.03);
+    backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+    border-right:1px solid rgba(255,255,255,.06);
+    position:relative;z-index:1;padding-bottom:16px;overflow-y:auto}
+  /* baked: навигация сидит над запечённым стеклом — её собственный blur(12)
+     во время анимации считался бы заново (как в smooth), гасим всегда */
+  #hvScene.m-baked .hv-nav,#hvScene.m-noblur .hv-nav{
+    backdrop-filter:none;-webkit-backdrop-filter:none}
+  #hvScene .hv-nav-title{font:700 13px/1 "Montserrat Alternates","Segoe UI",sans-serif;
+    color:rgba(255,255,255,.3);letter-spacing:1.5px;padding:22px 20px 16px}
+  #hvScene .hv-nav-item{display:flex;align-items:center;gap:9px;margin:2px 10px;
+    padding:10px 12px;border-radius:9px;color:rgba(255,255,255,.55);font-size:14px}
+  #hvScene .hv-nav-item.active{background:rgba(59,130,246,.16);color:#dbe7ff}
+  #hvScene .hv-body{flex:1;min-width:0;position:relative;z-index:1;
+    padding:22px 26px;overflow-y:auto}
+  #hvScene .hv-h{font-size:17px;font-weight:600;color:#eef1f7;margin-bottom:14px}
+  #hvScene .hv-sub{font-size:12px;color:rgba(255,255,255,.35);
+    letter-spacing:1px;text-transform:uppercase;margin:20px 0 8px}
+  #hvScene .hv-row{padding:13px 16px;margin-bottom:8px;border-radius:10px;
+    background:rgba(255,255,255,.05);display:flex;justify-content:space-between;
+    align-items:center;color:#c9d2e3;font-size:14px}
+  #hvScene .hv-sw{width:44px;height:22px;border-radius:11px;background:#3b82f6;
+    position:relative;flex-shrink:0}
+  #hvScene .hv-sw::after{content:"";position:absolute;top:3px;right:3px;width:16px;
+    height:16px;border-radius:50%;background:#fff}
+  #hvScene .hv-sw.off{background:#5b6474}
+  #hvScene .hv-sw.off::after{right:auto;left:3px}
+
+  /* ── 7 внешних стеклянных элементов (z и блюры как в лаунчере) ── */
+  #hvScene .hv-status{position:absolute;left:0;right:0;bottom:0;height:34px;
+    box-sizing:border-box;background:rgba(10,12,18,.45);
+    backdrop-filter:blur(14px) saturate(1.2);
+    -webkit-backdrop-filter:blur(14px) saturate(1.2);
+    border-top:1px solid rgba(255,255,255,.07);z-index:5;
+    display:flex;align-items:center;gap:18px;padding:0 16px;
+    font:11px/1 "Montserrat Alternates","Segoe UI",sans-serif;
+    color:rgba(255,255,255,.55)}
+  #hvScene .hv-titlebar{position:absolute;top:0;left:0;right:0;height:42px;
+    z-index:100000;display:flex;align-items:center;justify-content:space-between;
+    padding:0 6px;pointer-events:none}
+  #hvScene .hv-tb-title{font:11px "Montserrat Alternates","Segoe UI",sans-serif;
+    color:rgba(255,255,255,.75);background:rgba(0,0,0,.35);
+    backdrop-filter:blur(18px) saturate(1.2);
+    -webkit-backdrop-filter:blur(18px) saturate(1.2);
+    border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:5px 12px}
+  #hvScene .hv-tb-btns{display:flex;gap:4px;padding:3px;background:rgba(0,0,0,.35);
+    backdrop-filter:blur(18px) saturate(1.2);
+    -webkit-backdrop-filter:blur(18px) saturate(1.2);
+    border:1px solid rgba(255,255,255,.08);border-radius:8px;pointer-events:auto}
+  #hvScene .hv-tb-btns span{width:26px;height:26px;display:flex;align-items:center;
+    justify-content:center;border-radius:6px;color:#fff;font-size:12px}
+  #hvScene .hv-ph{position:absolute;top:16px;left:50%;transform:translateX(-50%);
+    z-index:500;height:34px;padding:0 13px;display:flex;align-items:center;gap:6px;
+    background:rgba(10,12,18,.4);backdrop-filter:blur(14px) saturate(1.2);
+    -webkit-backdrop-filter:blur(14px) saturate(1.2);
+    border:1px solid rgba(255,255,255,.13);border-radius:8px;
+    color:rgba(255,255,255,.85);font:12px "Montserrat Alternates","Segoe UI",sans-serif}
+  #hvScene .hv-fab{position:absolute;right:16px;bottom:46px;width:38px;height:38px;
+    box-sizing:border-box;border-radius:50%;background:rgba(12,14,20,.55);
+    backdrop-filter:blur(14px) saturate(1.2);
+    -webkit-backdrop-filter:blur(14px) saturate(1.2);
+    border:1px solid rgba(255,255,255,.12);z-index:9999;
+    display:flex;align-items:center;justify-content:center;
+    color:rgba(255,255,255,.6);font-size:15px}
+  #hvScene .hv-version{position:absolute;left:16px;bottom:46px;z-index:6;
+    padding:4px 12px;background:rgba(255,255,255,.04);
+    backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+    border:1px solid rgba(255,255,255,.08);border-radius:6px;
+    font:12px Consolas,monospace;color:rgba(255,255,255,.4)}
+  /* правая панель: свёрнутая — прозрачная без блюра (как в лаунчере),
+     язычок news-handle всегда стеклянный и двигается news-away */
+  #hvScene .hv-right{position:absolute;top:20px;right:0;
+    height:calc(100% - 40px);width:360px;z-index:50;
+    transform:translateX(calc(100% - 48px));
+    transition:translate .4s cubic-bezier(.4,0,.2,1);
+    border-radius:14px 0 0 14px;
+    border:1px solid rgba(255,255,255,.1);border-right:none;
+    overflow:hidden}
+  #hvScene .hv-right.news-away{translate:48px 0}
+  #hvScene .hv-handle{position:absolute;left:0;top:50%;
+    transform:translateY(-50%);width:48px;height:155px;
+    background:rgba(59,130,246,.42);
+    backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+    border:1px solid rgba(255,255,255,.15);border-right:none;
+    border-radius:10px 0 0 10px;z-index:10;
+    display:flex;align-items:center;justify-content:center;
+    writing-mode:vertical-rl;font:600 11px "Montserrat Alternates","Segoe UI",sans-serif;
+    letter-spacing:2px;color:rgba(255,255,255,.8)}
+  #hvScene .hv-rp{position:absolute;left:48px;right:0;top:0;bottom:0;
+    padding:20px;box-sizing:border-box;background:rgba(16,18,26,.92);
+    display:flex;flex-direction:column;gap:12px}
+  #hvScene .hv-rp-h{font-size:15px;font-weight:600;color:#eef1f7}
+  #hvScene .hv-card{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.06);
+    border-radius:10px;padding:12px 14px}
+  #hvScene .hv-card b{display:block;font-size:13px;color:#dbe4f3;margin-bottom:5px}
+  #hvScene .hv-card i{font-style:normal;font-size:12px;color:rgba(255,255,255,.4)}
+
   #hud{position:fixed;left:8px;top:4px;font:12px/1.4 Consolas,monospace;
     color:#9fb0cc;z-index:9;pointer-events:none;opacity:.8}
 </style>
@@ -46,6 +181,58 @@
       <div class="p-row"><span>Звук при запуске</span><div class="p-sw"></div></div>
     </div>
   </div>
+
+  <!-- heavy-сцена: панель + 7 внешних стеклянных элементов -->
+  <div class="scene" id="hvScene">
+    <img id="bgImg2" src="/wallpapers/6.jpeg" alt="">
+    <div class="hv-titlebar">
+      <div class="hv-tb-title">Arizona RP Launcher</div>
+      <div class="hv-tb-btns"><span>&#8211;</span><span>&#9633;</span><span>&#10005;</span></div>
+    </div>
+    <div class="hv-ph">&#9679; Профили</div>
+    <div class="hv-version">v2.0.0-rc1</div>
+    <div class="hv-fab">?</div>
+    <div class="hv-status">
+      <span>Готово к запуску</span><span>Windows 10 x64</span>
+      <span>Intel HD 4000</span><span>Arizona RP v8</span>
+    </div>
+    <div class="hv-right" id="hvRight">
+      <div class="hv-handle">НОВОСТИ</div>
+      <div class="hv-rp">
+        <div class="hv-rp-h">Новости сервера</div>
+        <div class="hv-card"><b>Обновление клиента 1.3</b><i>Сегодня, 12:40</i></div>
+        <div class="hv-card"><b>Розыгрыш авто у дилера</b><i>Вчера, 19:05</i></div>
+        <div class="hv-card"><b>Скидки в магазинах</b><i>2 дня назад</i></div>
+      </div>
+    </div>
+    <div class="hv-panel" id="hvPanel">
+      <canvas class="hv-baked" id="hvBaked"></canvas>
+      <div class="hv-nav">
+        <div class="hv-nav-title">НАСТРОЙКИ</div>
+        <div class="hv-nav-item active">Запуск</div>
+        <div class="hv-nav-item">Патчи</div>
+        <div class="hv-nav-item">Каталоги</div>
+        <div class="hv-nav-item">Обои</div>
+        <div class="hv-nav-item">Окно</div>
+        <div class="hv-nav-item">Отладка</div>
+      </div>
+      <div class="hv-body">
+        <div class="hv-h">Параметры запуска</div>
+        <div class="hv-row"><span>Окно: развёрнутое</span><div class="hv-sw"></div></div>
+        <div class="hv-row"><span>Память: 2048 МБ</span><div class="hv-sw"></div></div>
+        <div class="hv-row"><span>Автологин CEF</span><div class="hv-sw off"></div></div>
+        <div class="hv-row"><span>Отключить неон</span><div class="hv-sw"></div></div>
+        <div class="hv-sub">Производительность</div>
+        <div class="hv-row"><span>Без ограничения FPS</span><div class="hv-sw off"></div></div>
+        <div class="hv-row"><span>Приоритет процесса</span><div class="hv-sw"></div></div>
+        <div class="hv-row"><span>Лимит пропускания кадров</span><div class="hv-sw off"></div></div>
+        <div class="hv-sub">Прочее</div>
+        <div class="hv-row"><span>Сворачивать в трей</span><div class="hv-sw"></div></div>
+        <div class="hv-row"><span>Звук при запуске</span><div class="hv-sw"></div></div>
+      </div>
+    </div>
+  </div>
+
   <canvas class="scene" id="cv2d"></canvas>
   <canvas class="scene" id="cvbaked"></canvas>
   <canvas class="scene" id="cvg"></canvas>

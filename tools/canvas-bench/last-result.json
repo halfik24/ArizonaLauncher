@@ -5,154 +5,157 @@
     "dpr": 1,
     "pw": 720,
     "ph": 460,
+    "hpw": 940,
+    "hph": 680,
     "blur": 24,
-    "cycles": 5
+    "cycles": 2,
+    "set": "heavy"
   },
   "variants": {
-    "dom-blur": {
-      "frames": 419,
-      "avgMs": 16.8,
-      "p50Ms": 16.8,
-      "p95Ms": 18.3,
-      "maxMs": 25.7,
-      "janky33": 0,
+    "hv-full": {
+      "frames": 81,
+      "avgMs": 34.8,
+      "p50Ms": 24.7,
+      "p95Ms": 66.9,
+      "maxMs": 124.6,
+      "janky33": 36,
+      "over50": 27,
+      "over100": 1,
+      "openAnim": {
+        "n": 17,
+        "avgMs": 42.7,
+        "p95Ms": 66.3,
+        "maxMs": 66.3,
+        "janky33": 10,
+        "over50": 10
+      },
+      "closeAnim": {
+        "n": 17,
+        "avgMs": 43.2,
+        "p95Ms": 79.9,
+        "maxMs": 79.9,
+        "janky33": 12,
+        "over50": 9
+      },
+      "longTasks": 0,
+      "longestMs": 0,
+      "renderer": "DOM + backdrop live + element-blur (full)"
+    },
+    "hv-baked": {
+      "frames": 150,
+      "avgMs": 18.7,
+      "p50Ms": 17.3,
+      "p95Ms": 26.6,
+      "maxMs": 33.6,
+      "janky33": 1,
       "over50": 0,
       "over100": 0,
       "openAnim": {
-        "n": 119,
-        "avgMs": 16.7,
-        "p95Ms": 18.7,
-        "maxMs": 25.7,
+        "n": 40,
+        "avgMs": 20.2,
+        "p95Ms": 28.2,
+        "maxMs": 30,
         "janky33": 0,
         "over50": 0
       },
       "closeAnim": {
-        "n": 114,
-        "avgMs": 17.4,
-        "p95Ms": 18.5,
-        "maxMs": 20.2,
-        "janky33": 0,
+        "n": 38,
+        "avgMs": 21.1,
+        "p95Ms": 27.6,
+        "maxMs": 33.6,
+        "janky33": 1,
         "over50": 0
       },
       "longTasks": 0,
       "longestMs": 0,
-      "renderer": "DOM + backdrop-filter"
+      "renderer": "DOM + запечённый фон-блюр (идея №1)"
     },
-    "dom-noblur": {
-      "frames": 422,
+    "hv-smooth": {
+      "frames": 149,
+      "avgMs": 19,
+      "p50Ms": 17.2,
+      "p95Ms": 34.3,
+      "maxMs": 47.3,
+      "janky33": 8,
+      "over50": 0,
+      "over100": 0,
+      "openAnim": {
+        "n": 41,
+        "avgMs": 19.1,
+        "p95Ms": 26,
+        "maxMs": 30.7,
+        "janky33": 0,
+        "over50": 0
+      },
+      "closeAnim": {
+        "n": 46,
+        "avgMs": 18.1,
+        "p95Ms": 27.9,
+        "maxMs": 37.9,
+        "janky33": 2,
+        "over50": 0
+      },
+      "longTasks": 0,
+      "longestMs": 0,
+      "renderer": "DOM, backdrop выкл на время анимации (smooth)"
+    },
+    "hv-noblur": {
+      "frames": 170,
       "avgMs": 16.6,
       "p50Ms": 16.6,
-      "p95Ms": 17.7,
-      "maxMs": 18.2,
+      "p95Ms": 17.5,
+      "maxMs": 17.8,
       "janky33": 0,
       "over50": 0,
       "over100": 0,
       "openAnim": {
-        "n": 119,
-        "avgMs": 16.6,
-        "p95Ms": 17.7,
-        "maxMs": 18.1,
+        "n": 48,
+        "avgMs": 16.4,
+        "p95Ms": 17.5,
+        "maxMs": 17.5,
         "janky33": 0,
         "over50": 0
       },
       "closeAnim": {
-        "n": 119,
-        "avgMs": 16.7,
-        "p95Ms": 17.7,
-        "maxMs": 18.2,
+        "n": 48,
+        "avgMs": 16.6,
+        "p95Ms": 17.4,
+        "maxMs": 17.8,
         "janky33": 0,
         "over50": 0
       },
       "longTasks": 0,
       "longestMs": 0,
-      "renderer": "DOM (контроль, без блюра)"
+      "renderer": "DOM без блюров (пол)"
     },
-    "c2d-live": {
-      "frames": 423,
-      "avgMs": 16.7,
-      "p50Ms": 16.6,
-      "p95Ms": 17.7,
-      "maxMs": 18.5,
-      "janky33": 0,
-      "over50": 0,
+    "hv-full-nov22": {
+      "frames": 86,
+      "avgMs": 32.5,
+      "p50Ms": 17.3,
+      "p95Ms": 67.2,
+      "maxMs": 70.1,
+      "janky33": 34,
+      "over50": 25,
       "over100": 0,
       "openAnim": {
-        "n": 120,
-        "avgMs": 16.6,
-        "p95Ms": 17.7,
-        "maxMs": 18.5,
-        "janky33": 0,
-        "over50": 0
+        "n": 13,
+        "avgMs": 54.6,
+        "p95Ms": 68.8,
+        "maxMs": 68.8,
+        "janky33": 11,
+        "over50": 10
       },
       "closeAnim": {
-        "n": 120,
-        "avgMs": 16.7,
-        "p95Ms": 17.6,
-        "maxMs": 18.2,
-        "janky33": 0,
-        "over50": 0
+        "n": 16,
+        "avgMs": 46.6,
+        "p95Ms": 67.7,
+        "maxMs": 67.7,
+        "janky33": 12,
+        "over50": 9
       },
       "longTasks": 0,
       "longestMs": 0,
-      "renderer": "Canvas 2D (Skia, ctx.filter)"
-    },
-    "c2d-baked": {
-      "frames": 422,
-      "avgMs": 16.7,
-      "p50Ms": 16.6,
-      "p95Ms": 17.7,
-      "maxMs": 18.6,
-      "janky33": 0,
-      "over50": 0,
-      "over100": 0,
-      "openAnim": {
-        "n": 120,
-        "avgMs": 16.6,
-        "p95Ms": 17.7,
-        "maxMs": 18.6,
-        "janky33": 0,
-        "over50": 0
-      },
-      "closeAnim": {
-        "n": 120,
-        "avgMs": 16.7,
-        "p95Ms": 17.7,
-        "maxMs": 18.2,
-        "janky33": 0,
-        "over50": 0
-      },
-      "longTasks": 0,
-      "longestMs": 0,
-      "renderer": "Canvas 2D (Skia, blur запечён)"
-    },
-    "webgl-live": {
-      "frames": 421,
-      "avgMs": 16.7,
-      "p50Ms": 16.6,
-      "p95Ms": 17.7,
-      "maxMs": 18.4,
-      "janky33": 0,
-      "over50": 0,
-      "over100": 0,
-      "openAnim": {
-        "n": 120,
-        "avgMs": 16.6,
-        "p95Ms": 17.6,
-        "maxMs": 18.2,
-        "janky33": 0,
-        "over50": 0
-      },
-      "closeAnim": {
-        "n": 121,
-        "avgMs": 16.7,
-        "p95Ms": 17.9,
-        "maxMs": 18.4,
-        "janky33": 0,
-        "over50": 0
-      },
-      "longTasks": 0,
-      "longestMs": 0,
-      "renderer": "WebKit WebGL / WebKit"
+      "renderer": "DOM full без V22 (внешние блюры живут)"
     }
   }
 }
