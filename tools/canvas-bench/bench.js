@@ -44,7 +44,7 @@ const IMGREADY = new Promise((res, rej) => {
   IMG.onload = () => res();
   IMG.onerror = () => rej(new Error('обои не загрузились'));
 });
-IMG.src = '/wallpapers/6.jpeg';
+IMG.src = document.getElementById('bgImg').src; // в standalone это data:URL
 
 //── контент панели, запечённый в canvas (для canvas/webgl-вариантов) ──
 function bakeContent() {
