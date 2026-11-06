@@ -280,9 +280,13 @@ impl AppState {
         fs::create_dir_all(&documents_path).ok();
 
         let config_path = documents_path.join("config.json");
-        let config = Self::load_config(&config_path);
+        let mut config = Self::load_config(&config_path);
+        // Миграция: конфиг мог хранить base64-обоев целиком (~2.8 МБ).
+        // Файл лежит в wallpapers/ — копия в конфиге не нужна (см.
+        // launcher::bg_data_is_redundant).
+        let strip_bg = crate::launcher::strip_redundant_bg_data(&mut config.launcher_settings);
 
-        Self {
+        let state = Self {
             config: Mutex::new(config),
             config_path,
             documents_path,
@@ -292,7 +296,12 @@ impl AppState {
             game_update_cancel: Mutex::new(None),
             game_update_pause: Mutex::new(None),
             last_picked_empty_folder: Mutex::new(None),
+        };
+        if strip_bg {
+            // Сразу переписываем файл — иначе 2.8 МБ едут на каждое чтение
+            state.save_config().ok();
         }
+        state
     }
 
     fn load_config(path: &PathBuf) -> LauncherConfig {

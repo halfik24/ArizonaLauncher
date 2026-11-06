@@ -116,15 +116,14 @@ fn main() {
             Ok(())
         })
         .on_window_event(|window, event| {
-            // Alt+F4 / системное закрытие в нашей рамке — прячем в трей
+            // X системной рамки / Alt+F4 / крестик в нашей рамке — прячем окно
+            // в трей, как и minimize_to_tray. Раньше при window_frame=system
+            // закрытие проходило по умолчанию: приложение завершалось вместе
+            // с иконкой трея. Выход — только через меню трея; исключение —
+            // трей не создался: тогда закрытие реально завершает приложение,
+            // иначе окно стало бы невидимым без способа его вернуть.
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                let custom = window
-                    .state::<AppState>()
-                    .config
-                    .lock()
-                    .map(|c| c.launcher_settings.window_frame.as_deref() == Some("custom"))
-                    .unwrap_or(false);
-                if custom {
+                if window.app_handle().tray_by_id("main").is_some() {
                     api.prevent_close();
                     let _ = window.hide();
                 }

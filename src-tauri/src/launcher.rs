@@ -6,7 +6,7 @@ use tauri::{Emitter, Manager, State};
 
 // ==================== Config Commands ====================
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_config(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
     let cfg = util::lock_config(&state)?;
     // Достаточно папки игры: лаунчер Air не обязателен — при нативном запуске
@@ -58,7 +58,7 @@ pub fn get_init_data(state: State<'_, AppState>) -> Result<serde_json::Value, St
     }))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn update_nickname(state: State<'_, AppState>, nickname: String) -> Result<serde_json::Value, String> {
     util::update_config(&state, |cfg| {
         cfg.last_nickname = nickname;
@@ -66,7 +66,7 @@ pub fn update_nickname(state: State<'_, AppState>, nickname: String) -> Result<s
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn update_server(state: State<'_, AppState>, server_number: u32) -> Result<serde_json::Value, String> {
     util::update_config(&state, |cfg| {
         cfg.last_server = server_number;
@@ -133,7 +133,7 @@ fn ipc_keys_to_snake(value: serde_json::Value) -> serde_json::Value {
     map_ipc_keys(value, false)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn update_launch_params(state: State<'_, AppState>, params: serde_json::Value) -> Result<serde_json::Value, String> {
     util::update_config(&state, |cfg| {
         cfg.launch_params =
@@ -381,7 +381,7 @@ pub async fn auto_detect_paths(state: State<'_, AppState>) -> Result<serde_json:
 /// Ручная установка путей (легаси-команда, фронт её не зовёт). Те же ворота,
 /// что у select_game_path/auto_detect: game должен существовать как gta_sa.exe,
 /// лаунчер — по ресурсу версии (util::is_arizona_launcher, как в find_launcher_exe).
-#[tauri::command]
+#[tauri::command(async)]
 pub fn set_game_paths(state: State<'_, AppState>, game: String, launcher: String) -> Result<serde_json::Value, String> {
     let game_exe = std::path::Path::new(&game);
     let is_game_exe = game_exe
@@ -1512,7 +1512,7 @@ pub fn get_read_news_ids(state: State<'_, AppState>) -> Result<serde_json::Value
     Ok(serde_json::json!({"success": true, "ids": cfg.read_news_ids}))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn save_read_news_ids(state: State<'_, AppState>, ids: Vec<String>) -> Result<serde_json::Value, String> {
     {
         let mut cfg = util::lock_config(&state)?;
@@ -1531,7 +1531,7 @@ pub fn get_launcher_version(state: State<'_, AppState>) -> Result<serde_json::Va
 
 /// Проверка обновления лаунчера (Python check_launcher_update): сравнивает
 /// состояние папки игры с требуемым и сообщает, нужна ли установка/апгрейд.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn check_launcher_update(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
     let (game_path, launcher_path) = {
         let cfg = util::lock_config(&state)?;
@@ -1678,7 +1678,7 @@ fn install_action_for_folder(folder_path: &str) -> Result<serde_json::Value, Str
 /// Команда для фронта: какое действие по установке требуется с учётом
 /// способа запуска. При нативном запуске лаунчер Air и preloading не нужны —
 /// всегда 'none', чтобы не пилить «Установить» без причины.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_install_action(state: State<'_, AppState>, folder_path: String) -> Result<serde_json::Value, String> {
     let method = { util::lock_config(&state)?.launch_method.clone() };
     if method != "air" {
@@ -1692,7 +1692,7 @@ pub fn get_install_action(state: State<'_, AppState>, folder_path: String) -> Re
 }
 
 /// API-обёртка для JS: {success, install_info} (как в Python get_install_action_api)
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_install_action_api(state: State<'_, AppState>, folder_path: String) -> Result<serde_json::Value, String> {
     match get_install_action(state, folder_path) {
         Ok(install_info) => Ok(serde_json::json!({"success": true, "install_info": install_info})),
@@ -1915,7 +1915,7 @@ fn os_version_string() -> String {
 }
 
 /// Диагностическая информация для Debug-вкладки (Python get_debug_info).
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_debug_info(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
     let (config_path, docs_path, game_path, launcher_path, last_nickname, last_server, memory, profiles) = {
         let cfg = util::lock_config(&state)?;
@@ -2096,19 +2096,27 @@ pub fn open_url(url: String) -> Result<serde_json::Value, String> {
 
 // ==================== Settings ====================
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_launcher_settings(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
     let cfg = util::lock_config(&state)?;
-    let data = serde_json::to_value(&cfg.launcher_settings).map_err(|e| e.to_string())?;
+    let mut ls = cfg.launcher_settings.clone();
+    // Не везём base64-обои, которые и так лежат файлом: 2.8 МБ по IPC
+    // стоили старта ~35–95 мс (см. bg_data_is_redundant).
+    strip_redundant_bg_data(&mut ls);
+    let data = serde_json::to_value(&ls).map_err(|e| e.to_string())?;
     Ok(serde_json::json!({"success": true, "data": ipc_keys_to_snake(data)}))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn save_launcher_settings(state: State<'_, AppState>, settings: serde_json::Value) -> Result<serde_json::Value, String> {
     {
         let mut cfg = util::lock_config(&state)?;
-        cfg.launcher_settings =
+        let mut ls: crate::config::LauncherSettings =
             serde_json::from_value(ipc_keys_to_camel(settings)).map_err(|e| e.to_string())?;
+        // Фронт присылает bg_data обратно после get_wallpaper_full —
+        // без этого конфиг раздувался бы до 2.8 МБ при каждом сохранении.
+        strip_redundant_bg_data(&mut ls);
+        cfg.launcher_settings = ls;
     }
     state.save_config()?;
     util::ok_true()
@@ -2121,7 +2129,7 @@ pub fn get_window_title(state: State<'_, AppState>) -> Result<serde_json::Value,
     Ok(serde_json::json!({"success": true, "title": title}))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn set_window_title(state: State<'_, AppState>, title: String) -> Result<serde_json::Value, String> {
     {
         let mut cfg = util::lock_config(&state)?;
@@ -2306,7 +2314,7 @@ pub fn start_resize(app: tauri::AppHandle, edge: String) -> Result<serde_json::V
     util::ok_true()
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn save_layout_order(state: State<'_, AppState>, order: Vec<String>) -> Result<serde_json::Value, String> {
     {
         let mut cfg = util::lock_config(&state)?;
@@ -2335,7 +2343,7 @@ pub fn get_profiles(state: State<'_, AppState>) -> Result<serde_json::Value, Str
     }))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn save_profiles(state: State<'_, AppState>, profiles: Vec<serde_json::Value>, active_id: Option<String>) -> Result<serde_json::Value, String> {
     {
         let mut cfg = util::lock_config(&state)?;
@@ -2529,7 +2537,7 @@ fn create_patches_backup(state: &AppState, label: &str) -> Option<PathBuf> {
     Some(dst)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn check_patches_status(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
     let files = check_patches_files_inner(&state);
     let installed_version = state
@@ -2745,12 +2753,12 @@ fn check_patches_files_inner(state: &AppState) -> serde_json::Value {
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn check_patches_files(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
     Ok(check_patches_files_inner(&state))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn read_patches(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
     let path = patches_json_path(&state);
     let path_str = path.to_string_lossy().to_string();
@@ -2769,7 +2777,7 @@ pub fn read_patches(state: State<'_, AppState>) -> Result<serde_json::Value, Str
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn write_patches(state: State<'_, AppState>, data: serde_json::Value) -> Result<serde_json::Value, String> {
     Ok(write_patches_inner(&state, &data))
 }
@@ -2790,7 +2798,7 @@ fn backup_display_date(name: &str, mtime: Option<std::time::SystemTime>) -> Stri
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn list_patches_backups(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
     let backup_dir = state.documents_path.join("backups");
     if !backup_dir.exists() {
@@ -2852,7 +2860,7 @@ pub fn list_patches_backups(state: State<'_, AppState>) -> Result<serde_json::Va
     Ok(serde_json::Value::Array(items))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn restore_patches_backup(state: State<'_, AppState>, filename: String) -> Result<serde_json::Value, String> {
     let backup_path = match util::safe_backup_path(&state, &filename) {
         Ok(p) => p,
@@ -2921,7 +2929,7 @@ fn write_patches_inner(state: &AppState, data: &serde_json::Value) -> serde_json
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn delete_patches_backup(state: State<'_, AppState>, filename: String) -> Result<serde_json::Value, String> {
     let backup_path = match util::safe_backup_path(&state, &filename) {
         Ok(p) => p,
@@ -2936,7 +2944,7 @@ pub fn delete_patches_backup(state: State<'_, AppState>, filename: String) -> Re
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn preview_patches_backup(state: State<'_, AppState>, filename: String) -> Result<serde_json::Value, String> {
     let backup_path = match util::safe_backup_path(&state, &filename) {
         Ok(p) => p,
@@ -3496,7 +3504,7 @@ const MAX_PATCHES_JSON_BYTES: usize = 5 * 1024 * 1024;
 /// только JSON-объект с настройками (bool-значения), вложенный формат
 /// {"patches": {...}} разворачивается до плоского map — иначе файл сломает
 /// редактор патчей. Запись через write_patches_inner: бэкап + pretty-сериализация.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn install_patches_file(
     state: State<'_, AppState>,
     filename: String,
@@ -4689,7 +4697,7 @@ fn safe_script_name(name: &str) -> Result<&str, String> {
     Ok(name)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_moonloader_scripts(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
     let dir = match moonloader_dir(&state) {
         Ok(d) => d,
@@ -4741,7 +4749,7 @@ pub fn get_moonloader_scripts(state: State<'_, AppState>) -> Result<serde_json::
     }))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn toggle_moonloader_script(
     state: State<'_, AppState>,
     script_name: String,
@@ -4783,7 +4791,7 @@ pub fn toggle_moonloader_script(
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn delete_moonloader_script(
     state: State<'_, AppState>,
     filename: String,
@@ -4977,7 +4985,7 @@ pub async fn install_moonloader_script(
 }
 
 /// Принимает .lua файл (base64 из drag&drop) и кладёт его в папку moonloader.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn install_lua_file(
     state: State<'_, AppState>,
     filename: String,
@@ -5178,7 +5186,7 @@ fn scan_installed_libs(lib_dir: &std::path::Path) -> Vec<serde_json::Value> {
         .collect()
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn list_installed_libraries(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
     let dir = match moonloader_lib_dir(&state) {
         Ok(d) => d,
@@ -5341,7 +5349,7 @@ pub async fn install_library(
     }))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn uninstall_library(
     state: State<'_, AppState>,
     name: String,
@@ -5525,7 +5533,7 @@ pub async fn install_other_file(
 }
 
 /// Удаляет файл из папки назначения каталога «Другое».
-#[tauri::command]
+#[tauri::command(async)]
 pub fn remove_other_file(
     state: State<'_, AppState>,
     filename: String,
@@ -5551,7 +5559,7 @@ pub fn remove_other_file(
 }
 
 /// Установлен ли файл из каталога «Другое».
-#[tauri::command]
+#[tauri::command(async)]
 pub fn check_other_installed(
     state: State<'_, AppState>,
     filename: String,
@@ -5636,6 +5644,27 @@ fn find_wallpaper(filename: &str) -> Option<PathBuf> {
         .find(|path| path.is_file())
 }
 
+/// bg_data — это base64-копия обоев, которые уже лежат файлом в wallpapers/.
+/// В конфиге она весит ~2.8 МБ: раздувает config.json, заставляет
+/// get_launcher_settings везти мегабайты по IPC (35–95 мс на старте) и
+/// делает каждое сохранение настроек записью на 2.8 МБ. Пока файл на месте,
+/// копия не нужна — её восстанавливает get_wallpaper_full.
+pub(crate) fn bg_data_is_redundant(settings: &crate::config::LauncherSettings) -> bool {
+    settings
+        .bg_image
+        .as_deref()
+        .is_some_and(|img| find_wallpaper(img).is_some())
+}
+
+/// True, если лишний bg_data удалён из настроек.
+pub(crate) fn strip_redundant_bg_data(settings: &mut crate::config::LauncherSettings) -> bool {
+    if settings.extra.contains_key("bg_data") && bg_data_is_redundant(settings) {
+        settings.extra.remove("bg_data");
+        return true;
+    }
+    false
+}
+
 /// Кэш кодированных обоев: ключ (имя, размер, mtime). Замена файла с тем же
 /// именем инвалидирует запись, а stat-проверка на порядки дешевле декода —
 /// превью (ресайз + кодирование ~11 картинок) пересобирались при каждом
@@ -5677,7 +5706,8 @@ fn wallpaper_data_url(filename: &str) -> Result<serde_json::Value, String> {
 }
 
 /// Список обоев. Если пользовательской папки нет — она создаётся автоматически.
-#[tauri::command]
+/// async: обход двух директорий с read_dir/meta не должен ждать главный поток.
+#[tauri::command(async)]
 pub fn get_wallpapers() -> Result<serde_json::Value, String> {
     let dirs = wallpapers_dirs();
     // Пользовательская папка создаётся всегда — в неё можно просто положить картинки.
@@ -5729,7 +5759,7 @@ pub fn get_wallpapers() -> Result<serde_json::Value, String> {
 /// Превью обоев: сжатие до 500px по большей стороне (Python PIL thumbnail).
 /// При ошибке декодирования — отдаём оригинал (fallback, как в Python без PIL).
 #[tauri::command]
-pub fn get_wallpaper_thumb(filename: String) -> Result<serde_json::Value, String> {
+pub async fn get_wallpaper_thumb(filename: String) -> Result<serde_json::Value, String> {
     if let Some(path) = find_wallpaper(&filename) {
         let key = wall_cache_key(&path, &filename);
         if let Some(hit) = WALL_THUMB_CACHE
@@ -5739,14 +5769,25 @@ pub fn get_wallpaper_thumb(filename: String) -> Result<serde_json::Value, String
         {
             return Ok(serde_json::json!({"success": true, "data_url": hit}));
         }
-        if let Some(url) = std::fs::read(&path).ok().and_then(|b| thumb_data_url(&b, 500)) {
-            if let Ok(mut c) = WALL_THUMB_CACHE.lock() {
-                c.get_or_insert_with(Default::default).insert(key, url.clone());
-            }
-            return Ok(serde_json::json!({"success": true, "data_url": url}));
-        }
     }
-    wallpaper_data_url(&filename)
+    // Декод мегабайтных картинок + ресайз + кодирование + base64: на главном
+    // потоке это висело до ~4 с и блокировало IPC (замер: perf-startup.js --blocktest).
+    // spawn_blocking, а не просто async — чтобы не занимать воркеры токио,
+    // пока сетевые команды на старте ждут своего ответа.
+    tauri::async_runtime::spawn_blocking(move || {
+        if let Some(path) = find_wallpaper(&filename) {
+            let key = wall_cache_key(&path, &filename);
+            if let Some(url) = std::fs::read(&path).ok().and_then(|b| thumb_data_url(&b, 500)) {
+                if let Ok(mut c) = WALL_THUMB_CACHE.lock() {
+                    c.get_or_insert_with(Default::default).insert(key, url.clone());
+                }
+                return Ok(serde_json::json!({"success": true, "data_url": url}));
+            }
+        }
+        wallpaper_data_url(&filename)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// Сжимает картинку до maxpx по большей стороне → data URL
@@ -5777,7 +5818,7 @@ fn thumb_data_url(bytes: &[u8], maxpx: u32) -> Option<String> {
 }
 
 #[tauri::command]
-pub fn get_wallpaper_full(filename: String) -> Result<serde_json::Value, String> {
+pub async fn get_wallpaper_full(filename: String) -> Result<serde_json::Value, String> {
     // LRU-кэш: повторное применение тех же обоев не перечитывает и не
     // перекодирует мегабайтный файл в base64
     if let Some(path) = find_wallpaper(&filename) {
@@ -5791,21 +5832,30 @@ pub fn get_wallpaper_full(filename: String) -> Result<serde_json::Value, String>
         if let Some(url) = hit {
             return Ok(serde_json::json!({"success": true, "data_url": url}));
         }
-        let res = wallpaper_data_url(&filename);
-        if let Ok(v) = &res {
-            let ok = v.get("success").and_then(|s| s.as_bool()).unwrap_or(false);
-            if ok {
-                if let Some(url) = v.get("data_url").and_then(|u| u.as_str()) {
-                    if let Ok(mut c) = WALL_FULL_CACHE.lock() {
-                        c.insert(0, (key, url.to_string()));
-                        c.truncate(WALL_FULL_CACHE_MAX);
+    }
+    // Чтение файла до 6 МБ и base64-кодирование — вне главного потока
+    // (см. комментарий в get_wallpaper_thumb).
+    tauri::async_runtime::spawn_blocking(move || {
+        if let Some(path) = find_wallpaper(&filename) {
+            let key = wall_cache_key(&path, &filename);
+            let res = wallpaper_data_url(&filename);
+            if let Ok(v) = &res {
+                let ok = v.get("success").and_then(|s| s.as_bool()).unwrap_or(false);
+                if ok {
+                    if let Some(url) = v.get("data_url").and_then(|u| u.as_str()) {
+                        if let Ok(mut c) = WALL_FULL_CACHE.lock() {
+                            c.insert(0, (key, url.to_string()));
+                            c.truncate(WALL_FULL_CACHE_MAX);
+                        }
                     }
                 }
             }
+            return res;
         }
-        return res;
-    }
-    wallpaper_data_url(&filename)
+        wallpaper_data_url(&filename)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// Диалог выбора картинки для фона лаунчера → base64 data URL
