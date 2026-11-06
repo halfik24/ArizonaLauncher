@@ -6,6 +6,26 @@
     <script src="tauri-bridge.js"></script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Arizona RP Launcher</title>
+    <script>
+        /* Режим анимации открытия/закрытия настроек: класс на <html> ДО первой
+           отрисовки, чтобы не мигал стартовый вариант. Выбор — на вкладке
+           Отладка (кнопки setAnimMode), хранится в localStorage 'airAnimMode'.
+           Дефолт full (просьба 06.11): блюр виден с первого кадра полёта,
+           как раньше; на слабых GPU можно переключить на Плавный/Выезд. */
+        (function () {
+            var MODES = ['fade', 'pop', 'smooth', 'full'];
+            var BLURS = [8, 12, 16, 24, 32];
+            var m = null, b = null;
+            try {
+                m = localStorage.getItem('airAnimMode');
+                b = parseInt(localStorage.getItem('airBlur'), 10);
+            } catch (e) {}
+            if (MODES.indexOf(m) < 0) m = 'full';
+            if (BLURS.indexOf(b) < 0) b = 24;
+            document.documentElement.className += ' anim-' + m;
+            document.documentElement.style.setProperty('--frost-blur', b + 'px');
+        })();
+    </script>
     <style>
         @font-face {
             font-family: 'Montserrat Alternates';
@@ -72,6 +92,11 @@
             --shadow-color: rgba(0, 0, 0, 0.25);
             --border-radius: 10px;
             --transition-speed: 0.3s;
+            /* Сила блюра панели настроек; меняется в Отладка → «Анимации»
+               (localStorage 'airBlur', применяет скрипт в <head> до отрисовки).
+               Навигация внутри панели всегда вдвое слабее. */
+            --frost-blur: 24px;
+            --frost-blur-nav: calc(var(--frost-blur) / 2);
         }
 
         /* Lucide icons base styles */
@@ -1778,6 +1803,90 @@
         /* Закрытие из пикера обоев: та же анимация, но на «левой» позиции */
         .settings-panel.wp-mode.closing { animation-name: settingsSinkWp; }
 
+        /* ── Режимы анимации настроек ───────────────────────────────────
+           Класс `anim-<режим>` ставится на <html> (скрипт в <head>,
+           выбор на вкладке Отладка → localStorage 'airAnimMode').
+           Замер собранного приложения на прокси слабой GPU
+           (tools/perf-anim-ab.js, 5 циклов, с фиксом внешних блюров;
+           ВАЖНО: блюр мерить только на собранном приложении — инъекции
+           в старых замерах давали ложные цифры):
+             full   27.9 мс / 93 рывка  — блюр виден с первого кадра (дефолт,
+                                          просьба 06.11: вернуть стекло)
+             smooth 17.4 мс / 0 рывков   — выезд + плавный возврат блюра
+             pop    16.9 мс / 1 рывок    — выезд, блюр щелчком в конце
+             fade   26.3 мс / 102 рывка  — блюр ВСЕГДА, затухание с глубиной
+           Радиус блюра не влияет на цену (4px стоит как 24px) — дорог именно
+           ПЕРЕСЧЁТ блюра при любой перерисовке панели (движение ИЛИ element-
+           filter). Element-blur («глубина») остаётся во всех режимах. ── */
+
+        /* Внешние слои вокруг панели (правая панель с язычком новостей
+           #newsHandle — двигается, #feedbackFab (z=9999) — панель проходит
+           под ним, titlebar, version-stable…) пересчитывают СВОЙ backdrop-
+           блюр каждый кадр, пока панель отъезжает/возвращается. Гасим их блюр
+           ТОЛЬКО на время анимации (body.settings-anim ставит openSettings/
+           closeSettings на 0.55с); сами элементы остаются видимыми — без
+           дымки они на полсекунды, на фоне анимации незаметно.
+           Замер (V22 vs mode:smooth): 21.1 → 17.6 мс, рывков 18 → 1.
+           Свою панель и её подэлементы правило НЕ трогает — ими управляют
+           режимы (fade/full держат блюр включённым всё время). */
+        body.settings-anim *:not(.settings-panel):not(.settings-panel *) {
+            backdrop-filter: none !important;
+            -webkit-backdrop-filter: none !important;
+        }
+
+        /* pop и smooth: backdrop-блюр выключен ТОЛЬКО на время rise/sink —
+           панель на 70% непрозрачная и лежит над скрытым интерфейсом */
+        html.anim-pop .settings-panel.anim-rise,
+        html.anim-pop .settings-panel.closing,
+        html.anim-pop .settings-panel.anim-rise .settings-nav,
+        html.anim-pop .settings-panel.closing .settings-nav,
+        html.anim-smooth .settings-panel.anim-rise,
+        html.anim-smooth .settings-panel.closing,
+        html.anim-smooth .settings-panel.anim-rise .settings-nav,
+        html.anim-smooth .settings-panel.closing .settings-nav {
+            backdrop-filter: none;
+            -webkit-backdrop-filter: none;
+        }
+
+        /* smooth: возвращение блюра плавное (без щелчка). Существующие
+           transition панели (transform/width для пикера обоев) перечислены,
+           иначе этот селектор их затёр бы */
+        html.anim-smooth .settings-panel {
+            transition: transform 0.5s cubic-bezier(0.32, 0.72, 0, 1),
+                        width 0.5s cubic-bezier(0.32, 0.72, 0, 1),
+                        backdrop-filter 0.2s ease,
+                        -webkit-backdrop-filter 0.2s ease;
+        }
+        /* Во время закрытия transition для блюра НЕ нужен: панель и так
+           уходит, мгновенное снятие блюра дешевле и незаметнее (гашение
+           0.2с тут же считалось бы каждый кадр движения) */
+        html.anim-smooth .settings-panel.closing {
+            transition: transform 0.5s cubic-bezier(0.32, 0.72, 0, 1),
+                        width 0.5s cubic-bezier(0.32, 0.72, 0, 1);
+        }
+
+        /* fade: панель НЕ двигается (transform остаётся позиционирующим —
+           translate(-50%,-50%) / wp-mode), только opacity + element-blur.
+           Backdrop-блюр включён всё время: геометрия статична и гаусс
+           считается один раз — это и есть «вид стекла» без тормозов */
+        @keyframes settingsRiseFade {
+            0%   { opacity: 0; filter: blur(14px); }
+            100% { opacity: 1; filter: blur(0); }
+        }
+        @keyframes settingsSinkFade {
+            0%   { opacity: 1; filter: blur(0); }
+            100% { opacity: 0; filter: blur(14px); }
+        }
+        /* Закрытие пикера обоев в режиме fade: позицию держит базовое
+           правило .settings-panel.wp-mode, здесь только гашение */
+        @keyframes settingsSinkWpFade {
+            0%   { opacity: 1; filter: blur(0); }
+            100% { opacity: 0; filter: blur(14px); }
+        }
+        html.anim-fade .settings-panel             { animation-name: settingsRiseFade; }
+        html.anim-fade .settings-panel.closing     { animation-name: settingsSinkFade; }
+        html.anim-fade .settings-panel.wp-mode.closing { animation-name: settingsSinkWpFade; }
+
         .folder-modal.closing { animation: settingsSink 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards; }
 
         /* Закрытие «Модов» — та же длительность/кривая, что у настроек и папки */
@@ -2005,8 +2114,8 @@
             width: min(940px, 95vw);
             height: min(86vh, 680px);
             background: rgba(var(--surface-rgb), 0.7);
-            backdrop-filter: blur(24px) saturate(1.2);
-            -webkit-backdrop-filter: blur(24px) saturate(1.2);
+            backdrop-filter: blur(var(--frost-blur)) saturate(1.2);
+            -webkit-backdrop-filter: blur(var(--frost-blur)) saturate(1.2);
             border-radius: 18px;
             padding: 0;
             border: 1px solid rgba(255, 255, 255, 0.1);
@@ -2106,8 +2215,8 @@
             width: 210px;
             flex-shrink: 0;
             background: rgba(255, 255, 255, 0.03);
-            backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
+            backdrop-filter: blur(var(--frost-blur-nav));
+            -webkit-backdrop-filter: blur(var(--frost-blur-nav));
             border-right: 1px solid rgba(255, 255, 255, 0.06);
             display: flex;
             flex-direction: column;
@@ -6098,6 +6207,29 @@
         .debug-value.dbg-copy:hover { color: rgba(140,210,255,0.95); background: rgba(255,255,255,0.04); }
         .debug-value.dbg-copy.copied { color: rgba(130,220,150,0.95); }
 
+        /* Переключатель режимов анимации настроек (карточка «Анимации») */
+        .dbg-anim-group { display: inline-flex; gap: 5px; flex-wrap: wrap; }
+        .dbg-anim-group button {
+            font-family: 'Montserrat Alternates', sans-serif;
+            font-size: 11px;
+            color: rgba(255,255,255,0.6);
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 7px;
+            padding: 5px 10px;
+            cursor: pointer;
+            transition: background 0.15s, border-color 0.15s, color 0.15s;
+        }
+        .dbg-anim-group button:hover {
+            background: rgba(255,255,255,0.09);
+            color: rgba(255,255,255,0.85);
+        }
+        .dbg-anim-group button.sel {
+            background: rgba(var(--accent2-rgb), 0.26);
+            border-color: rgba(var(--accent2-rgb), 0.50);
+            color: #fff;
+        }
+
         /* ── О программе ── */
         .about-hero { align-items: center; text-align: center; gap: 6px; padding: 24px 18px; }
         .about-logo {
@@ -7813,6 +7945,30 @@
                 <div id="debugTab" class="settings-tab-content">
 
                     <div class="dbg-card">
+                        <div class="debug-section-title"><i data-lucide="zap"></i> Анимации</div>
+                        <div class="debug-row">
+                            <span class="debug-label">Открытие настроек</span>
+                            <span class="debug-value">
+                                <span class="dbg-anim-group" id="dbgAnimGroup">
+                                    <button type="button" data-m="fade"   onclick="setAnimMode('fade')">Затухание</button><button type="button" data-m="pop"    onclick="setAnimMode('pop')">Выезд</button><button type="button" data-m="smooth" onclick="setAnimMode('smooth')">Плавный</button><button type="button" data-m="full"   onclick="setAnimMode('full')">Полный блюр</button>
+                                </span>
+                            </span>
+                        </div>
+                        <div class="debug-row">
+                            <span class="debug-label">Что это</span>
+                            <span class="debug-value" id="dbgAnimHint">—</span>
+                        </div>
+                        <div class="debug-row">
+                            <span class="debug-label">Сила блюра</span>
+                            <span class="debug-value">
+                                <span class="dbg-anim-group" id="dbgBlurGroup">
+                                    <button type="button" data-b="8"  onclick="setBlur(8)">8px</button><button type="button" data-b="12" onclick="setBlur(12)">12px</button><button type="button" data-b="16" onclick="setBlur(16)">16px</button><button type="button" data-b="24" onclick="setBlur(24)">24px</button><button type="button" data-b="32" onclick="setBlur(32)">32px</button>
+                                </span>
+                            </span>
+                        </div>
+                    </div>
+
+                    <div class="dbg-card">
                         <div class="debug-section-title"><i data-lucide="monitor"></i> Система</div>
                         <div class="debug-row">
                             <span class="debug-label">ОС</span>
@@ -8498,6 +8654,18 @@
         const folderBtn = document.getElementById('folderBtn');
         const settingsPanel = document.getElementById('settingsPanel');
         const folderModal = document.getElementById('folderModal');
+        // Таймер снятия класса .anim-rise (см. CSS-правило про backdrop-блюр
+        // во время анимации открытия настроек).
+        let _animRiseT = 0;
+        // Таймер снятия body.settings-anim — на это время гасятся backdrop-блюры
+        // внешних слоёв вокруг панели (см. CSS «Режимы анимации настроек»).
+        let _settingsAnimT = 0;
+        function _markSettingsAnim() {
+            document.body.classList.add('settings-anim');
+            clearTimeout(_settingsAnimT);
+            _settingsAnimT = setTimeout(() =>
+                document.body.classList.remove('settings-anim'), 550);
+        }
         const checkboxGroup = document.getElementById('checkboxGroup');
 
         let patchesData = {};
@@ -13766,8 +13934,16 @@
             // Если bg_image это filename — ищем в загруженных обоях
             if (!dataUrl && s.bg_image) {
                 const found = _wallpapers.find(w => w.filename === s.bg_image);
-                if (found) dataUrl = found.data_url;
-                else dataUrl = _normalizeBgUrl(s.bg_image); // "своя" (data:/file:/путь)
+                // Файловые обои: base64 в конфиге больше не хранится, а thumb
+                // (500px) фоном быть не может. Полный размер подтягивает
+                // get_wallpaper_full — здесь фон не трогаем, иначе стёрли бы
+                // уже применённый.
+                if (found) return;
+                const normalized = _normalizeBgUrl(s.bg_image);
+                // Имя файла без схемы — не картинка: в CSS не подставляем,
+                // иначе получим пустой фон вместо уже применённого.
+                if (!/^(data:|blob:|https?:|file:)/.test(normalized || '')) return;
+                dataUrl = normalized; // "своя" (data:/file:/путь)
             }
             applyBgImage(dataUrl);
         }
@@ -13878,14 +14054,34 @@
             if (wp.data_url) {
                 paint(wp.data_url); // повторный рендер — без повторных запросов за thumb
             } else if (window.pywebview && window.pywebview.api.get_wallpaper_thumb) {
-                window.pywebview.api.get_wallpaper_thumb(wp.filename).then(res => {
-                    if (res && res.success) {
-                        wp.data_url = res.data_url;
-                        paint(res.data_url);
-                    }
+                // Не грузим сразу: сетка скрыта по умолчанию, а декод 4K-обоев
+                // стоит десятки миллисекунд каждый. Ставим в очередь и отдаём
+                // запрос, только когда карточка реально видна (flushWallpaperThumbs).
+                _pendingThumbLoads.push({
+                    card,
+                    load: () => window.pywebview.api.get_wallpaper_thumb(wp.filename).then(res => {
+                        if (res && res.success) {
+                            wp.data_url = res.data_url;
+                            paint(res.data_url);
+                        }
+                    }),
                 });
             }
             return card;
+        }
+
+        // Очередь thumb-запросов невидимых карточек. Пустеет при каждом
+        // перерендере — отменяем по несоединённым с DOM карточкам.
+        let _pendingThumbLoads = [];
+        function flushWallpaperThumbs() {
+            if (!_pendingThumbLoads.length) return;
+            const still = [];
+            for (const job of _pendingThumbLoads) {
+                if (!job.card.isConnected) continue; // карточку перерисовали
+                if (job.card.offsetParent === null) { still.push(job); continue; } // всё ещё скрыта
+                job.load();
+            }
+            _pendingThumbLoads = still;
         }
 
         function renderWallpaperGrid() {
@@ -13908,6 +14104,9 @@
 
                 // Карточка "Своя"
                 grid.appendChild(createCustomWallpaperCard(current));
+
+                // Сетка может быть скрыта — тогда запросы останутся в очереди
+                flushWallpaperThumbs();
             }
 
             // Пикер слева (если открыт) должен показывать актуальное состояние
@@ -13954,6 +14153,8 @@
             });
             list.appendChild(createCustomWallpaperCard(current));
             if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
+            // Пикер открыт — карточки видны, thumb-запросы можно отдавать
+            flushWallpaperThumbs();
         }
 
         // «Старый стиль» — сетка обоев прямо под кнопкой, как раньше
@@ -13963,6 +14164,8 @@
             if (cb) cb.checked = !!on;
             if (grid) grid.style.display = on ? '' : 'none';
             try { localStorage.setItem('arp_wp_old_style', on ? '1' : '0'); } catch (e) {}
+            // Сетка показана — отдаём отложенные thumb-запросы
+            if (on) flushWallpaperThumbs();
         }
 
         function applyLocalWallpaper(wp) {
@@ -14013,21 +14216,25 @@
             }
             perfMark('  get_launcher_settings done');
 
-            // Применяем обой из конфига мгновенно
+            // Применяем обои из конфига мгновенно
             if (launcherSettings.bg_data) {
-                // Есть сохранённый full-quality base64 — применяем сразу
+                // base64 в конфиге есть (свой фон, выбранный через диалог)
                 applyBgImage(launcherSettings.bg_data);
             } else if (launcherSettings.bg_image) {
-                // Только filename — подгружаем полноразмерную обой
-                applyBgImage(launcherSettings.bg_image);
-                // Асинхронно подгружаем полноразмерную и сохраняем
-                if (window.pywebview && window.pywebview.api.get_wallpaper_full) {
+                // Файловые обои в конфиге больше не хранятся (2.8 МБ на каждое
+                // чтение) — они лежат в wallpapers/. В CSS имя файла не подставляем:
+                // это не картинка. Либо это готовый URL (data:/file:/http), либо
+                // подгружаем полноразмерную копию и применяем, как только придёт.
+                if (/^(data:|blob:|https?:|file:)/.test(launcherSettings.bg_image)
+                    || /^[a-zA-Z]:[\\/]/.test(launcherSettings.bg_image)) {
+                    applyBgImage(_normalizeBgUrl(launcherSettings.bg_image));
+                } else if (window.pywebview && window.pywebview.api.get_wallpaper_full) {
                     window.pywebview.api.get_wallpaper_full(launcherSettings.bg_image).then(res => {
                         if (res && res.success) {
+                            // Сохранять нечего: Rust всё равно не пишет
+                            // восстановленный из файла bg_data в конфиг.
                             launcherSettings.bg_data = res.data_url;
-                            if (window.pywebview && window.pywebview.api.save_launcher_settings) {
-                                window.pywebview.api.save_launcher_settings(launcherSettings);
-                            }
+                            applyBgImage(res.data_url);
                         }
                     });
                 }
@@ -15063,6 +15270,16 @@
                 rightPanel.classList.add('news-away');
             }
             settingsPanel.style.display = 'flex';
+            // Снимаем backdrop-блюр только на время rise-анимации (0.4s + запас):
+            // во время неё блюр пересчитывается каждый кадр и роняет FPS на
+            // слабых GPU — см. CSS-правило .settings-panel.anim-rise.
+            settingsPanel.classList.add('anim-rise');
+            clearTimeout(_animRiseT);
+            _animRiseT = setTimeout(() => settingsPanel.classList.remove('anim-rise'), 500);
+            // Внешние слои (правая панель с язычком новостей, feedbackFab,
+            // titlebar…) пересчитывают свой блюр каждый кадр, пока панель
+            // проходит под ними — гасим их блюр на время анимации (V22).
+            _markSettingsAnim();
             switchTab('patches');
 
             // 1. Загружаем схему метаданных (с GitHub, fallback при ошибке)
@@ -15088,7 +15305,10 @@
                 patchesData = patchesResult.data;
             } else if (patchesResult && patchesResult.message) {
                 console.warn('read_patches:', patchesResult.message);
-                showNotification('Не удалось прочитать конфиг патчей: ' + patchesResult.message, 'error');
+                // Уведомление при открытии настроек скрыто по запросу (06.11.2026):
+                // панель «нет конфига патчера» мигала каждый раз. Блокировка
+                // сохранения/экспорта по _patchesReadFailed работает по-прежнему.
+                // showNotification('Не удалось прочитать конфиг патчей: ' + patchesResult.message, 'error');
             }
             patchesData = applySchemaDefaults(_patchesSchema, patchesData);
 
@@ -15166,6 +15386,7 @@
 
         function closeSettings() {
             // Длительность = анимации settingsSink (0.4s) + запас на кадр
+            _markSettingsAnim();   // внешние блюры гаснут на время sink-анимации
             _closeWithAnim(settingsPanel, () => {
                 settingsPanel.style.display = 'none';
                 // Если закрыли настройки, будучи в пикере обоев — сбрасываем режим
@@ -15909,7 +16130,55 @@
         // ══════════════════════════════════════════════
         //  DEBUG TAB
         // ══════════════════════════════════════════════
+
+        // ── Режимы анимации настроек (карточка «Анимации») ──────────────
+        // Класс anim-<режим> живёт на <html> (см. скрипт в <head>); CSS-правила
+        // каждого режима — в блоке «Режимы анимации настроек» рядом с keyframes.
+        const ANIM_MODES = ['fade', 'pop', 'smooth', 'full'];
+        const ANIM_HINTS = {
+            fade:   'Блюр фона виден всегда, панель проявляется с размытием-глубиной — на слабой GPU тормозит (26 мс, ~100 рывков)',
+            pop:    'Панель выезжает из глубины, блюр включается сразу после анимации (щелчок). Без рывков: 17 мс',
+            smooth: 'Панель выезжает, блюр плавно возвращается за 0.2с — без щелчка и без рывков (17 мс)',
+            full:   'Блюр виден с самого начала полёта — как раньше. На слабых GPU может рывками (28 мс, ~93 рывка). Сейчас дефолт',
+        };
+
+        function setAnimMode(mode) {
+            if (ANIM_MODES.indexOf(mode) < 0) mode = 'full';
+            try { localStorage.setItem('airAnimMode', mode); } catch (e) {}
+            const de = document.documentElement;
+            ANIM_MODES.forEach(m => de.classList.remove('anim-' + m));
+            de.classList.add('anim-' + mode);
+            _syncAnimModeUI();
+        }
+
+        function _syncAnimModeUI() {
+            const de = document.documentElement;
+            const cur = ANIM_MODES.find(m => de.classList.contains('anim-' + m)) || 'full';
+            const g = document.getElementById('dbgAnimGroup');
+            if (g) g.querySelectorAll('button').forEach(b =>
+                b.classList.toggle('sel', b.dataset.m === cur));
+            const h = document.getElementById('dbgAnimHint');
+            if (h) h.textContent = ANIM_HINTS[cur];
+            // активная кнопка силы блюра (значение --frost-blur с html)
+            const curBlur = (getComputedStyle(de).getPropertyValue('--frost-blur') || '')
+                .trim().replace('px', '');
+            const gb = document.getElementById('dbgBlurGroup');
+            if (gb) gb.querySelectorAll('button').forEach(b =>
+                b.classList.toggle('sel', b.dataset.b === curBlur));
+        }
+
+        // Сила блюра панели настроек (8–32px, см. --frost-blur в :root).
+        // Навигация внутри панели следует автоматически (половина радиуса).
+        function setBlur(px) {
+            px = parseInt(px, 10);
+            if ([8, 12, 16, 24, 32].indexOf(px) < 0) px = 24;
+            try { localStorage.setItem('airBlur', String(px)); } catch (e) {}
+            document.documentElement.style.setProperty('--frost-blur', px + 'px');
+            _syncAnimModeUI();
+        }
+
         async function loadDebugInfo() {
+            _syncAnimModeUI();
             try {
                 if (window.pywebview && window.pywebview.api.get_debug_info) {
                     const r = await window.pywebview.api.get_debug_info();
