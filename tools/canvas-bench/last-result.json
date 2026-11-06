@@ -1,0 +1,158 @@
+{
+  "meta": {
+    "vw": 1280,
+    "vh": 800,
+    "dpr": 1,
+    "pw": 720,
+    "ph": 460,
+    "blur": 24,
+    "cycles": 5
+  },
+  "variants": {
+    "dom-blur": {
+      "frames": 419,
+      "avgMs": 16.8,
+      "p50Ms": 16.8,
+      "p95Ms": 18.3,
+      "maxMs": 25.7,
+      "janky33": 0,
+      "over50": 0,
+      "over100": 0,
+      "openAnim": {
+        "n": 119,
+        "avgMs": 16.7,
+        "p95Ms": 18.7,
+        "maxMs": 25.7,
+        "janky33": 0,
+        "over50": 0
+      },
+      "closeAnim": {
+        "n": 114,
+        "avgMs": 17.4,
+        "p95Ms": 18.5,
+        "maxMs": 20.2,
+        "janky33": 0,
+        "over50": 0
+      },
+      "longTasks": 0,
+      "longestMs": 0,
+      "renderer": "DOM + backdrop-filter"
+    },
+    "dom-noblur": {
+      "frames": 422,
+      "avgMs": 16.6,
+      "p50Ms": 16.6,
+      "p95Ms": 17.7,
+      "maxMs": 18.2,
+      "janky33": 0,
+      "over50": 0,
+      "over100": 0,
+      "openAnim": {
+        "n": 119,
+        "avgMs": 16.6,
+        "p95Ms": 17.7,
+        "maxMs": 18.1,
+        "janky33": 0,
+        "over50": 0
+      },
+      "closeAnim": {
+        "n": 119,
+        "avgMs": 16.7,
+        "p95Ms": 17.7,
+        "maxMs": 18.2,
+        "janky33": 0,
+        "over50": 0
+      },
+      "longTasks": 0,
+      "longestMs": 0,
+      "renderer": "DOM (контроль, без блюра)"
+    },
+    "c2d-live": {
+      "frames": 423,
+      "avgMs": 16.7,
+      "p50Ms": 16.6,
+      "p95Ms": 17.7,
+      "maxMs": 18.5,
+      "janky33": 0,
+      "over50": 0,
+      "over100": 0,
+      "openAnim": {
+        "n": 120,
+        "avgMs": 16.6,
+        "p95Ms": 17.7,
+        "maxMs": 18.5,
+        "janky33": 0,
+        "over50": 0
+      },
+      "closeAnim": {
+        "n": 120,
+        "avgMs": 16.7,
+        "p95Ms": 17.6,
+        "maxMs": 18.2,
+        "janky33": 0,
+        "over50": 0
+      },
+      "longTasks": 0,
+      "longestMs": 0,
+      "renderer": "Canvas 2D (Skia, ctx.filter)"
+    },
+    "c2d-baked": {
+      "frames": 422,
+      "avgMs": 16.7,
+      "p50Ms": 16.6,
+      "p95Ms": 17.7,
+      "maxMs": 18.6,
+      "janky33": 0,
+      "over50": 0,
+      "over100": 0,
+      "openAnim": {
+        "n": 120,
+        "avgMs": 16.6,
+        "p95Ms": 17.7,
+        "maxMs": 18.6,
+        "janky33": 0,
+        "over50": 0
+      },
+      "closeAnim": {
+        "n": 120,
+        "avgMs": 16.7,
+        "p95Ms": 17.7,
+        "maxMs": 18.2,
+        "janky33": 0,
+        "over50": 0
+      },
+      "longTasks": 0,
+      "longestMs": 0,
+      "renderer": "Canvas 2D (Skia, blur запечён)"
+    },
+    "webgl-live": {
+      "frames": 421,
+      "avgMs": 16.7,
+      "p50Ms": 16.6,
+      "p95Ms": 17.7,
+      "maxMs": 18.4,
+      "janky33": 0,
+      "over50": 0,
+      "over100": 0,
+      "openAnim": {
+        "n": 120,
+        "avgMs": 16.6,
+        "p95Ms": 17.6,
+        "maxMs": 18.2,
+        "janky33": 0,
+        "over50": 0
+      },
+      "closeAnim": {
+        "n": 121,
+        "avgMs": 16.7,
+        "p95Ms": 17.9,
+        "maxMs": 18.4,
+        "janky33": 0,
+        "over50": 0
+      },
+      "longTasks": 0,
+      "longestMs": 0,
+      "renderer": "WebKit WebGL / WebKit"
+    }
+  }
+}

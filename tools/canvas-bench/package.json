@@ -1,0 +1,12 @@
+{
+  "name": "canvas-bench",
+  "private": true,
+  "description": "Бенч рендер-путей: DOM+backdrop-filter vs canvas2D vs WebGL (см. run.js)",
+  "scripts": {
+    "serve": "node run.js --serve",
+    "bench": "node run.js"
+  },
+  "devDependencies": {
+    "playwright": "^1.65.0"
+  }
+}
