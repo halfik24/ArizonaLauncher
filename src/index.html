@@ -8849,14 +8849,25 @@
                 canvas.width = W; canvas.height = H;
             }
             const rect = panel.getBoundingClientRect();
+            // getBoundingClientRect отдаёт бокс С учётом transform: на открытии
+            // align идёт в том же потоке, что display='flex' — settingsRise уже
+            // активна (0% = scale 1.08), и rect завышен на (scale-1)*размер/2.
+            // Центр border-box при scale вокруг центра не меняется, поэтому
+            // геометрию восстанавливаем от offsetWidth/Height (transform не
+            // учитывает). Без поправки кусок stage смещён на ~38×26px
+            // (замер exp-align: used (-136,-28) против correct (-174,-54)) и
+            // виден «не по центру» всю анимацию до возврата живого блюра.
+            const w0 = panel.offsetWidth, h0 = panel.offsetHeight;
+            const left = rect.left + (rect.width - w0) / 2;
+            const top = rect.top + (rect.height - h0) / 2;
             const ctx = canvas.getContext('2d');
             ctx.setTransform(1, 0, 0, 1, 0, 0);
             ctx.clearRect(0, 0, W, H);
             // Начало координат холста = левый верхний угол padding-box панели
             // (rect + рамка); stage лежит в координатах окна. Сдвиг в device-px.
             ctx.drawImage(_bakeStage,
-                -Math.round((rect.left + panel.clientLeft) * dpr),
-                -Math.round((rect.top + panel.clientTop) * dpr));
+                -Math.round((left + panel.clientLeft) * dpr),
+                -Math.round((top + panel.clientTop) * dpr));
         }
 
         // Ресайз окна: другой размер кадра → debounce-перезапек + переблить.
