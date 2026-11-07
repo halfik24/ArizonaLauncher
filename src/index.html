@@ -15,15 +15,19 @@
         (function () {
             var MODES = ['fade', 'pop', 'smooth', 'full'];
             var BLURS = [8, 12, 16, 24, 32];
-            var m = null, b = null;
+            var m = null, b = null, c = null;
             try {
                 m = localStorage.getItem('airAnimMode');
                 b = parseInt(localStorage.getItem('airBlur'), 10);
+                c = localStorage.getItem('arp_compactMenu');
             } catch (e) {}
             if (MODES.indexOf(m) < 0) m = 'full';
             if (BLURS.indexOf(b) < 0) b = 24;
             document.documentElement.className += ' anim-' + m;
             document.documentElement.style.setProperty('--frost-blur', b + 'px');
+            // Компактное меню — эксперимент из дебага («а что если», не
+            // постоянный режим), см. setCompactMenu; класс до первой отрисовки
+            if (c === '1') document.documentElement.className += ' compact-menu';
         })();
     </script>
     <style>
@@ -918,33 +922,79 @@
             100% { filter: brightness(1); }
         }
 
+        /* ── Хедер панели: тихая шапка (unslop: хедер обязан быть тихим,
+           цвет живёт в кнопке «Начать игру») ───────────────────────────── */
         .header {
             text-align: center;
-            padding-bottom: 10px;
-            margin-bottom: 10px;
+            /* сетка 4px: внутри группы (до линии) 12, между группами
+               margin 8 + gap панели 20 = 28 — группа отделяется яснее */
+            padding-bottom: 12px;
+            margin-bottom: 8px;
             border-bottom: 1px solid rgba(255, 255, 255, 0.1);
         }
 
         .title {
             font-family: 'Montserrat Alternates', sans-serif;
-            font-size: clamp(24px, 3vw, 36px);
+            /* фиксированная шкала вместо clamp от vw: панель фиксированная
+               (350px), vw давал магическое 19-36px на узком окне */
+            font-size: 32px;
+            font-weight: 600;               /* единственный редкий акцент веса */
             color: var(--text-color);
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
-            margin-bottom: 5px;
+            /* без жёсткой тени 2px 2px 4px — стекло панели достаточно тёмное */
+            margin-bottom: 4px;
         }
 
         .subtitle {
             font-family: 'Montserrat Alternates', sans-serif;
-            font-size: clamp(14px, 1.5vw, 20px);
+            font-size: 14px;
             color: rgba(255, 255, 255, 0.7);
-            text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
             display: flex;
             align-items: center;
             justify-content: center;
             gap: 8px;
-            position: relative;
-            padding-bottom: 5px;
         }
+        /* Мета-данные (версия) — тихая mono-строка, не пилюля: без blur,
+           рамки, hover и ложного cursor:pointer (клика у пилла не было) */
+        .subtitle .sub-sep {
+            color: rgba(255, 255, 255, 0.35);
+        }
+        .subtitle .sub-ver {
+            font-family: 'Consolas', 'Courier New', monospace;
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.45);
+            font-variant-numeric: tabular-nums;
+            letter-spacing: 0;
+        }
+
+        /* ── Компактное меню — эксперимент на вкладке Отладка («а что если»),
+           НЕ постоянный режим: плотная компоновка левой панели (сетка 4px),
+           хедер одной строкой. Переключатель setCompactMenu — localStorage
+           arp_compactMenu, класс на <html> (до первой отрисовки — см.
+           inline-скрипт в <head>). */
+        html.compact-menu .left-panel {
+            padding: 16px;
+            gap: 12px;
+        }
+        html.compact-menu .header {
+            display: flex;
+            align-items: baseline;
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 8px;
+            padding-bottom: 8px;
+            margin-bottom: 0;
+        }
+        html.compact-menu .title {
+            font-size: 20px;
+            margin-bottom: 0;
+        }
+        html.compact-menu .subtitle {
+            font-size: 13px;
+            gap: 6px;
+        }
+        html.compact-menu .nickname-section { margin-bottom: 8px; }
+        html.compact-menu .server-section   { margin-bottom: 12px; }
+        html.compact-menu .section-label    { margin-bottom: 4px; }
 
         /* === ВЕРСИЯ — SUBTLE PILL === */
         .version-stable {
@@ -1930,6 +1980,46 @@
            фоном панели, под потоковым содержимым), вне потока, кликов не
            ловит. Размер бэкинга ставит _alignSettingsBaked() при открытии. */
         #settingsBaked {
+            display: none;
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+            pointer-events: none;
+        }
+
+        /* Как у settings-anim: внешние слои (пилюля тайтлбара, feedbackFab,
+           тосты) пересчитывают свой backdrop каждый кадр, пока модалка
+           «Моды» проходит под ними — гасим их блюр на время анимации.
+           Свою модалку правило не трогает (ей управляют гейты режимов ниже). */
+        body.mods-anim *:not(.mods-modal):not(.mods-modal *) {
+            backdrop-filter: none !important;
+            -webkit-backdrop-filter: none !important;
+        }
+
+        /* «Моды»: на время анимации open/close (body.mods-anim, 0.55с) под
+           модалкой вместо живого backdrop-filter — запечённый слой #modsBaked
+           (тот же stage, что у панели настроек, но со своим тинтом 0.9).
+           Только режимы full/fade — как у настроек; pop/smooth оставляют
+           живой backdrop (их «острый фон в полёте» это идентичность). */
+        html.anim-full body.mods-anim #modsBaked,
+        html.anim-fade body.mods-anim #modsBaked {
+            display: block;
+        }
+        html.anim-full body.mods-anim .mods-modal,
+        html.anim-fade body.mods-anim .mods-modal,
+        html.anim-full body.mods-anim .mods-modal *,
+        html.anim-fade body.mods-anim .mods-modal * {
+            backdrop-filter: none !important;
+            -webkit-backdrop-filter: none !important;
+        }
+
+        /* Запечённый слой под контентом модалки (z-index:-1 рисует над фоном
+           модалки, под потоковым содержимым), вне потока, кликов не ловит.
+           Модалка fullscreen — сдвиг не нужен, выравнивание тривиально. */
+        #modsBaked {
             display: none;
             position: absolute;
             left: 0;
@@ -7298,12 +7388,10 @@
                     <div class="title">Arizona RP</div>
                     <div class="subtitle">
                         <span>Launcher</span>
-                        <div class="version-stable">
-                            <span class="vs-arrow">ver</span>
-                            <span class="ver-num" data-appver></span>
-                        </div>
-            </div>
-        </div>
+                        <span class="sub-sep" aria-hidden="true">·</span>
+                        <span class="sub-ver" data-appver></span>
+                    </div>
+                </div>
 
         <div class="nickname-section">
                     <label class="section-label">Ваш никнейм</label>
@@ -8118,6 +8206,22 @@
                     </div>
 
                     <div class="dbg-card">
+                        <div class="debug-section-title"><i data-lucide="layout"></i> Меню</div>
+                        <div class="debug-row">
+                            <span class="debug-label">Компактное меню</span>
+                            <span class="debug-value">
+                                <span class="dbg-anim-group" id="dbgCompactGroup">
+                                    <button type="button" data-c="0" onclick="setCompactMenu(false)">Стандарт</button><button type="button" data-c="1" onclick="setCompactMenu(true)">Компакт</button>
+                                </span>
+                            </span>
+                        </div>
+                        <div class="debug-row">
+                            <span class="debug-label">Что это</span>
+                            <span class="debug-value">Эксперимент («а что если»): плотная компоновка левой панели, хедер в одну строку. Не постоянный режим</span>
+                        </div>
+                    </div>
+
+                    <div class="dbg-card">
                         <div class="debug-section-title"><i data-lucide="monitor"></i> Система</div>
                         <div class="debug-row">
                             <span class="debug-label">ОС</span>
@@ -8263,6 +8367,10 @@
         </div>
         <!-- Модальное окно модов (на весь экран) -->
         <div class="mods-modal" id="modsModal" role="dialog" aria-modal="true" aria-labelledby="modsModalTitle">
+            <!-- Запечённый фон-блюр (идея №1): под контентом на время
+                 анимации open/close в режимах full/fade — см. CSS #modsBaked
+                 и _alignModsBaked() -->
+            <canvas id="modsBaked" aria-hidden="true"></canvas>
             <div class="mods-modal-header">
                 <div class="mods-modal-title" id="modsModalTitle"><i data-lucide="puzzle"></i> Моды</div>
                 <div style="display:flex;align-items:center;gap:8px;">
@@ -8840,6 +8948,16 @@
                 document.body.classList.remove('settings-anim'), 550);
         }
 
+        // Аналог для модалки «Моды»: на 0.55с гасит backdrop внешних слоёв
+        // и включает запечённый слой #modsBaked (CSS-гейты full/fade).
+        let _modsAnimT = 0;
+        function _markModsAnim() {
+            document.body.classList.add('mods-anim');
+            clearTimeout(_modsAnimT);
+            _modsAnimT = setTimeout(() =>
+                document.body.classList.remove('mods-anim'), 550);
+        }
+
         // ── Идея №1: запечённый фон-блюр панели настроек ──────────────────
         // На время анимации open/close (режимы full/fade, пока на body стоит
         // settings-anim — 0.55с) под панелью вместо живого backdrop-filter
@@ -8888,8 +9006,8 @@
         function _bakeSettingsBgAsync() {
             const url = _bgUrlCur || null;
             const key = _bakeKeyOf();
-            // Уже запечено при этих условиях — только переблить панель.
-            if (key === _bakeKey && _bakeStage) { _alignSettingsBaked(); return; }
+            // Уже запечено при этих условиях — только переблить панель/модалку.
+            if (key === _bakeKey && _bakeStage) { _alignSettingsBaked(); _alignModsBaked(); return; }
             if (url) {
                 if (!_bakeImg || _bakeImgUrl !== url) {
                     const img = new Image();
@@ -8943,12 +9061,13 @@
             st.filter = 'blur(' + (blur * dpr) + 'px) saturate(1.2)';
             st.drawImage(_bakeTmp, 0, 0);
             st.filter = 'none';
-            // тинт .settings-panel: rgba(var(--surface-rgb), 0.7)
-            const rgb = (cs.getPropertyValue('--surface-rgb') || '11, 13, 20').trim();
-            st.fillStyle = 'rgba(' + rgb + ', 0.7)';
-            st.fillRect(0, 0, W, H);
+            // Тинт в stage НЕ запекается: у панели он 0.7, у модалки «Моды» —
+            // 0.9. Наносится при выравнивании (_alignSettingsBaked /
+            // _alignModsBaked). surface-rgb остаётся в ключе: смена палитры
+            // должна перезапечь и переблить уже открытую панель/модалку.
             _bakeKey = _bakeKeyOf();
             _alignSettingsBaked();   // панель видна — переблить сразу
+            _alignModsBaked();       // модалка видна — переблить сразу
         }
 
         // Кусок stage под панелью → в #settingsBaked. Вызывается на
@@ -8988,6 +9107,51 @@
             ctx.drawImage(_bakeStage,
                 -Math.round((left + panel.clientLeft) * dpr),
                 -Math.round((top + panel.clientTop) * dpr));
+            // Тинт панели: rgba(var(--surface-rgb), 0.7) — как background
+            // .settings-panel поверх живого backdrop (stage тинта не содержит,
+            // он общий с модалкой «Моды», у которой тинт 0.9)
+            const rgb = (csOfBake()).trim() || '11, 13, 20';
+            ctx.fillStyle = 'rgba(' + rgb + ', 0.7)';
+            ctx.fillRect(0, 0, W, H);
+        }
+
+        function csOfBake() {
+            return getComputedStyle(document.documentElement)
+                .getPropertyValue('--surface-rgb') || '';
+        }
+
+        // Кусок stage под модалкой «Моды» → в #modsBaked. Модалка fullscreen:
+        // координаты тривиальны (offset ~0), но считаем как у панели —
+        // на случай scale во время rise/sink (центр бокса не меняется).
+        // Тинт модалки — 0.9 (background .mods-modal поверх живого backdrop).
+        // Вызывается на open/close ДО старта анимации и после перезапека.
+        function _alignModsBaked() {
+            const modal = document.getElementById('modsModal');
+            const canvas = document.getElementById('modsBaked');
+            if (!modal || !canvas) return;
+            const cw = modal.clientWidth, ch = modal.clientHeight;
+            if (!cw || !ch) return;               // закрыта — выровняем на открытии
+            if (!_bakeStage || _bakeKey !== _bakeKeyOf())
+                _scheduleBakeSettingsBg(0);       // кадр устарел/ещё не запечён
+            if (!_bakeStage) return;
+            const dpr = Math.min(window.devicePixelRatio || 1, 2);
+            const W = Math.round(cw * dpr), H = Math.round(ch * dpr);
+            if (canvas.width !== W || canvas.height !== H) {
+                canvas.width = W; canvas.height = H;
+            }
+            const rect = modal.getBoundingClientRect();
+            const w0 = modal.offsetWidth, h0 = modal.offsetHeight;
+            const left = rect.left + (rect.width - w0) / 2;
+            const top = rect.top + (rect.height - h0) / 2;
+            const ctx = canvas.getContext('2d');
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+            ctx.clearRect(0, 0, W, H);
+            ctx.drawImage(_bakeStage,
+                -Math.round((left + modal.clientLeft) * dpr),
+                -Math.round((top + modal.clientTop) * dpr));
+            const rgb = (csOfBake()).trim() || '11, 13, 20';
+            ctx.fillStyle = 'rgba(' + rgb + ', 0.9)';
+            ctx.fillRect(0, 0, W, H);
         }
 
         // Ресайз окна: другой размер кадра → debounce-перезапек + переблить.
@@ -8995,6 +9159,7 @@
             clearTimeout(_bakeAlignT);
             _bakeAlignT = setTimeout(() => {
                 _alignSettingsBaked();
+                _alignModsBaked();
                 _scheduleBakeSettingsBg(0);
             }, 250);
         });
@@ -10859,6 +11024,11 @@
             document.querySelector('.right-panel').style.display = 'none';
             const modal = document.getElementById('modsModal');
             modal.style.display = 'flex';
+            // Запечённый фон-блюр (идея №1): выравниваем и ставим маркер
+            // в той же задаче, что и display — до старта rise-анимации
+            // (getBoundingClientRect тогда без scale)
+            _alignModsBaked();
+            _markModsAnim();
             // Пилюля кнопок окна уезжает влево с анимацией, чтобы не
             // перекрывать шапку модалки (крестик и заголовок)
             document.body.classList.add('tb-shifted');
@@ -10876,6 +11046,10 @@
         function closeModsModal() {
             const modal = document.getElementById('modsModal');
             document.body.classList.remove('tb-shifted');
+            // Запечённый фон-блюр (идея №1): до .closing — координаты без
+            // scale; маркер гасит внешние блюры на время sink-анимации
+            _markModsAnim();
+            _alignModsBaked();
             // 440мс = анимации modsSink (0.4s) + запас на кадр
             _closeWithAnim(modal, () => {
                 modal.style.display = 'none';
@@ -16589,6 +16763,23 @@
                 b.classList.toggle('sel', b.dataset.b === curBlur));
         }
 
+        // Компактное меню — эксперимент «а что если» (плотная панель, хедер
+        // в одну строку). Только вкладка Отладка, не постоянный режим:
+        // localStorage arp_compactMenu ('1'/'0') + класс compact-menu на <html>.
+        function setCompactMenu(on) {
+            on = (on === true || on === '1' || on === 1);
+            try { localStorage.setItem('arp_compactMenu', on ? '1' : '0'); } catch (e) {}
+            document.documentElement.classList.toggle('compact-menu', on);
+            _syncCompactUI();
+        }
+
+        function _syncCompactUI() {
+            const on = document.documentElement.classList.contains('compact-menu');
+            const g = document.getElementById('dbgCompactGroup');
+            if (g) g.querySelectorAll('button').forEach(b =>
+                b.classList.toggle('sel', (b.dataset.c === '1') === on));
+        }
+
         // Сила блюра панели настроек (8–32px, см. --frost-blur в :root).
         // Навигация внутри панели следует автоматически (половина радиуса).
         function setBlur(px) {
@@ -16635,6 +16826,7 @@
 
         async function loadDebugInfo() {
             _syncAnimModeUI();
+            _syncCompactUI();
             try {
                 if (window.pywebview && window.pywebview.api.get_debug_info) {
                     const r = await window.pywebview.api.get_debug_info();
