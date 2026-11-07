@@ -598,7 +598,13 @@
             border-right: none;
             transform: translateX(calc(100% - 48px));
             transition: transform 0.45s cubic-bezier(0.4, 0, 0.2, 1),
-                        translate 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+                        translate 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+                        /* фон гаснет вместе с телом панели, а не мгновенно
+                           (см. правило :not(.open):not(.peek-anim) ниже) */
+                        background 0.45s cubic-bezier(0.4, 0, 0.2, 1),
+                        border-color 0.45s cubic-bezier(0.4, 0, 0.2, 1),
+                        box-shadow 0.45s cubic-bezier(0.4, 0, 0.2, 1),
+                        backdrop-filter 0.45s cubic-bezier(0.4, 0, 0.2, 1);
             z-index: 50;
             overflow: hidden;
         }
@@ -626,12 +632,20 @@
         .right-panel.peek-anim {
             transform: translateX(calc(100% - 48px - 170px)) !important;
             transition: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1),
-                        translate 0.4s cubic-bezier(0.4, 0, 0.2, 1) !important;
+                        translate 0.4s cubic-bezier(0.4, 0, 0.2, 1) !important,
+                        background 0.45s cubic-bezier(0.4, 0, 0.2, 1),
+                        border-color 0.45s cubic-bezier(0.4, 0, 0.2, 1),
+                        box-shadow 0.45s cubic-bezier(0.4, 0, 0.2, 1),
+                        backdrop-filter 0.45s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
         .right-panel:not(.peek-anim) {
             transition: transform 0.45s cubic-bezier(0.4, 0, 0.2, 1),
-                        translate 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+                        translate 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+                        background 0.45s cubic-bezier(0.4, 0, 0.2, 1),
+                        border-color 0.45s cubic-bezier(0.4, 0, 0.2, 1),
+                        box-shadow 0.45s cubic-bezier(0.4, 0, 0.2, 1),
+                        backdrop-filter 0.45s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
         /* ── Открытие настроек: язычок новостей (и раскрытая панель новостей)
@@ -4846,6 +4860,15 @@
             max-width: 360px;
         }
 
+        /* Тосты: top живёт здесь, а не инлайн-стилем в разметке — инлайн
+           перебивал бы любое CSS-правило (в т.ч. про тайтлбар ниже). */
+        #toastContainer { top: 20px; }
+
+        /* Под своим тайтлбаром (42px) уведомления и тосты иначе залезают
+           под кнопки окна (z-index тайтлбара выше) — отступаем 42 + 10px. */
+        body.frame-custom #notificationContainer,
+        body.frame-custom #toastContainer { top: 52px; }
+
         /* ══ Обратная связь: кнопка в углу + попап ══ */
         #feedbackFab {
             position: fixed;
@@ -4891,6 +4914,13 @@
             user-select: text;
         }
         .feedback-popup.open { display: block; }
+        /* Выход: те же 250мс, что у .closing оверлеев (closeGpOverlay),
+           но для попапа — свой keyframes (flFeatIn — вход, ниже — выход). */
+        .feedback-popup.closing { animation: flFeatOut 0.25s cubic-bezier(0.4, 0, 1, 1) forwards; }
+        @keyframes flFeatOut {
+            from { opacity: 1; transform: translateY(0); }
+            to   { opacity: 0; transform: translateY(8px); }
+        }
         .feedback-popup-title {
             display: flex;
             align-items: center;
@@ -7250,7 +7280,7 @@
     </div>
 
     <!-- Toast контейнер для глобальных уведомлений -->
-    <div id="toastContainer" style="position:fixed; top:20px; right:20px; z-index:9999; display:flex; flex-direction:column; gap:8px; max-width:360px;"></div>
+    <div id="toastContainer" style="position:fixed; right:20px; z-index:9999; display:flex; flex-direction:column; gap:8px; max-width:360px;"></div>
     <style>
         .dll-toast { display:flex; align-items:flex-start; gap:10px; padding:12px 14px; border-radius:8px; background:rgba(255,68,68,0.15); border:1px solid rgba(255,68,68,0.3); box-shadow:0 4px 20px rgba(0,0,0,0.4); animation:slideIn 0.3s ease; cursor:default; overflow:hidden; transition:width 0.35s ease, padding 0.35s ease, border-radius 0.35s ease, opacity 0.35s ease, background 0.35s ease, border-color 0.35s ease, max-height 0.35s ease; width:100%; }
         .dll-toast.collapsed { width:36px; height:36px; padding:0; border-radius:50%; background:rgba(255,68,68,0.35); border-color:rgba(255,68,68,0.5); cursor:pointer; justify-content:center; align-items:center; max-height:36px; }
@@ -8183,6 +8213,30 @@
                         </div>
                     </div>
 
+                    <div class="dbg-card">
+                        <div class="debug-section-title"><i data-lucide="bug"></i> Демо (только графика)</div>
+                        <div class="debug-row">
+                            <span class="debug-label">Уведомления</span>
+                            <span class="debug-value">
+                                <span class="dbg-anim-group" id="dbgNotifGroup">
+                                    <button type="button" onclick="showNotification('Демо-уведомление: информация', 'info')">Инфо</button><button type="button" onclick="showNotification('Демо-уведомление: всё хорошо', 'success')">Успех</button><button type="button" onclick="showNotification('Демо-уведомление: что-то сломалось', 'error')">Ошибка</button>
+                                </span>
+                            </span>
+                        </div>
+                        <div class="debug-row">
+                            <span class="debug-label">Обновление лаунчера</span>
+                            <span class="debug-value">
+                                <span class="dbg-anim-group" id="dbgGpDemoGroup">
+                                    <button type="button" onclick="dbgDemoLauncherProgress()">Показать прогресс</button>
+                                </span>
+                            </span>
+                        </div>
+                        <div class="debug-row">
+                            <span class="debug-label">Что это</span>
+                            <span class="debug-value">Фейковые события без бэкенда: открывает оверлей установки и двигает полосу gpBar. Ничего не качает и не сохраняет.</span>
+                        </div>
+                    </div>
+
                     <div class="s-btn-row" style="flex-shrink:0;">
                         <button class="s-btn" style="flex:1;" onclick="openDataFolder()"><i data-lucide="folder-open"></i> Открыть папку данных</button>
                         <button class="s-btn" style="flex:1;" onclick="openLogFile()"><i data-lucide="clipboard-list"></i> Открыть лог</button>
@@ -8275,7 +8329,7 @@
                     </div>
 
                     <!-- Переключатель Установленные / Каталог -->
-                    <div style="display:flex;gap:4px;background:rgba(255,255,255,0.04);border-radius:8px;padding:3px;flex-shrink:0;">
+                    <div style="display:flex;gap:4px;background:rgba(255,255,255,0.04);border-radius:8px;padding:3px;flex-shrink:0;align-self:flex-start;">
                         <button id="libSubInstalled" class="ml-sub-tab active" onclick="switchLibSub('installed')">
                             <i data-lucide="hard-drive"></i> Установленные
                         </button>
@@ -9056,16 +9110,35 @@
         // ══════════════════════════════════════════════
         const FEEDBACK_FORM_URL = 'https://forms.gle/R3CW1GowSZBcey9B6';
 
+        /** Анимированное закрытие попапа: .closing играет flFeatOut, и только
+           потом снимается .open (display:none). Повторные клики игнорируются,
+           пока идёт выход — по образцу closeGpOverlay. */
+        function closeFeedbackPopup() {
+            const popup = document.getElementById('feedbackPopup');
+            if (!popup || !popup.classList.contains('open') || popup.classList.contains('closing')) return;
+            popup.classList.add('closing');
+            setTimeout(() => {
+                popup.classList.remove('closing');
+                popup.classList.remove('open');
+                if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
+            }, 250);
+        }
+
         function toggleFeedbackPopup() {
             const popup = document.getElementById('feedbackPopup');
             if (!popup) return;
-            popup.classList.toggle('open');
-            if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
+            if (popup.classList.contains('open')) {
+                closeFeedbackPopup();
+            } else {
+                popup.classList.remove('closing');
+                popup.classList.add('open');
+                if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
+            }
         }
 
         function openFeedbackForm() {
             openExternal(FEEDBACK_FORM_URL);
-            toggleFeedbackPopup();
+            closeFeedbackPopup();
         }
 
         // Закрытие попапа по клику вне его
@@ -9073,7 +9146,7 @@
             const popup = document.getElementById('feedbackPopup');
             if (!popup || !popup.classList.contains('open')) return;
             if (popup.contains(e.target) || e.target.closest('#feedbackFab')) return;
-            popup.classList.remove('open');
+            closeFeedbackPopup();
         });
 
         /** Служебные ответы бэка, которые не стоит показывать пользователю сырыми. */
@@ -16493,6 +16566,39 @@
             document.documentElement.style.setProperty('--frost-blur', px + 'px');
             _scheduleBakeSettingsBg();   // радиус вошёл в ключ запекания (идея №1)
             _syncAnimModeUI();
+        }
+
+        // ── Демо-прогресс обновления лаунчера (вкладка Debug, только графика) ──
+        // Шлёт фейковые события в общий хаб _onLauncherInstallProgress: открывает
+        // оверлей установки и двигает полосу gpBar. Ничего не качает, бэкенд не
+        // трогает, в localStorage не пишет. Если идёт реальная установка —
+        // отказываемся, чтобы не подсунуть ей чужие события.
+        let _dbgGpTimer = null;
+        function dbgDemoLauncherProgress() {
+            if (_installModalProgressCb || _patchHandleProgressCb) {
+                showNotification('Демо-прогресс недоступен: идёт реальная установка', 'error');
+                return;
+            }
+            if (_dbgGpTimer) { clearInterval(_dbgGpTimer); _dbgGpTimer = null; }
+            openGpOverlay();
+            let pct = 0;
+            const send = (stage, message) =>
+                window._onLauncherInstallProgress({ stage: stage, progress: pct, message: message });
+            send('dl', 'Демо: скачивание обновления');
+            _dbgGpTimer = setInterval(() => {
+                pct = Math.min(100, pct + 4);
+                if (pct >= 100) {
+                    clearInterval(_dbgGpTimer); _dbgGpTimer = null;
+                    send('done', 'Демо: обновление установлено');
+                    showNotification('Демо: обновление лаунчера установлено', 'success');
+                } else if (pct >= 85) {
+                    send('install', 'Демо: установка файлов');
+                } else if (pct >= 60) {
+                    send('extract', 'Демо: распаковка');
+                } else {
+                    send('dl', 'Демо: скачивание обновления');
+                }
+            }, 120);
         }
 
         async function loadDebugInfo() {
