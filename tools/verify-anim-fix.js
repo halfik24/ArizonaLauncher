@@ -1,6 +1,8 @@
 // Функциональная проверка режимов анимации настроек: класс .anim-rise
 // ставится/снимается, backdrop-блюр ведёт себя по режиму (pop/smooth — снят
-// только во время анимации; fade/full — включён всегда), закрытие работает.
+// только во время анимации; fade/full — снят на время анимации, стекло с
+// первого кадра даёт запечённый слой #settingsBaked — идея №1), закрытие
+// работает.
 // Использование: node tools/verify-anim-fix.js
 // Режим определяется по классу anim-* на <html>.
 'use strict';
@@ -60,6 +62,12 @@ function connect(wsUrl) {
     const p = document.getElementById('settingsPanel');
     const bd = () => getComputedStyle(p).backdropFilter;
     const an = () => getComputedStyle(p).animationName;
+    // Запечённый фон-блюр (идея №1): block только в режимах full/fade и
+    // только пока на body стоит settings-anim (0.55с).
+    const baked = () => {
+      const c = document.getElementById('settingsBaked');
+      return c ? getComputedStyle(c).display : 'missing';
+    };
     const res = { mode, steps: [] };
     // закрываем, если открыто
     const c0 = document.querySelector('[onclick*="closeSettings"], .s-close, #settingsClose');
@@ -77,11 +85,13 @@ function connect(wsUrl) {
       animName: an(),
       bodyAnim: document.body.classList.contains('settings-anim'),
       extBackdrop: extBd(),
+      baked: baked(),
     };
     await sleep(650);   // 730мс: анимация + (в smooth) transition уже кончились
     res.at730ms = {
       animRise: p.classList.contains('anim-rise'),
       backdrop: bd(),
+      baked: baked(),
     };
     // ЗАКРЫТИЕ
     const c = document.querySelector('[onclick*="closeSettings"], .s-close, #settingsClose');
@@ -93,6 +103,7 @@ function connect(wsUrl) {
       backdrop: bd(),
       bodyAnim: document.body.classList.contains('settings-anim'),
       extBackdrop: extBd(),
+      baked: baked(),
     };
     await sleep(600);
     res.afterClose = {
@@ -102,6 +113,7 @@ function connect(wsUrl) {
       backdrop: bd(),
       bodyAnim: document.body.classList.contains('settings-anim'),
       extBackdrop: extBd(),
+      baked: baked(),
     };
     return res;
   })()`);
@@ -128,13 +140,23 @@ function connect(wsUrl) {
     ok('потом: блюр включён', out.at730ms?.backdrop !== 'none', out.at730ms?.backdrop);
     ok('закрытие: backdrop снят во время sink',
        out.closeAt120ms?.backdrop === 'none', out.closeAt120ms?.backdrop);
+    ok('pop/smooth: запечённый слой НЕ показывается',
+       out.at80ms?.baked === 'none', out.at80ms?.baked);
   } else {
-    ok('открытие: backdrop ВКЛЮЧЁН (вид стекла)',
-       out.at80ms?.backdrop !== 'none', out.at80ms?.backdrop);
-    ok('потом: backdrop остался включён',
+    // Идея №1 (full/fade): во время анимации backdrop снят, стекло с первого
+    // кадра даёт запечённый слой #settingsBaked; потом — обычный backdrop.
+    ok('открытие: backdrop снят — стекло даёт запечённый слой',
+       out.at80ms?.backdrop === 'none', out.at80ms?.backdrop);
+    ok('открытие: запечённый слой виден',
+       out.at80ms?.baked === 'block', out.at80ms?.baked);
+    ok('потом: backdrop включён (живое стекло)',
        out.at730ms?.backdrop !== 'none', out.at730ms?.backdrop);
-    ok('закрытие: backdrop ВКЛЮЧЁН во время sink',
-       out.closeAt120ms?.backdrop !== 'none', out.closeAt120ms?.backdrop);
+    ok('потом: запечённый слой скрыт',
+       out.at730ms?.baked === 'none', out.at730ms?.baked);
+    ok('закрытие: backdrop снят во время sink',
+       out.closeAt120ms?.backdrop === 'none', out.closeAt120ms?.backdrop);
+    ok('закрытие: запечённый слой виден',
+       out.closeAt120ms?.baked === 'block', out.closeAt120ms?.baked);
   }
   ok('через 730мс: .anim-rise снят', out.at730ms?.animRise === false, String(out.at730ms?.animRise));
   // внешние слои: блюр гаснет на время анимации (body.settings-anim) и возвращается
@@ -147,6 +169,7 @@ function connect(wsUrl) {
   ok('после закрытия: display=none', out.afterClose?.display === 'none', out.afterClose?.display);
   ok('после закрытия: .closing снят', out.afterClose?.closing === false, String(out.afterClose?.closing));
   ok('после закрытия: блюр восстановлен', out.afterClose?.backdrop !== 'none', out.afterClose?.backdrop);
+  ok('после закрытия: запечённый слой скрыт', out.afterClose?.baked === 'none', out.afterClose?.baked);
 
   console.log(JSON.stringify({ steps: out, checks }, null, 2));
   const failed = checks.filter((c) => !c.pass);

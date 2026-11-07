@@ -1834,6 +1834,43 @@
             -webkit-backdrop-filter: none !important;
         }
 
+        /* ── Идея №1: запечённый фон-блюр вместо live backdrop ───────────
+           Замер heavy-стенда на HD 4000 (tools/canvas-bench/RESULTS.md):
+           full (живой backdrop всю анимацию) — 18.5мс / 14 рывков,
+           baked (запечённая копия обоев) — 16.7мс / 0 = уровень пола.
+           Поэтому в режимах full/fade на время анимации (body.settings-anim,
+           0.55с) панель, навигация и её подэлементы теряют свой backdrop —
+           стекло с первого кадра даёт заранее запечённый слой #settingsBaked
+           (см. блок «Идея №1» у _markSettingsAnim). Потом включается обычный
+           статичный backdrop — на неподвижной панели он считается один раз.
+           Element-blur («глубина») и V22 не трогаем. Режимы pop/smooth не
+           трогаем — их «острый фон в полёте» это идентичность режима. */
+        html.anim-full body.settings-anim #settingsBaked,
+        html.anim-fade body.settings-anim #settingsBaked {
+            display: block;
+        }
+        html.anim-full body.settings-anim .settings-panel,
+        html.anim-fade body.settings-anim .settings-panel,
+        html.anim-full body.settings-anim .settings-panel *,
+        html.anim-fade body.settings-anim .settings-panel * {
+            backdrop-filter: none !important;
+            -webkit-backdrop-filter: none !important;
+        }
+
+        /* Запечённый слой: под контентом панели (z-index:-1 рисует над
+           фоном панели, под потоковым содержимым), вне потока, кликов не
+           ловит. Размер бэкинга ставит _alignSettingsBaked() при открытии. */
+        #settingsBaked {
+            display: none;
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+            pointer-events: none;
+        }
+
         /* pop и smooth: backdrop-блюр выключен ТОЛЬКО на время rise/sink —
            панель на 70% непрозрачная и лежит над скрытым интерфейсом */
         html.anim-pop .settings-panel.anim-rise,
@@ -1856,6 +1893,16 @@
                         width 0.5s cubic-bezier(0.32, 0.72, 0, 1),
                         backdrop-filter 0.2s ease,
                         -webkit-backdrop-filter 0.2s ease;
+        }
+        /* Открытие: блюр гаснет мгновенно — transition для блюра только на
+           возврате после rise (см. ниже). Промежуточный flush между display
+           и .anim-rise делает _alignSettingsBaked (координаты запечённого
+           слоя, идея №1): без этого правила он запускал transition 0.2s —
+           первые 200мс живой backdrop, что противоречит дешевизне smooth.
+           Список свойств = как у .closing: transform/width не трогаем. */
+        html.anim-smooth .settings-panel.anim-rise {
+            transition: transform 0.5s cubic-bezier(0.32, 0.72, 0, 1),
+                        width 0.5s cubic-bezier(0.32, 0.72, 0, 1);
         }
         /* Во время закрытия transition для блюра НЕ нужен: панель и так
            уходит, мгновенное снятие блюра дешевле и незаметнее (гашение
@@ -7286,6 +7333,12 @@
 
         <!-- Модальное окно настроек -->
         <div class="settings-panel" id="settingsPanel" role="dialog" aria-modal="true" aria-labelledby="settingsPanelTitle">
+            <!-- Идея №1: запечённый фон-блюр — виден ТОЛЬКО на время анимации
+                 open/close (режимы full/fade, пока на body стоит settings-anim).
+                 Первый ребёнок панели, под контентом (z-index:-1), размер и
+                 сдвиг считает _alignSettingsBaked(); кадр запекает
+                 _bakeDrawStage() — см. блок «Идея №1» у _markSettingsAnim. -->
+            <canvas id="settingsBaked" aria-hidden="true"></canvas>
             <!-- Левый сайдбар -->
             <div class="settings-nav" id="mainSettingsNav">
                 <div class="settings-nav-title">Настройки</div>
@@ -8666,6 +8719,155 @@
             _settingsAnimT = setTimeout(() =>
                 document.body.classList.remove('settings-anim'), 550);
         }
+
+        // ── Идея №1: запечённый фон-блюр панели настроек ──────────────────
+        // На время анимации open/close (режимы full/fade, пока на body стоит
+        // settings-anim — 0.55с) под панелью вместо живого backdrop-filter
+        // лежит заранее запечённая копия обоев: размытый cover-кадр всего
+        // окна (как #container), сдвинутый так, что под панелью видна
+        // правильная его часть. Запекается один проход при старте/смене
+        // обоев/блюра/палитры/ресайзе — во время анимации ничего не
+        // считается. Замер HD 4000 (tools/canvas-bench/RESULTS.md): full
+        // 18.5мс/14 рывков → baked 16.7/0 — уровень пола, стекло с первого
+        // кадра. Element-blur («глубина») и V22 остаются как были; режимы
+        // pop/smooth не трогаем — их «острый фон в полёте» это идентичность.
+        //
+        // Устройство: _bakeStage — общий холст размером с окно (вне DOM),
+        // хранит запечённый кадр; #settingsBaked (ребёнок панели,
+        // z-index:-1) при открытии/закрытии получает из него кусок под
+        // панелью (_alignSettingsBaked). Смена условий → debounce-перезапек
+        // (_scheduleBakeSettingsBg) + переблить панельный холст, если
+        // панель видна. Все хуки: applyBgImage (обои), setBlur (сила),
+        // Monet (тинт --surface-rgb), resize (окно).
+        let _bgUrlCur = null;    // dataURL текущих обоев (кладёт applyBgImage)
+        let _bakeStage = null;   // холст «весь кадр окна»
+        let _bakeTmp = null;     // временный холст для прохода blur
+        let _bakeImg = null;     // Image текущих обоев
+        let _bakeImgUrl = null;  // src _bakeImg
+        let _bakeImgOk = false;  // картинка декодировалась (naturalWidth > 0)
+        let _bakeKey = null;     // ключ условий, для которых запечён stage
+        let _bakeT = 0;          // debounce перезапека
+        let _bakeAlignT = 0;     // debounce ресайза
+
+        // Ключ условий запекания: обои + сила блюра + тинт Monet + размер
+        // окна + dpr — всё это меняет пиксели stage-холста.
+        function _bakeKeyOf() {
+            const cs = getComputedStyle(document.documentElement);
+            const dpr = Math.min(window.devicePixelRatio || 1, 2);
+            return (_bgUrlCur || 'none') + '|' +
+                (cs.getPropertyValue('--frost-blur') || '').trim() + '|' +
+                (cs.getPropertyValue('--surface-rgb') || '').trim() + '|' +
+                window.innerWidth + 'x' + window.innerHeight + '@' + dpr;
+        }
+
+        function _scheduleBakeSettingsBg(ms) {
+            clearTimeout(_bakeT);
+            _bakeT = setTimeout(_bakeSettingsBgAsync, ms == null ? 60 : ms);
+        }
+
+        function _bakeSettingsBgAsync() {
+            const url = _bgUrlCur || null;
+            const key = _bakeKeyOf();
+            // Уже запечено при этих условиях — только переблить панель.
+            if (key === _bakeKey && _bakeStage) { _alignSettingsBaked(); return; }
+            if (url) {
+                if (!_bakeImg || _bakeImgUrl !== url) {
+                    const img = new Image();
+                    _bakeImg = img; _bakeImgUrl = url; _bakeImgOk = false;
+                    img.onload = () => {
+                        if (_bakeImg !== img) return;
+                        _bakeImgOk = img.naturalWidth > 0;
+                        _bakeDrawStage();
+                    };
+                    img.onerror = () => { if (_bakeImg === img) _bakeDrawStage(); };
+                    img.src = url;
+                    return;                       // дорисует onload
+                }
+                if (!_bakeImgOk && !_bakeImg.complete) return; // ещё грузится
+            }
+            _bakeDrawStage();
+        }
+
+        // Один проход: cover-кадр окна (3×3 тайлинг — чтобы у краёв холста
+        // фейд гаусса не уходил в пустоту) → blur saturate → тинт панели.
+        function _bakeDrawStage() {
+            const dpr = Math.min(window.devicePixelRatio || 1, 2);
+            const W = Math.max(1, Math.round(window.innerWidth * dpr));
+            const H = Math.max(1, Math.round(window.innerHeight * dpr));
+            if (!_bakeStage) {
+                _bakeStage = document.createElement('canvas');
+                _bakeTmp = document.createElement('canvas');
+            }
+            if (_bakeStage.width !== W || _bakeStage.height !== H) {
+                _bakeStage.width = W; _bakeStage.height = H;
+                _bakeTmp.width = W; _bakeTmp.height = H;
+            }
+            const tx = _bakeTmp.getContext('2d');
+            tx.setTransform(1, 0, 0, 1, 0, 0);
+            tx.fillStyle = '#000';               // нет обоев — как #container
+            tx.fillRect(0, 0, W, H);
+            const img = (_bgUrlCur && _bakeImgOk) ? _bakeImg : null;
+            if (img && img.naturalWidth) {
+                // cover + center — как background-size:cover/position:center
+                const s = Math.max(W / img.naturalWidth, H / img.naturalHeight);
+                const iw = img.naturalWidth * s, ih = img.naturalHeight * s;
+                const ox = (W - iw) / 2, oy = (H - ih) / 2;
+                for (let ky = -1; ky <= 1; ky++)
+                    for (let kx = -1; kx <= 1; kx++)
+                        tx.drawImage(img, ox + kx * iw, oy + ky * ih, iw, ih);
+            }
+            const cs = getComputedStyle(document.documentElement);
+            const blur = parseFloat(cs.getPropertyValue('--frost-blur')) || 24;
+            const st = _bakeStage.getContext('2d');
+            st.setTransform(1, 0, 0, 1, 0, 0);
+            st.filter = 'blur(' + (blur * dpr) + 'px) saturate(1.2)';
+            st.drawImage(_bakeTmp, 0, 0);
+            st.filter = 'none';
+            // тинт .settings-panel: rgba(var(--surface-rgb), 0.7)
+            const rgb = (cs.getPropertyValue('--surface-rgb') || '11, 13, 20').trim();
+            st.fillStyle = 'rgba(' + rgb + ', 0.7)';
+            st.fillRect(0, 0, W, H);
+            _bakeKey = _bakeKeyOf();
+            _alignSettingsBaked();   // панель видна — переблить сразу
+        }
+
+        // Кусок stage под панелью → в #settingsBaked. Вызывается на
+        // открытии/закрытии (ДО старта анимации — координаты без scale) и
+        // после каждого перезапека. Панель скрыта — нечего выравнивать.
+        function _alignSettingsBaked() {
+            const panel = document.getElementById('settingsPanel');
+            const canvas = document.getElementById('settingsBaked');
+            if (!panel || !canvas) return;
+            const cw = panel.clientWidth, ch = panel.clientHeight;
+            if (!cw || !ch) return;               // закрыта — выровняем на открытии
+            if (!_bakeStage || _bakeKey !== _bakeKeyOf())
+                _scheduleBakeSettingsBg(0);       // кадр устарел/ещё не запечён
+            if (!_bakeStage) return;
+            const dpr = Math.min(window.devicePixelRatio || 1, 2);
+            const W = Math.round(cw * dpr), H = Math.round(ch * dpr);
+            if (canvas.width !== W || canvas.height !== H) {
+                canvas.width = W; canvas.height = H;
+            }
+            const rect = panel.getBoundingClientRect();
+            const ctx = canvas.getContext('2d');
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+            ctx.clearRect(0, 0, W, H);
+            // Начало координат холста = левый верхний угол padding-box панели
+            // (rect + рамка); stage лежит в координатах окна. Сдвиг в device-px.
+            ctx.drawImage(_bakeStage,
+                -Math.round((rect.left + panel.clientLeft) * dpr),
+                -Math.round((rect.top + panel.clientTop) * dpr));
+        }
+
+        // Ресайз окна: другой размер кадра → debounce-перезапек + переблить.
+        window.addEventListener('resize', () => {
+            clearTimeout(_bakeAlignT);
+            _bakeAlignT = setTimeout(() => {
+                _alignSettingsBaked();
+                _scheduleBakeSettingsBg(0);
+            }, 250);
+        });
+
         const checkboxGroup = document.getElementById('checkboxGroup');
 
         let patchesData = {};
@@ -13740,6 +13942,7 @@
             _ensureMonetDefaults();
             for (const [k, v] of Object.entries(_monetTheme.defaults)) _setRootVar(k, v);
             _monetTheme.lastKey = null;
+            _scheduleBakeSettingsBg();   // тинт вернулся к дефолту — перезапечь фон
         }
 
         function _hashKeyForDataUrl(dataUrl) {
@@ -13896,6 +14099,7 @@
                     if (t.surfaceRgb) _setRootVar('--surface-rgb', t.surfaceRgb);
                     _setRootVar('--primary-color', t.primary);
                     _setRootVar('--secondary-color', t.secondary);
+                    _scheduleBakeSettingsBg(); // тинт из кеша — перезапечь фон
                     return;
                 }
             } catch (e) {}
@@ -13919,6 +14123,7 @@
                 _setRootVar('--surface-rgb', surface);
                 _setRootVar('--primary-color', primary);
                 _setRootVar('--secondary-color', secondary);
+                _scheduleBakeSettingsBg();   // тинт извлечён — перезапечь фон
 
                 try {
                     localStorage.setItem(cacheKey, JSON.stringify({ accentRgb, accent2Rgb, surfaceRgb: surface, primary, secondary }));
@@ -14201,7 +14406,12 @@
             } else {
                 container.style.backgroundImage = '';
             }
+            _bgUrlCur = normalized || null;   // условие для запечённого фона (идея №1)
             _applyMonetThemeForWallpaper(normalized);
+            // После Monet: тот же debounce схлопнет и смену обоев, и смену
+            // тинта из кеша палитры; путь извлечения палитры (async)
+            // дёрнет schedule сам — см. _applyMonetThemeForWallpaper.
+            _scheduleBakeSettingsBg();
         }
 
         // Вызывается один раз при старте — загружает настройки из Python и применяет
@@ -15270,6 +15480,10 @@
                 rightPanel.classList.add('news-away');
             }
             settingsPanel.style.display = 'flex';
+            // Запечённый фон-блюр (идея №1): выравниваем ДО добавления
+            // .anim-rise — getBoundingClientRect тогда без scale, координаты
+            // кадра совпадают с финальным положением панели.
+            _alignSettingsBaked();
             // Снимаем backdrop-блюр только на время rise-анимации (0.4s + запас):
             // во время неё блюр пересчитывается каждый кадр и роняет FPS на
             // слабых GPU — см. CSS-правило .settings-panel.anim-rise.
@@ -15387,6 +15601,10 @@
         function closeSettings() {
             // Длительность = анимации settingsSink (0.4s) + запас на кадр
             _markSettingsAnim();   // внешние блюры гаснут на время sink-анимации
+            // Запечённый фон-блюр (идея №1): до .closing — координаты без
+            // scale; wp-mode ещё на панели — кусок окна берём под «левым»
+            // положением (закрытие из пикера обоев).
+            _alignSettingsBaked();
             _closeWithAnim(settingsPanel, () => {
                 settingsPanel.style.display = 'none';
                 // Если закрыли настройки, будучи в пикере обоев — сбрасываем режим
@@ -16174,6 +16392,7 @@
             if ([8, 12, 16, 24, 32].indexOf(px) < 0) px = 24;
             try { localStorage.setItem('airBlur', String(px)); } catch (e) {}
             document.documentElement.style.setProperty('--frost-blur', px + 'px');
+            _scheduleBakeSettingsBg();   // радиус вошёл в ключ запекания (идея №1)
             _syncAnimModeUI();
         }
 
