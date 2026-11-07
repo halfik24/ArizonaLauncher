@@ -4,9 +4,10 @@
 что сломано/не доделано. Дублей с `IDEA.md` (карта кода) и `README.md` (публичное
 описание) стараемся не плодить — здесь акцент на **статус и порядок действий**.
 
-> Дата составления: 05.11.2026; обновлено 07.11.2026. HEAD: `b3db74d` (07.11.2026,
-> `fix(ui): вход меню после настроек — fade+blur без подъёма`), ветка `main`,
-> рабочее дерево чистое, пуша нет (ahead 17). Актуальная очередь — §12.
+> Дата составления: 05.11.2026; обновлено 07.11.2026. HEAD: `9f82efe` (07.11.2026,
+> `feat(ui): бэкинг блюра «Модов», причёска хедера, компакт-меню в дебаге`),
+> ветка `main`, рабочее дерево чистое, пуша нет (ahead ~25). Раунд §12 закрыт —
+> все 9 пунктов, прогоны PASS.
 
 ---
 
@@ -410,8 +411,8 @@ node tools/gen-bridge.js      # перегенерация бриджа посл
 
 ## 11. Очередь задач (что делать дальше)
 
-> ⚠️ Перекрыто списком из 9 пунктов от 07.11 — см. **§12** (он сейчас в работе).
-> Таблица ниже — фоновая очередь после него.
+> ✅ Список из 9 пунктов от 07.11 (§12) **закрыт** — все пункты, прогоны PASS.
+> Таблица ниже — актуальная фоновая очередь.
 
 | # | Задача | Заметки |
 | --- | --- | --- |
@@ -430,34 +431,43 @@ node tools/gen-bridge.js      # перегенерация бриджа посл
 ## 12. Раунд 07.11.2026 — список из 9 багов/недоделок (текущая работа)
 
 Пользователь дал список после ручного теста на home-pc (Win10). HEAD на момент
-составления: `b3db74d` (main, ahead 17, пуша нет), рабочее дерево чистое,
-exe на home-pc = эта сборка (`6354f8b2…`, CDP-порт 9222). Правки раунда ещё
-**не начаты** — ниже только разведка, чтобы не делать её заново.
+закрытия раунда: `9f82efe` (main, ahead ~25, пуша нет), рабочее дерево чистое.
+**Все 9 пунктов закрыты** (см. статусы), контрольные прогоны на собранном exe
+прошли, включая контрольный прогон №7 (`probe-cancel.js` — 12/12 PASS).
+exe на home-pc = перенесённая сборка раунда (сверка SHA256).
 
 | # | Баг/недоделка | Разведка (где что) | Статус |
 | --- | --- | --- | --- |
-| 1 | Кастомная рамка: углы не скруглены на Win10 | `launcher.rs:2154 apply_rounded_corners` — только DWM-атрибут 33 (Win11), на Win10 молча не работает, фоллбэка нет. Нужен `SetWindowRgn` с радиусом ~8px + переаприменение на resize/maximize (`main.rs:85` — место вызова `apply_window_frame`), сброс региона на maximize и на system-рамку (`set_window_frame` `launcher.rs:2230`). Локальная машина Win11 build 26300 (скругление работает, баг не виден), home-pc Win10 — там видно | разведка готова |
-| 2 | Уведомления позади кнопок окна | `#notificationContainer` (`index.html:4837`, top:20, z:99999) и `#toastContainer` (`:7253`, inline top:20, z:9999) лезут под `#titlebar` (`:176`, top:0, h:42, z:100000). Фикс: `body.frame-custom` → offset top:52px (оба контейнера) | разведка готова |
-| 3 | Запечённый блюр во вкладке Моды | Механизм: `#settingsBaked` (`:7407`), гейты `html.anim-full/fade body.settings-anim` (`:1903`), `_markSettingsAnim` (`:8782`, класс на body на 550мс), `_alignSettingsBaked` (`:8903`), ключ запекания `_bakeKeyOf` (`:8820`), хуки: applyBgImage/setBlur/Monet/resize. Модалка модов: `.mods-modal` (`:3930`) — свой backdrop `blur(24px)` на `rgba(surface,0.9)`, анимации `modsRise/modsSink` (`:1995`). Повторить: class на body при open/close модалки + гейт на `.mods-modal` + отдельный canvas (или переиспользовать `#settingsBaked` — решить при правке: модалка fullscreen, координаты проще) | разведка готова |
-| 4 | Пилл «Установленные/Каталог» растянут во всю ширину | Прямой inline-ребёнок column-flex `#mlPaneLibraries` (`:8278`) — растягивается по align-items:stretch. Нормальный пилл (`:8229`, Moonloader) сидит в row-обёртке `justify-content:space-between`. Фикс: `align-self:flex-start` (inline-style) | разведка готова |
-| 5 | Косметика заголовка/плашки версии + компактное меню в дебаг | `.header/.title/.subtitle/.version-stable` (`:907-969`), разметка `:7267-7275`. Вкладка дебаг: `#debugTab` (`:8064`), существующие переключатели — `setAnimMode/setBlur` (паттерн для нового селектора: localStorage + класс на html, как `airAnimMode`). Варианты меню: класс на `.interface`/html + debug-кнопки, «не на постоянку» | разведка готова |
-| 6 | Попап обратной связи закрывается без анимации | `.feedback-popup` (`:4876`) — `display:none`/`.open {display:block}` (`:4893`), вход `flFeatIn`. `toggleFeedbackPopup` (`:9059`), закрытие по mousedown-outside (`:9072`). Фикс: класс `.closing` + keyframes выхода + helper (по образцу `closeGpOverlay` `:9694` с `closing`/250мс) | разведка готова |
-| 7 | Отмена обновления игры не отменяет | Бэкенд выглядит корректно: `cancel_game_update` (`launcher.rs:4230`) ставит флаг, движок ловит его в `engine.rs` (plan:147, цикл:234, качка `downloader.rs:185/209/224`, пауза:157). Фронт: `gpCancelUpdate` (`index.html:9706`) → успех → `closeGpOverlay()`. **Подозрение**: `install_game_api`/`install_game_to_folder` (`launcher.rs:4144/4186`) — busy-проверка до диалога, но `spawn_game_job` может вернуть `success:false` уже после... НЕТ: главный кандидат — cancel срабатывает, но движок упирается в фазу без проверок: `fetch_manifest` (15с таймаут, без cancel), `verify::access_test`, `md5_file` после качки. Точный корень **не установлен** — нужен прогон: запустить обновление, отменить на разных фазах, смотреть лог `Документы\ArizonaLauncher` → `launcher.log` (`game_update: запрошена отмена` / `отменено`) | **требует диагностики** |
-| 8 | Фейковые демо функций в debug | Вкладка `#debugTab` (`:8064`), паттерн debug-карточек `dbg-card/debug-row`. Демо: `showNotification('…','info'/'success'/'error')`, фейковый `_onLauncherInstallProgress({stage:'dl'…})` → полоса `gpBar` + `openGpOverlay()` (см. `:9547`, `:9675`), только графика, без бэкенда | разведка готова |
-| 9 | Панель новостей резко пропадает при закрытии | `.right-panel` (`:584`) имеет `transition: transform .45s, translate .4s`, но правило `:614` `.right-panel:not(.open):not(.peek-anim)` **мгновенно** снимает background/border/box-shadow/backdrop — пока тело ещё едет, фон уже пропал. Фикс: добавить в transition эти свойства (или отдельный класс-переход), чтобы фон гас вместе с движением | разведка готова |
+| 1 | Кастомная рамка: углы не скруглены на Win10 | `launcher.rs:2154 apply_rounded_corners` — только DWM-атрибут 33 (Win11), на Win10 молча не работает, фоллбэка нет. Фикс: `SetWindowRgn` по ExtendedFrameBounds + refresh на Resized, `ARIZONA_FORCE_REGION=1` для проверки на Win11 | ✅ `30d4a17` |
+| 2 | Уведомления позади кнопок окна | `#notificationContainer` и `#toastContainer` лезли под `#titlebar` (z:100000). Фикс: offset top:52px под `body.frame-custom` | ✅ `60a84a2` |
+| 3 | Запечённый блюр во вкладке Моды | Отдельный canvas `#modsBaked` (не переиспользовать `#settingsBaked`), гейты `html.anim-full/fade body.mods-anim` (550мс, pop/smooth — живой backdrop), тинт перенесён из stage в выравнивание (`_alignSettingsBaked` 0.7 / `_alignModsBaked` 0.9 — stage общий). Прогон `probe-mods-bake.js` 15/15 на собранном exe | ✅ `9f82efe` |
+| 4 | Пилл «Установленные/Каталог» растянут во всю ширину | Прямой inline-ребёнок column-flex `#mlPaneLibraries` — растягивается по align-items:stretch. Фикс: `align-self:flex-start` | ✅ `60a84a2` |
+| 5 | Косметика заголовка/плашки версии + компактное меню в дебаг | unslop-аудит хедера: убрана жёсткая тень, clamp от vw → шкала 32/14/12, пилюля `.version-stable` → тихая mono-строка «Launcher · v2.0.0-beta» (класс оставлен — используют визард и шаблон). Компакт-меню: `setCompactMenu` → localStorage `arp_compactMenu` + класс `compact-menu` на `<html>` до первой отрисовки, карточка «Меню» в `#debugTab`; только дебаг, не постоянный режим. Замер: хедер 74px → 33px в одну строку | ✅ `9f82efe` |
+| 6 | Попап обратной связи закрывается без анимации | Класс `.closing` + keyframes выхода по образцу `closeGpOverlay` | ✅ `60a84a2` |
+| 7 | Отмена обновления игры не отменяет | Корень найден в диагностике (diag7-report): отмена «догоняла» скан только после `verify::plan` — фазы без проверок `cancelled()`. Фикс: отменяемый md5-скан + опрос отмены во всех фазах (`1d1ce31`), фронт `gpCancelUpdate` с guard `_gpCancelling` и «Отменяем…», ветка `/отменено/i` → «Установка отменена» без класса error, гашение 4с (`a4a28fe`). **Контрольный прогон PASS 12/12** (`probe-cancel.js`): состояние «Отменяем…» поймано на +3мс, busy=false через 3мс/108мс, оверлей закрывается движком, полоса гаснет; лог: 4 отмены 07.11 — «отменено пользователем» за 0.7–1.8с (было 136.8с 03.11) | ✅ `1d1ce31` + `a4a28fe` + прогон |
+| 8 | Фейковые демо функций в debug | Демо только графически: `_onLauncherInstallProgress` фейковыми событиями, бэкенд не трогает | ✅ `60a84a2` |
+| 9 | Панель новостей резко пропадает при закрытии | В transition `.right-panel` добавлены background/border/box-shadow/backdrop — фон гаснет вместе с движением | ✅ `60a84a2` |
 
 **Порядок работ (договорённость):** батчами по зонам, после каждого батча —
 `check-syntax.js` → kill exe → `build-cdp.ps1` (cwd `src-tauri`) → запуск →
-прогоны (`exp-verify-bugs`, `exp-mods-after-settings`, `check-blur`,
-`verify-anim-fix` ×4, `check-default-mode`, `exp-align`), коммиты группами
-через `-F`, в конце — перенос exe на home-pc (`tailscale file cp` +
-`cleanup-exe.cmd`, сверка SHA256) и сброс режима анимаций на full.
+прогоны (`exp-verify-bugs`, `exp-mods-after-settings`, `probe-mods-bake`,
+`check-blur`, `verify-anim-fix` ×4, `exp-align`, `probe-cancel`, №7-контроль),
+коммиты группами через `-F`, в конце — `check-default-mode` (сброс на full),
+перенос exe на home-pc (`tailscale file cp` + `cleanup-exe.cmd`, сверка
+SHA256).
 
 **Инструменты этого раунда** (`C:\Users\halfik\AppData\Local\Temp\opencode\`):
-`exp-verify-bugs.js` (16 проверок, вкл. повторный цикл open/close), 
-`exp-mods-after-settings.js` (7), `exp-close-frames.js` + `sharpness.js`
-(кадры закрытия + lapVar), `check-syntax.js`, `build-cdp.ps1`,
-`list-arizona.ps1`.
+`exp-verify-bugs.js` (16 проверок, вкл. повторный цикл open/close),
+`exp-mods-after-settings.js` (7), `exp-align.js`, `probe-mods-bake.js` (15,
+бэкинг «Модов»), `probe-header.js` (замер геометрии/шрифтов хедера),
+`probe-cancel.js` (12, контроль №7: MutationObserver на кнопке отмены),
+`cdp-call.js` (вызов функций приложения без кавычек в cmd: `node cdp-call.js
+setAnimMode fade`; true/false/null — литералы), `check-syntax.js`,
+`build-cdp.ps1`, `list-arizona.ps1`, `tail-cancel.js` (хвост launcher.log).
+Починен `.agent/flcap.ps1` (MainWindow процесса — служебное окно WebView2
+16×16; теперь EnumWindows + самое крупное окно, снимки в `shots/`).
+Прогон в `tools/`: `check-blur.js` (16), `verify-anim-fix.js` (по режимам:
+fade 22 / pop 20 / smooth 20 / full 22), `check-default-mode.js`.
 
 ---
 
