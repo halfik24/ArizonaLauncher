@@ -382,6 +382,25 @@
             to   { opacity: 1; filter: blur(0); }
         }
 
+        /* Вход меню после закрытия настроек — ТОЛЬКО fade + blur, без
+           подъёма (fix «почему меню выезжает снизу»: translateY(12px) был
+           унаследован от entrance-анимации модов). Линейная кривая 0.8с:
+           панель настроек гаснет ~440мс и полностью перекрывает меню, пока
+           вход шёл ease-out — вся blur-фаза проходила за панелью, и меню
+           «появлялось» уже чётким (fix «меню без блюра»). При линейной
+           к моменту исчезновения панели меню ещё размыто (~7px) и плавно
+           проявляется до чёткого на глазах. Селектор повторяет menu-out
+           (порядок: menu-out ниже — при повторном открытии во время
+           входа выигрывает fade-out). */
+        .interface.reveal-in > *:not(.right-panel):not(#launchScreen) {
+            animation: interfaceReveal 0.8s linear;
+        }
+
+        @keyframes interfaceReveal {
+            from { opacity: 0; filter: blur(16px); }
+            to   { opacity: 1; filter: blur(0); }
+        }
+
         /* Плавное исчезновение меню при открытии настроек (fix «главное меню
            резко пропадает»): вместо мгновенного visibility:hidden — fade
            0.25с. visibility в keyframes интерполируется так, что 'visible'
@@ -10578,11 +10597,12 @@
             const right = document.querySelector('.right-panel');
             if (iface) {
                 // Фейд-перезапуск нужен, ТОЛЬКО если меню было скрыто:
-                // display:none (моды) или fade-класс menu-out (настройки —
-                // меню плавно исчезло при открытии, показываем тем же входом:
-                // opacity + blur + подъём). Папка/профили идут через
-                // _closeWithAnim при ВИДИМОМ меню — им входной фейд не нужен
-                // (выглядело бы как «перезагрузка» главного меню).
+                // display:none (моды — entrance interfaceFadeIn с подъёмом)
+                // или fade-класс menu-out (настройки — entrance reveal-in:
+                // fade+blur без подъёма, блюр должен быть виден, когда панель
+                // погаснет). Папка/профили идут через _closeWithAnim при
+                // ВИДИМОМ меню — им входной фейд не нужен (выглядело бы как
+                // «перезагрузка» главного меню).
                 const wasDisplayNone = getComputedStyle(iface).display === 'none';
                 const wasMenuOut = iface.classList.contains('menu-out');
                 const leftPanelEl = iface.querySelector('.left-panel');
@@ -10595,11 +10615,23 @@
                     const kids = [...iface.children].filter(k =>
                         k.id !== 'launchScreen' &&
                         (wasDisplayNone || getComputedStyle(k).visibility === 'hidden'));
+                    // После настроек — вход reveal-in (fade+blur, БЕЗ подъёма,
+                    // линейный 0.8с — см. @keyframes interfaceReveal); после
+                    // модов — прежний interfaceFadeIn. reveal-in снимаем ТОЛЬКО
+                    // пока .interface ещё display:none: смена animation-name на
+                    // видимом элементе перезапустила бы interfaceFadeIn, и меню
+                    // «въехало» бы повторно. Между визитами в настройки класс
+                    // остаётся — ему при открытии проигрывает menu-out (в CSS
+                    // идёт позже). display='flex' ставится ниже — снятие
+                    // класса выше по коду, до показа.
+                    if (wasDisplayNone) iface.classList.remove('reveal-in');
                     iface.classList.remove('menu-out'); // fill interfaceOut снят — дальше вход инлайн + анимация
+                    const reveal = wasMenuOut && !wasDisplayNone;
+                    if (reveal) iface.classList.add('reveal-in');
                     for (const k of kids) {
                         k.style.opacity = '0';
-                        k.style.filter  = 'blur(12px)';
-                        if (k.classList.contains('left-panel')) k.style.transform = 'translateY(12px)';
+                        k.style.filter  = reveal ? 'blur(16px)' : 'blur(12px)';
+                        if (!reveal && k.classList.contains('left-panel')) k.style.transform = 'translateY(12px)';
                     }
                     iface.style.display   = 'flex';
                     iface.style.visibility = '';
@@ -10615,7 +10647,7 @@
                     const _clearStart = (e) => {
                         const t = e.target;
                         if (!kids.includes(t)) return;
-                        if (e.animationName && e.animationName !== 'interfaceFadeIn' && e.animationName !== 'interfaceFadeSoft') return;
+                        if (e.animationName && e.animationName !== 'interfaceFadeIn' && e.animationName !== 'interfaceFadeSoft' && e.animationName !== 'interfaceReveal') return;
                         t.style.opacity = t.style.filter = t.style.transform = '';
                         t.removeEventListener('animationstart', _clearStart);
                     };
@@ -10625,7 +10657,9 @@
                             k.style.opacity = k.style.filter = k.style.transform = '';
                             k.removeEventListener('animationstart', _clearStart);
                         }
-                    }, 600); // 0.5s анимация + запас, страховка если animationstart не пришёл
+                        // reveal-in здесь НЕ снимаем (см. выше): на видимом
+                        // элементе это перезапустило бы interfaceFadeIn.
+                    }, reveal ? 1000 : 600); // reveal 0.8с, базовый 0.5с + запас, страховка если animationstart не пришёл
                 } else {
                     // Меню уже видно — просто гарантируем показ (без перезапуска фейда)
                     iface.style.display = 'flex';
