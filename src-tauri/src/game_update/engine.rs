@@ -103,7 +103,8 @@ pub async fn build_plan(
 ) -> anyhow::Result<(manifest::Flat, Plan)> {
     let log = |m: String| on_event(Event::Log(m));
 
-    let root = downloader::fetch_manifest(http, &job.cdn_main, &job.cdn_reserve, &log).await?;
+    let root =
+        downloader::fetch_manifest(http, &job.cdn_main, &job.cdn_reserve, &log, cancel).await?;
     let flat = manifest::flatten(&root, job.future);
     log(format!(
         "В манифесте: {} файлов ({:.3} GB), variant={}, пропущено variant-узлов: {}, res-записей: {} (учтутся только при починке)",
@@ -120,6 +121,11 @@ pub async fn build_plan(
         "Кэш хэшей: {} записей",
         cache.len()
     ));
+    // Отмена ДО скана: раньше флаг проверялся только после плана, и отмена
+    // «догоняла» скан лишь когда md5-фаза кончалась целиком
+    if cancel.load(Ordering::Relaxed) {
+        bail!("отменено пользователем");
+    }
     let plan = verify::plan(&flat, &job.target, repair, &cache, Some(&|bytes_done, bytes_total, current| {
         // Прогресс стадии проверки: без скорости, чтобы фронту было ясно
         on_event(Event::Progress {
@@ -130,7 +136,7 @@ pub async fn build_plan(
             current: format!("проверка: {current}"),
             speed: 0,
         });
-    }), Some(cancel));
+    }), Some(cancel), Some(&log));
     log(format!(
         "Проверено: в порядке {}, md5 пересчитано {}",
         plan.ok, plan.hashed
@@ -230,13 +236,18 @@ pub async fn run(
     let mut datefixes = 0usize;
     let mut deletes = 0usize;
 
-    for item in &plan.items {
+    // При отмене не бейм сразу: выходим через общий выход после цикла,
+    // где сохраняется кэш хэшей (см. ниже)
+    let mut cancelled = false;
+    'act: for item in &plan.items {
         if cancel.load(Ordering::Relaxed) {
-            bail!("отменено пользователем");
+            cancelled = true;
+            break 'act;
         }
         // Пауза между файлами: стоим на месте до снятия.
         if wait_while_paused(pause, cancel).await {
-            bail!("отменено пользователем");
+            cancelled = true;
+            break 'act;
         }
         let rel = &item.entry.rel;
         // Конфинем rel к директории обновления (защита от path traversal)
@@ -294,7 +305,8 @@ pub async fn run(
                     match res {
                         Err(e) => {
                             if cancel.load(Ordering::Relaxed) {
-                                bail!("отменено пользователем");
+                                cancelled = true;
+                                break 'act;
                             }
                             log(format!("не взялось с {label} CDN ({rel}): {e:#}"));
                         }
@@ -314,6 +326,13 @@ pub async fn run(
                                     continue;
                                 }
                             };
+                            // Отмена сразу после md5 скачанного файла:
+                            // хэш считается целиком, без этой проверки флаг
+                            // замечался бы только на следующем файле
+                            if cancel.load(Ordering::Relaxed) {
+                                cancelled = true;
+                                break 'act;
+                            }
                             if h == item.entry.hash {
                                 via = Some(label);
                                 break;
@@ -357,8 +376,17 @@ pub async fn run(
         }
     }
 
-    state::save_cache(&job.documents, &cache)
-        .with_context(|| "сохранение кэша хэшей")?;
+    // Общий выход: кэш сохраняем и при отмене — в него попадают только
+    // проверенные md5 (вставка после сверки с манифестом, частичных записей
+    // не бывает), без этого следующий запуск заново пересчитал бы те же хэши
+    let save_res = state::save_cache(&job.documents, &cache);
+    if cancelled {
+        if let Err(e) = save_res {
+            log(format!("кэш хэшей не сохранился: {e:#}"));
+        }
+        bail!("отменено пользователем");
+    }
+    save_res.with_context(|| "сохранение кэша хэшей")?;
     let summary = format!(
         "Готово: скачано {files_done} файлов ({:.3} GB), создано папок {mkdirs}, поправлено дат {datefixes}, удалено {deletes}",
         gb(bytes_done)

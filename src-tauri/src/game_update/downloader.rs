@@ -42,22 +42,35 @@ async fn try_manifest(http: &reqwest::Client, cdn: &str) -> anyhow::Result<Root>
 }
 
 /// Основной CDN, при неудаче — резервный. Возвращает манифест.
+/// `cancel` проверяется до и после каждого CDN-прохода: сам запрос
+/// ограничен таймаутом 15 с (`try_manifest`), но без опроса флага
+/// отмена во время манифеста ждала бы до двух проходов подряд.
 pub async fn fetch_manifest(
     http: &reqwest::Client,
     main: &str,
     reserve: &str,
     mut log: impl FnMut(String),
+    cancel: &AtomicBool,
 ) -> anyhow::Result<Root> {
-    match try_manifest(http, main).await {
+    if cancel.load(Ordering::Relaxed) {
+        bail!("отменено пользователем");
+    }
+    let main_res = try_manifest(http, main).await;
+    if cancel.load(Ordering::Relaxed) {
+        bail!("отменено пользователем");
+    }
+    match main_res {
         Ok(r) => {
             log(format!("Манифест: {main}/game.json"));
             return Ok(r);
         }
         Err(e) => log(format!("Основной CDN не ответил ({main}): {e:#}")),
     }
-    let r = try_manifest(http, reserve)
-        .await
-        .with_context(|| format!("резервный CDN {reserve}"))?;
+    let reserve_res = try_manifest(http, reserve).await;
+    if cancel.load(Ordering::Relaxed) {
+        bail!("отменено пользователем");
+    }
+    let r = reserve_res.with_context(|| format!("резервный CDN {reserve}"))?;
     log(format!("Манифест: {reserve}/game.json (резерв)"));
     Ok(r)
 }
@@ -107,6 +120,15 @@ fn wait_while_paused(
     cancel.load(Ordering::Relaxed)
 }
 
+/// Для `select!` вокруг запроса: резолвится сразу, как только поднят флаг
+/// отмены (опрос раз в 150 мс). Без этого ожидание заголовков отмену
+/// не видит вовсе — `connect_timeout` обрывает только установку соединения.
+async fn wait_until_cancelled(cancel: &AtomicBool) {
+    while !cancel.load(Ordering::Relaxed) {
+        tokio::time::sleep(Duration::from_millis(150)).await;
+    }
+}
+
 /// Качает url в dest через `.part`, сообщает прогресс (байт файла),
 /// умеет отменяться и ставиться на паузу.
 /// rate_bytes — лимит скорости (байт/с); None — качаем без ограничения.
@@ -132,6 +154,11 @@ pub async fn download_to(
     let mut want_range = existing > 0;
     let mut attempts = 0u8;
     let (resp, base, append) = loop {
+        // Отмена в начале каждой попытки: иначе запрос ушел бы впустую
+        // (в т.ч. когда сюда зашли после отменённого md5)
+        if cancel.load(Ordering::Relaxed) {
+            bail!("отменено");
+        }
         attempts += 1;
         if attempts > 3 {
             bail!("не удалось открыть {url}: более 3 попыток запроса");
@@ -140,10 +167,12 @@ pub async fn download_to(
         if want_range {
             req = req.header(reqwest::header::RANGE, format!("bytes={existing}-"));
         }
-        let r = req
-            .send()
-            .await
-            .with_context(|| format!("GET {url}"))?;
+        // Ожидание заголовков раньше не было ничем ограничено и отмены
+        // не видело: ждём либо ответ, либо сигнал отмены
+        let r = tokio::select! {
+            res = req.send() => res.with_context(|| format!("GET {url}"))?,
+            _ = wait_until_cancelled(cancel) => bail!("отменено"),
+        };
         let st = r.status().as_u16();
         if st == 206 && existing > 0 {
             break (r, existing, true);

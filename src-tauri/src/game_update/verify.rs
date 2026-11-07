@@ -6,7 +6,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 
-use super::downloader::{md5_file_blocking, mtime_secs};
+use super::downloader::mtime_secs;
 use super::manifest::{Entry, Flat, Kind};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -45,6 +45,7 @@ pub struct Plan {
 /// cancel — досрочный выход (частичный план; вызывающий обязан проверить
 /// флаг сам и отбросить результат — без этого «Отменить» не действует,
 /// пока MD5-скан больших папок не закончится).
+/// on_log — лог перед 2-й фазой: сколько md5 предстоит посчитать.
 pub fn plan(
     flat: &Flat,
     target: &Path,
@@ -52,6 +53,7 @@ pub fn plan(
     cache: &HashMap<String, String>,
     on_scan: Option<&(dyn Fn(u64, u64, &str) + Send + Sync)>,
     cancel: Option<&AtomicBool>,
+    on_log: Option<&(dyn Fn(String) + Send + Sync)>,
 ) -> Plan {
     let cancelled = || cancel.is_some_and(|c| c.load(Ordering::Relaxed));
     let mut p = Plan::default();
@@ -204,6 +206,15 @@ pub fn plan(
             .unwrap_or(4)
             .min(8)
             .min(pending.len().max(1));
+        // Лог перед сканом: иначе в логе непонятно, сколько md5 предстоит
+        // посчитать и почему отмена «догоняет» столько секунд
+        if !cancelled() {
+            if let Some(cb) = on_log {
+                let files = pending.iter().flatten().count();
+                let mb = pending.iter().flatten().map(|x| x.size).sum::<u64>() / 1_048_576;
+                cb(format!("md5-скан: {files} файлов ({mb} MB), воркеров {workers}"));
+            }
+        }
         let next = AtomicUsize::new(0);
         let bytes_done = AtomicU64::new(0);
         let mut flags: Vec<bool> = Vec::with_capacity(pending.len());
@@ -220,7 +231,14 @@ pub fn plan(
                         break;
                     }
                     let Some(pw) = pending[i].as_ref() else { continue };
-                    let ok = md5_file_blocking(&pw.path).map(|h| h == pw.expect).unwrap_or(false);
+                    // Отменяемый md5: обычный md5_file_blocking прервать
+                    // нельзя, и один большой файл досчитывался бы целиком
+                    let ok = match md5_file_blocking_if(&pw.path, &cancelled) {
+                        Ok(h) => h == pw.expect,
+                        // отмена — выходим, файл не считаем
+                        Err(_) if cancelled() => break,
+                        Err(_) => false,
+                    };
                     if let Ok(mut f) = flags.lock() {
                         f[i] = ok;
                     }
@@ -270,6 +288,40 @@ pub fn plan(
     p
 }
 
+/// MD5 с проверкой отмены: читает по 1 МБ, каждые ~16 МБ зовёт `cancelled`,
+/// при отмене — Err. Нужен воркерам 2-й фазы `plan`: обычный
+/// `md5_file_blocking` прервать нельзя, и отмена «догоняла» скан
+/// только после досчёта всех больших файлов.
+pub fn md5_file_blocking_if(
+    path: &Path,
+    cancelled: &(dyn Fn() -> bool + Send + Sync),
+) -> anyhow::Result<String> {
+    use md5::{Digest, Md5};
+    if cancelled() {
+        anyhow::bail!("отменено пользователем");
+    }
+    let mut f = fs::File::open(path)
+        .map_err(|e| anyhow::anyhow!("открытие {}: {e}", path.display()))?;
+    let mut h = Md5::new();
+    let mut buf = [0u8; 1024 * 1024];
+    let mut since_check: u64 = 0;
+    loop {
+        let n = std::io::Read::read(&mut f, &mut buf)?;
+        if n == 0 {
+            break;
+        }
+        h.update(&buf[..n]);
+        since_check += n as u64;
+        if since_check >= 16 * 1024 * 1024 {
+            if cancelled() {
+                anyhow::bail!("отменено пользователем");
+            }
+            since_check = 0;
+        }
+    }
+    Ok(format!("{:x}", h.finalize()))
+}
+
 /// Проверка, что в папку можно писать (аналог accessTestFile.txt у лаунчера).
 pub fn access_test(target: &Path) -> anyhow::Result<()> {
     fs::create_dir_all(target)
@@ -284,6 +336,7 @@ pub fn access_test(target: &Path) -> anyhow::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::game_update::downloader::md5_file_blocking;
     use crate::game_update::manifest;
 
     fn entry(rel: &str, size: u64, hash: &str, date: i64) -> Entry {
@@ -315,7 +368,7 @@ mod tests {
             bytes: 18,
             ..Default::default()
         };
-        let p = plan(&flat, dir.path(), false, &HashMap::new(), None, None);
+        let p = plan(&flat, dir.path(), false, &HashMap::new(), None, None, None);
         assert_eq!(p.download_count, 2);
         assert_eq!(p.download_bytes, 13);
         // ok.img: дата в манифесте 0 не новее локальной, локальная новее -> DateFix
@@ -333,7 +386,7 @@ mod tests {
         // date_change = 0 -> need_hash = false (дата манифеста не новее),
         // значит хэш не считается вовсе
         flat.entries.push(entry("a.img", 5, "whatever", 0));
-        let p = plan(&flat, dir.path(), false, &HashMap::new(), None, None);
+        let p = plan(&flat, dir.path(), false, &HashMap::new(), None, None, None);
         assert_eq!(p.hashed, 0);
         assert_eq!(p.date_fix, 1); // mtime новее -> DateFix
 
@@ -341,12 +394,12 @@ mod tests {
         const FUTURE_DATE: i64 = 4_000_000_000;
         let mut flat2 = Flat::default();
         flat2.entries.push(entry("a.img", 5, &md5, FUTURE_DATE));
-        let p2 = plan(&flat2, dir.path(), false, &HashMap::new(), None, None);
+        let p2 = plan(&flat2, dir.path(), false, &HashMap::new(), None, None, None);
         assert_eq!(p2.hashed, 1);
         assert_eq!(p2.ok, 1);
         assert_eq!(p2.date_fix, 1); // хэш верный, ставим дату
 
-        let p3 = plan(&flat2, dir.path(), false, &HashMap::from([("a.img".to_string(), md5.clone())]), None, None);
+        let p3 = plan(&flat2, dir.path(), false, &HashMap::from([("a.img".to_string(), md5.clone())]), None, None, None);
         assert_eq!(p3.hashed, 0); // из кэша
         assert_eq!(p3.ok, 1);
     }
@@ -359,9 +412,9 @@ mod tests {
             res_entries: 1,
             ..Default::default()
         };
-        let p = plan(&flat, dir.path(), false, &HashMap::new(), None, None);
+        let p = plan(&flat, dir.path(), false, &HashMap::new(), None, None, None);
         assert_eq!(p.download_count, 0);
-        let p = plan(&flat, dir.path(), true, &HashMap::new(), None, None);
+        let p = plan(&flat, dir.path(), true, &HashMap::new(), None, None, None);
         assert_eq!(p.download_count, 1); // нет файла + repair
     }
 
@@ -380,7 +433,7 @@ mod tests {
         let root: manifest::Root = serde_json::from_str(json).unwrap();
         let flat = manifest::flatten(&root, true);
         let dir = tempfile::tempdir().unwrap();
-        let p = plan(&flat, dir.path(), false, &HashMap::new(), None, None);
+        let p = plan(&flat, dir.path(), false, &HashMap::new(), None, None, None);
         assert_eq!(p.download_count, 1);
     }
 }
