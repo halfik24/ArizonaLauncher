@@ -2148,176 +2148,27 @@ pub fn get_window_size(state: State<'_, AppState>) -> Result<serde_json::Value, 
 
 // ==================== Рамка окна (system / custom) ====================
 
-/// Кастомная рамка включена — обновляется в `apply_window_frame`.
-/// Нужно `refresh_window_region`, чтобы на resize не пере-применять регион,
-/// когда рамка system (там скругление — забота DWM).
-#[cfg(windows)]
-static FRAME_CUSTOM: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-
-/// Windows 11: скруглить углы окна через DWM (DWMWA_WINDOW_CORNER_PREFERENCE
-/// = 33, DWMWCP_ROUND = 2). Windows 10 атрибут не поддерживает (возвращает
-/// E_INVALIDARG) — тогда скругляем регионом окна, см. `apply_rounded_region`.
-/// Вызывать можно повторно: на Win11 идемпотентно, на Win10 регион
-/// пересоздаётся (он задан в координатах окна и не переживает resize).
+/// Windows 11: скруглить углы окна (DWMWA_WINDOW_CORNER_PREFERENCE = 33,
+/// DWMWCP_ROUND = 2). На Windows 10 вызов молча не сработает — ок.
 #[cfg(windows)]
 pub fn apply_rounded_corners(window: &tauri::WebviewWindow) {
-    if let Ok(hwnd) = window.hwnd() {
-        apply_rounded_corners_hwnd(hwnd.0 as isize);
-    }
-}
-
-#[cfg(windows)]
-fn apply_rounded_corners_hwnd(hwnd: isize) {
     use winapi::shared::minwindef::DWORD;
     use winapi::um::dwmapi::DwmSetWindowAttribute;
-    use winapi::um::winuser::IsZoomed;
-
-    // Maximize: регион старого размера обрезал бы углы экрана — снимаем.
-    // При restore придёт Resized и скругление вернётся.
-    if unsafe { IsZoomed(hwnd as _) } != 0 {
-        clear_window_region(hwnd);
-        return;
-    }
-
-    // ARIZONA_FORCE_REGION=1 — проверочный путь: пропускаем DWM и скругляем
-    // регионом, чтобы фоллбэк Win10 можно было увидеть на любой ОС.
-    if std::env::var("ARIZONA_FORCE_REGION").is_err() {
+    if let Ok(hwnd) = window.hwnd() {
         let preference: DWORD = 2; // DWMWCP_ROUND
-        let hr = unsafe {
+        unsafe {
             DwmSetWindowAttribute(
-                hwnd as _,
+                hwnd.0 as _,
                 33, // DWMWA_WINDOW_CORNER_PREFERENCE
                 &preference as *const _ as *const _,
                 std::mem::size_of::<DWORD>() as u32,
-            )
-        };
-        if hr == 0 {
-            return; // Win11: DWM скругляет сам
+            );
         }
     }
-
-    apply_rounded_region(hwnd);
 }
 
 #[cfg(not(windows))]
 pub fn apply_rounded_corners(_window: &tauri::WebviewWindow) {}
-
-/// Скруглить углы регионом окна (фоллбэк Windows 10).
-///
-/// Регион строится по ВИДИМОЙ рамке (DWMWA_EXTENDED_FRAME_BOUNDS): GetWindowRect
-/// включает невидимые рамки ресайза (~7px слева/справа/снизу), по нему
-/// скругление ушло бы под прозрачную зону и не было бы видно. Полозки
-/// невидимых рамок включаем в регион (UnionRgn) — иначе клики по ним
-/// проваливались бы сквозь окно и нативный ресайз за край перестал работать.
-#[cfg(windows)]
-fn apply_rounded_region(hwnd: isize) {
-    use winapi::shared::minwindef::HRGN;
-    use winapi::shared::windef::RECT;
-    use winapi::um::dwmapi::DwmGetWindowAttribute;
-    use winapi::um::wingdi::{CombineRgn, CreateRectRgn, CreateRoundRectRgn, DeleteObject, RGN_OR};
-    use winapi::um::winuser::{GetDpiForWindow, GetWindowRect, SetWindowRgn};
-
-    unsafe {
-        let h = hwnd as _;
-        let mut wr: RECT = std::mem::zeroed();
-        if GetWindowRect(h, &mut wr) == 0 {
-            return;
-        }
-        let w = wr.right - wr.left;
-        let hgt = wr.bottom - wr.top;
-        if w <= 0 || hgt <= 0 {
-            return;
-        }
-
-        // Видимая рамка относительно верхнего левого угла окна (координаты региона)
-        let mut vr: RECT = std::mem::zeroed();
-        let visible = DwmGetWindowAttribute(
-            h,
-            9, // DWMWA_EXTENDED_FRAME_BOUNDS
-            &mut vr as *mut _ as *mut _,
-            std::mem::size_of::<RECT>() as u32,
-        ) == 0;
-        let (vl, vt, vr2, vb) = if visible {
-            (
-                vr.left - wr.left,
-                vr.top - wr.top,
-                vr.right - wr.left,
-                vr.bottom - wr.top,
-            )
-        } else {
-            (0, 0, w, hgt)
-        };
-
-        // Радиус как у DWMWCP_ROUND: 8px при 96 DPI, масштабируется по DPI.
-        // CreateRoundRectRgn принимает размер эллипса = 2 × радиус.
-        let dpi = GetDpiForWindow(h);
-        let dpi = if dpi > 0 { dpi as i32 } else { 96 };
-        let ellipse = (8 * dpi / 96).max(1) * 2;
-
-        let mut region: HRGN = CreateRoundRectRgn(vl, vt, vr2, vb, ellipse, ellipse);
-        if region.is_null() {
-            return;
-        }
-
-        // Полозки невидимых рамок (резерв под нативный ресайз)
-        for (x1, y1, x2, y2) in [
-            (0, 0, vl, hgt),        // левая невидимая рамка
-            (vr2, 0, w, hgt),       // правая
-            (0, vb, w, hgt),        // нижняя
-            (0, 0, w, vt),          // верхняя (на Win10 обычно 0 — цикл сам пропустит)
-        ] {
-            if x2 <= x1 || y2 <= y1 {
-                continue;
-            }
-            let strip = CreateRectRgn(x1, y1, x2, y2);
-            if strip.is_null() {
-                continue;
-            }
-            let merged = CreateRectRgn(0, 0, 1, 1);
-            if merged.is_null() {
-                DeleteObject(strip as _);
-                continue;
-            }
-            if CombineRgn(merged, region, strip, RGN_OR) != 0 {
-                DeleteObject(region as _);
-                region = merged;
-            } else {
-                DeleteObject(merged as _);
-            }
-            DeleteObject(strip as _);
-        }
-
-        // При успехе системой владеет регион — не удалять
-        if SetWindowRgn(h, region, 1) == 0 {
-            DeleteObject(region as _);
-        }
-    }
-}
-
-/// Снять регион окна (maximize, системная рамка).
-#[cfg(windows)]
-fn clear_window_region(hwnd: isize) {
-    use winapi::um::winuser::SetWindowRgn;
-    unsafe {
-        SetWindowRgn(hwnd as _, std::ptr::null_mut(), 1);
-    }
-}
-
-/// Пере-применить скругление после resize/move между мониторами/DPI.
-/// На Win11 DWM-атрибут пере-скругляет сам (вызов идемпотентен), на Win10
-/// регион надо пересоздать под новый размер окна.
-#[cfg(windows)]
-pub fn refresh_window_region(window: &tauri::Window) {
-    if !FRAME_CUSTOM.load(std::sync::atomic::Ordering::Relaxed) {
-        return;
-    }
-    if let Ok(hwnd) = window.hwnd() {
-        apply_rounded_corners_hwnd(hwnd.0 as isize);
-    }
-}
-
-#[cfg(not(windows))]
-pub fn refresh_window_region(_window: &tauri::Window) {}
 
 /// Добавить окну стиль WS_THICKFRAME (как у обычных окон Windows).
 /// Без него frameless-окно при перетаскивании рисует мусор/чёрные полосы
@@ -2356,18 +2207,10 @@ pub fn add_thick_frame(_window: &tauri::WebviewWindow) {}
 /// рамка Windows (углы её own).
 pub fn apply_window_frame(window: &tauri::WebviewWindow, mode: &str) {
     let custom = mode == "custom";
-    #[cfg(windows)]
-    FRAME_CUSTOM.store(custom, std::sync::atomic::Ordering::Relaxed);
     let _ = window.set_decorations(!custom);
     if custom {
         apply_rounded_corners(window);
         add_thick_frame(window);
-    } else {
-        // Системная рамка: регион скругления (Win10-фоллбэк) мешает ей — снимаем
-        #[cfg(windows)]
-        if let Ok(hwnd) = window.hwnd() {
-            clear_window_region(hwnd.0 as isize);
-        }
     }
 }
 
