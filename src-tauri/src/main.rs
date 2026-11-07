@@ -128,6 +128,12 @@ fn main() {
                     let _ = window.hide();
                 }
             }
+            // Скругление углов (Win10-фоллбэк регионом) задано в координатах
+            // окна и не переживает resize — пере-применяем. На Win11 вызов
+            // идемпотентен (DWM-атрибут), на maximize регион снимается внутри.
+            if let tauri::WindowEvent::Resized(_) = event {
+                launcher::refresh_window_region(window);
+            }
         })
         .invoke_handler(tauri::generate_handler![
             launcher::get_config,
