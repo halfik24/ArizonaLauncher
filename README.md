@@ -1,5 +1,7 @@
 # Arizona RP Launcher v2
 
+🌐 **Сайт:** [halfik24.github.io/ArizonaLauncher](https://halfik24.github.io/ArizonaLauncher/)
+
 [![CI](https://github.com/halfik24/ArizonaLauncher/actions/workflows/build.yml/badge.svg)](https://github.com/halfik24/ArizonaLauncher/actions/workflows/build.yml)
 [![Rust](https://img.shields.io/badge/Rust-1.77.2+-orange.svg)](https://www.rust-lang.org/)
 [![Tauri](https://img.shields.io/badge/Tauri_2-green.svg)](https://tauri.app)
