@@ -76,7 +76,9 @@ function connect(wsUrl) {
       continue;
     }
     ok(`${r.px}px: панель`, r.panel === `blur(${r.px}px) saturate(1.2)`, r.panel);
-    ok(`${r.px}px: навигация = ${r.px / 2}px`, r.nav === `blur(${r.px / 2}px)`, r.nav);
+    // Навигация: backdrop-filter убран (fix «светлее → чернеет») — вместо
+    // него статичная тинт-прослойка rgba(--surface-rgb, 0.7), см. .settings-nav.
+    ok(`${r.px}px: навигация без backdrop (статичный тинт)`, r.nav === 'none', r.nav);
     ok(`${r.px}px: сохранено`, r.stored === String(r.px), r.stored);
   }
 

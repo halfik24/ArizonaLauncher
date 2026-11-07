@@ -1834,6 +1834,21 @@
             -webkit-backdrop-filter: none !important;
         }
 
+        /* Меню должно пропадать мгновенно (fix бага «кнопка «Начать игру»
+           и никнейм не пропадают при открытии настроек»). У кнопок и полей
+           .left-panel есть transition: all, а all включает visibility —
+           наследуемое visibility:hidden от .interface уходило в transition
+           и держало 'visible' весь --transition-speed (0.3с): меню
+           «призраковало» сквозь полупрозрачную панель первые полсекунды.
+           Гасим transition левого меню на время анимации: openSettings
+           ставит и скрытие, и класс body.settings-anim в одной задаче
+           (до первого await), поэтому transition не стартует вовсе.
+           Правую панель не трогаем — у неё news-away (уезжает в бок). */
+        body.settings-anim .left-panel,
+        body.settings-anim .left-panel * {
+            transition: none !important;
+        }
+
         /* ── Идея №1: запечённый фон-блюр вместо live backdrop ───────────
            Замер heavy-стенда на HD 4000 (tools/canvas-bench/RESULTS.md):
            full (живой backdrop всю анимацию) — 18.5мс / 14 рывков,
@@ -2261,9 +2276,20 @@
         .settings-nav {
             width: 210px;
             flex-shrink: 0;
-            background: rgba(255, 255, 255, 0.03);
-            backdrop-filter: blur(var(--frost-blur-nav));
-            -webkit-backdrop-filter: blur(var(--frost-blur-nav));
+            /* Статичная тинт-прослойка вместо backdrop-filter (fix бага
+               «панель в анимации светлее и потом чернеет»). Прежний
+               backdrop-filter blur(--frost-blur-nav) жил внутри backdrop-root
+               панели и семплировал её фон ДВАЖДЫ: замер (exp-navmatrix) —
+               без фильтра навигация 74, с любым фильтром (даже blur(0px))
+               43, при выключенном backdrop панели различия нет. Двойной
+               композит математически равен rgba(--surface-rgb, 0.7) поверх
+               композита панели (0.7*23 + 0.3*68.5 = 36.7 → 43 с белым
+               0.03 — совпадает с замером), поэтому статичный слой даёт
+               ТЕ ЖЕ пиксели, но одинаково и с живым backdrop, и с
+               запечённым #settingsBaked: на конце анимации нет прыжка
+               «светлее → чернеет», live-фильтра в кадре нет (perf). */
+            background: linear-gradient(rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.03)),
+                        rgba(var(--surface-rgb), 0.7);
             border-right: 1px solid rgba(255, 255, 255, 0.06);
             display: flex;
             flex-direction: column;
