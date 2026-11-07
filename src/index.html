@@ -9642,16 +9642,37 @@
 
             if (stage === 'done') {
                 _gpPaused = false;
+                _gpCancelling = false; // гонка: отмена запрошена, но успело завершиться
                 _gpFillTo(100);
                 _gpText(data.message || 'Установка завершена', '100%');
                 bar.classList.add('done');
                 _gpHideTimer = setTimeout(_gpHide, 4000);
             } else if (stage === 'error') {
                 _gpPaused = false;
-                _gpFillTo(100);
-                _gpText('Ошибка: ' + (data.message || 'неизвестно'), '!');
-                bar.classList.add('error');
-                _gpHideTimer = setTimeout(_gpHide, 8000);
+                // Отмена — не ошибка: нейтральный текст, полоса гаснет сама,
+                // оверлей закрывается только здесь (когда движок реально встал)
+                const cancelled = /отменено/i.test(data.message || '');
+                if (cancelled) {
+                    _gpFillTo(0);
+                    _gpText('Установка отменена', '');
+                    _gpHideTimer = setTimeout(_gpHide, 4000);
+                    const ov = _gpEl('gpOverlay');
+                    if (ov && ov.style.display === 'flex') closeGpOverlay();
+                } else {
+                    _gpFillTo(100);
+                    _gpText('Ошибка: ' + (data.message || 'неизвестно'), '!');
+                    bar.classList.add('error');
+                    _gpHideTimer = setTimeout(_gpHide, 8000);
+                }
+                if (_gpCancelling) {
+                    _gpCancelling = false;
+                    const btn = _gpEl('gpCancelBtn');
+                    if (btn) {
+                        btn.disabled = false;
+                        btn.innerHTML = '<i data-lucide="x-circle"></i> Отменить установку';
+                        if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
+                    }
+                }
             } else {
                 const pct = Math.min(100, data.progress || 0);
                 _gpFillTo(pct);
@@ -9775,13 +9796,24 @@
             }, 250);
         }
 
-        /** Отмена установки/обновления из модалки деталей. */
+        /** Отмена установки/обновления из модалки деталей.
+            Бэкенд отвечает «флаг поставлен», а не «уже отменено»: оверлей
+            не закрываем сразу (иначе выглядит, будто отмена не сработала) —
+            закроет `_gpUpdate`, когда движок реально остановится. */
+        let _gpCancelling = false;
         async function gpCancelUpdate() {
+            if (_gpCancelling) return; // повторные клики не плодят «запрошена отмена»
             try {
                 const r = await window.pywebview.api.cancel_game_update();
                 if (r && r.success) {
-                    showNotification('Отмена установки...', 'info');
-                    closeGpOverlay();
+                    _gpCancelling = true;
+                    const btn = _gpEl('gpCancelBtn');
+                    if (btn) {
+                        btn.disabled = true;
+                        btn.innerHTML = '<i data-lucide="loader"></i> Отменяем…';
+                        if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
+                    }
+                    showNotification('Отменяем установку — подождите', 'info');
                 } else {
                     showNotification((r && r.message) || 'Нечего отменять', 'error');
                 }
