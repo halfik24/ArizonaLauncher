@@ -1,0 +1,92 @@
+{
+  "meta": {
+    "vw": 1366,
+    "vh": 643,
+    "dpr": 1,
+    "pw": 720,
+    "ph": 460,
+    "hpw": 940,
+    "hph": 553,
+    "blur": 24,
+    "cycles": 5,
+    "set": "heavy"
+  },
+  "source": "home-pc, Intel HD 4000, standalone.html, Chromium (WebView-класс), --без флагов",
+  "variants": {
+    "hv-full": {
+      "frames": 378,
+      "avgMs": 18.5,
+      "p50Ms": 17,
+      "p95Ms": 31,
+      "maxMs": 52,
+      "janky33": 14,
+      "over50": 1,
+      "over100": 0,
+      "openAnim": { "n": 101, "avgMs": 19.5, "p95Ms": 32, "maxMs": 46, "janky33": 4, "over50": 0 },
+      "closeAnim": { "n": 101, "avgMs": 19.7, "p95Ms": 34, "maxMs": 52, "janky33": 6, "over50": 1 },
+      "longTasks": 0,
+      "longestMs": 0,
+      "renderer": "DOM + backdrop live + element-blur (full)"
+    },
+    "hv-baked": {
+      "frames": 420,
+      "avgMs": 16.7,
+      "p50Ms": 17,
+      "p95Ms": 17,
+      "maxMs": 31,
+      "janky33": 0,
+      "over50": 0,
+      "over100": 0,
+      "openAnim": { "n": 120, "avgMs": 16.6, "p95Ms": 18, "maxMs": 31, "janky33": 0, "over50": 0 },
+      "closeAnim": { "n": 118, "avgMs": 16.7, "p95Ms": 17, "maxMs": 21, "janky33": 0, "over50": 0 },
+      "longTasks": 0,
+      "longestMs": 0,
+      "renderer": "DOM + запечённый фон-блюр (идея №1)"
+    },
+    "hv-smooth": {
+      "frames": 419,
+      "avgMs": 16.7,
+      "p50Ms": 17,
+      "p95Ms": 18,
+      "maxMs": 24,
+      "janky33": 0,
+      "over50": 0,
+      "over100": 0,
+      "openAnim": { "n": 119, "avgMs": 16.7, "p95Ms": 18, "maxMs": 18, "janky33": 0, "over50": 0 },
+      "closeAnim": { "n": 120, "avgMs": 16.6, "p95Ms": 18, "maxMs": 18, "janky33": 0, "over50": 0 },
+      "longTasks": 0,
+      "longestMs": 0,
+      "renderer": "DOM, backdrop выкл на время анимации (smooth)"
+    },
+    "hv-noblur": {
+      "frames": 419,
+      "avgMs": 16.7,
+      "p50Ms": 17,
+      "p95Ms": 17,
+      "maxMs": 19,
+      "janky33": 0,
+      "over50": 0,
+      "over100": 0,
+      "openAnim": { "n": 119, "avgMs": 16.7, "p95Ms": 18, "maxMs": 19, "janky33": 0, "over50": 0 },
+      "closeAnim": { "n": 120, "avgMs": 16.7, "p95Ms": 17, "maxMs": 18, "janky33": 0, "over50": 0 },
+      "longTasks": 0,
+      "longestMs": 0,
+      "renderer": "DOM без блюров (пол)"
+    },
+    "hv-full-nov22": {
+      "frames": 373,
+      "avgMs": 18.8,
+      "p50Ms": 17,
+      "p95Ms": 33,
+      "maxMs": 48,
+      "janky33": 18,
+      "over50": 0,
+      "over100": 0,
+      "openAnim": { "n": 97, "avgMs": 20.1, "p95Ms": 36, "maxMs": 47, "janky33": 6, "over50": 0 },
+      "closeAnim": { "n": 96, "avgMs": 20.6, "p95Ms": 39, "maxMs": 48, "janky33": 8, "over50": 0 },
+      "longTasks": 0,
+      "longestMs": 0,
+      "renderer": "DOM full без V22 (внешние блюры живут)"
+    }
+  }
+}
