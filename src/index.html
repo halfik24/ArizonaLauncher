@@ -1932,8 +1932,12 @@
            дымки они на полсекунды, на фоне анимации незаметно.
            Замер (V22 vs mode:smooth): 21.1 → 17.6 мс, рывков 18 → 1.
            Свою панель и её подэлементы правило НЕ трогает — ими управляют
-           режимы (fade/full держат блюр включённым всё время). */
-        body.settings-anim *:not(.settings-panel):not(.settings-panel *) {
+           режимы (fade/full держат блюр включённым всё время).
+           Пилюли тайтлбара (#tbTitle/#tbButtons) ИЗ КЛЮЧА: они статичны и
+           крошечны (пересчёт дёшев), а пользователь замечает их мигание —
+           блюр пропадал на 0.55с при каждом открытии/закрытии настроек. */
+        body.settings-anim *:not(.settings-panel):not(.settings-panel *)
+            :not(#tbTitle):not(#tbButtons) {
             backdrop-filter: none !important;
             -webkit-backdrop-filter: none !important;
         }
@@ -1990,11 +1994,13 @@
             pointer-events: none;
         }
 
-        /* Как у settings-anim: внешние слои (пилюля тайтлбара, feedbackFab,
-           тосты) пересчитывают свой backdrop каждый кадр, пока модалка
-           «Моды» проходит под ними — гасим их блюр на время анимации.
-           Свою модалку правило не трогает (ей управляют гейты режимов ниже). */
-        body.mods-anim *:not(.mods-modal):not(.mods-modal *) {
+        /* Как у settings-anim: внешние слои (feedbackFab, тосты) пересчитывают
+           свой backdrop каждый кадр, пока модалка «Моды» проходит под ними —
+           гасим их блюр на время анимации. Свою модалку правило не трогает
+           (ей управляют гейты режимов ниже). Пилюли тайтлбара исключены —
+           см. комментарий к settings-anim выше (мигание блюра заметно). */
+        body.mods-anim *:not(.mods-modal):not(.mods-modal *)
+            :not(#tbTitle):not(#tbButtons) {
             backdrop-filter: none !important;
             -webkit-backdrop-filter: none !important;
         }
@@ -4547,15 +4553,19 @@
             border-radius: 12px;
             overflow: hidden;
             cursor: pointer;
-            transition: all 0.25s cubic-bezier(0.4,0,0.2,1);
+            /* Только дешёвые paint-свойства: `all` + transform/box-shadow в
+               hover заставляли каждую «проплывающую» под курсором при скролле
+               карточку промоутить compositing-слой и перекрашивать тень —
+               отсюда рывки при пролистывании каталога (фикс лагов). */
+            transition: border-color 0.2s ease, background-color 0.2s ease;
             display: flex;
             flex-direction: column;
         }
         .ml-catalog-card:hover {
             border-color: rgba(var(--accent2-rgb), 0.35);
             background: rgba(255,255,255,0.06);
-            transform: translateY(-2px);
-            box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+            /* translateY(-2px)/box-shadow убраны — визуально почти неразличимо
+               на фоне подсветки бордюра, а скролл стал ровным */
         }
         .ml-card-preview {
             width: 100%;
@@ -4652,7 +4662,10 @@
             font-size: 11px;
             font-weight: 600;
             cursor: pointer;
-            transition: all 0.2s;
+            /* Как у карточки: без `all` и без слоевых hover-свойств —
+               кнопка встречается под курсором при скролле так же, как сама
+               карточка */
+            transition: background 0.2s ease, border-color 0.2s ease;
             white-space: nowrap;
             display: flex;
             align-items: center;
@@ -4662,8 +4675,6 @@
         .ml-card-install-btn:hover:not(:disabled) {
             background: rgba(var(--accent-rgb), 1);
             border-color: rgba(var(--accent2-rgb), 0.9);
-            transform: translateY(-1px);
-            box-shadow: 0 4px 14px rgba(var(--accent-rgb), 0.35);
         }
         .ml-card-install-btn:disabled { cursor: default; opacity: 0.65; }
         .ml-card-install-btn.done {
@@ -8222,6 +8233,22 @@
                     </div>
 
                     <div class="dbg-card">
+                        <div class="debug-section-title"><i data-lucide="puzzle"></i> Плагин</div>
+                        <div class="debug-row">
+                            <span class="debug-label">Показ настроек плагина</span>
+                            <span class="debug-value">
+                                <span class="dbg-anim-group" id="dbgForcePluginGroup">
+                                    <button type="button" data-f="0" onclick="setForcePluginSettings(false)">Авто</button><button type="button" data-f="1" onclick="setForcePluginSettings(true)">Принудительно</button>
+                                </span>
+                            </span>
+                        </div>
+                        <div class="debug-row">
+                            <span class="debug-label">Что это</span>
+                            <span class="debug-value">Показывает панель настроек патчей (#checkboxGroup), даже если плагин не установлен/устарел или активен нативный запуск. Только отладка, в конфиг не сохраняется</span>
+                        </div>
+                    </div>
+
+                    <div class="dbg-card">
                         <div class="debug-section-title"><i data-lucide="monitor"></i> Система</div>
                         <div class="debug-row">
                             <span class="debug-label">ОС</span>
@@ -10067,9 +10094,11 @@
                 host.dataset.tt = text;
                 host.removeAttribute('title');  // гасим нативный тултип
                 _ttHost = host;
+                // Показ через 3с (просьба 08.11): вспомогательный текст не должен
+                // выскакивать мгновенно. Скрытие — мгновенно, как было.
                 _ttTimer = setTimeout(() => {
                     if (_ttHost === host && document.contains(host)) _ttShow(host, text);
-                }, 280);
+                }, 3000);
             });
 
             document.addEventListener('mouseout', (e) => {
@@ -11020,8 +11049,20 @@
 
         // ---- МОДЫ (fullscreen) ----
         function openModsModal() {
-            document.querySelector('.interface').style.display = 'none';
-            document.querySelector('.right-panel').style.display = 'none';
+            // Плавное исчезновение меню (interfaceOut, 0.25с, .interface.menu-out)
+            // вместо резкого display:none — зеркало openSettings. Из-за display:none
+            // закрытие шло по ветке «меню было скрыто» и входил базовый
+            // interfaceFadeIn (блюр выгорал за первые мс за непрозрачной модалкой) —
+            // меню появлялось резко и без блюра. С menu-out закрытие идёт по
+            // reveal-in (fade+blur 0.8с) — как после настроек.
+            document.querySelector('.interface').classList.add('menu-out');
+            // Язычок новостей уезжает в бок, а не стоит, пока модалка поднимается
+            // (модалка стартует с opacity 0 — под ней всё видно)
+            const rightPanel = document.querySelector('.right-panel');
+            if (rightPanel) {
+                rightPanel.style.visibility = 'visible';  // перекрываем наследование от скрытого .interface
+                rightPanel.classList.add('news-away');
+            }
             const modal = document.getElementById('modsModal');
             modal.style.display = 'flex';
             // Запечённый фон-блюр (идея №1): выравниваем и ставим маркер
@@ -11501,7 +11542,9 @@
                 if (item.image) {
                     const safeImg = _mlEscape(item.image);
                     const safeName = _mlEscape(item.name);
-                    preview.innerHTML = `<img src="${safeImg}" alt="${safeName}" onerror="this.style.display='none';this.parentElement.querySelector('.ml-preview-fallback').style.display='flex'">`;
+                    // lazy/async: в каталоге до ~8 МБ картинок (одна 1920×1080,
+                    // 2.2 МБ) — жадный декод рвал скролл в первые секунды
+                    preview.innerHTML = `<img src="${safeImg}" alt="${safeName}" loading="lazy" decoding="async" onerror="this.style.display='none';this.parentElement.querySelector('.ml-preview-fallback').style.display='flex'">`;
                     const fallback = document.createElement('div');
                     fallback.className = 'ml-preview-fallback';
                     fallback.style.cssText = 'display:none;align-items:center;justify-content:center;width:100%;height:100%;position:absolute;inset:0;';
@@ -12986,7 +13029,10 @@
                     document.getElementById('patchStatusLucide').innerHTML =
                         '<i data-lucide="' + C.i + '" style="width:20px;height:20px;color:' + C.c + '"></i>';
                     alert.style.display = 'block';
-                    group.style.display = 'none';
+                    // Дебаг-флаг «принудительный показ настроек плагина»:
+                    // панель видна всегда; баннер с причиной остаётся (он
+                    // информативен — объясняет, почему панель скрыта бы без флага)
+                    group.style.display = _dbgForcePluginOn() ? 'flex' : 'none';
                 } else {
                     alert.style.display = 'none';
                     group.style.display = 'flex';   // #checkboxGroup — flex-column в CSS
@@ -16780,6 +16826,38 @@
                 b.classList.toggle('sel', (b.dataset.c === '1') === on));
         }
 
+        // Принудительный показ настроек плагина (карточка «Плагин» в дебаге).
+        // #checkboxGroup обычно скрыт, если плагин не установлен/устарел или
+        // активен нативный запуск — см. renderPatchStatusUI. Флаг
+        // localStorage arp_forcePluginSettings ('1') эту блокировку игнорирует:
+        // панель патчей видна всегда (баннер с причиной остаётся).
+        // Только отладка — в конфиг лаунчера не пишется.
+        function _dbgForcePluginOn() {
+            try { return localStorage.getItem('arp_forcePluginSettings') === '1'; }
+            catch (e) { return false; }
+        }
+
+        function setForcePluginSettings(on) {
+            on = (on === true || on === '1' || on === 1);
+            try { localStorage.setItem('arp_forcePluginSettings', on ? '1' : '0'); } catch (e) {}
+            _syncForcePluginUI();
+            // Перерисовать баннер/панель с учётом флага. Если бэкенд
+            // недоступен — checkPatchesStatus выйдет рано, поэтому при
+            // включении показываем панель и напрямую.
+            if (on) {
+                const g = document.getElementById('checkboxGroup');
+                if (g) g.style.display = 'flex';
+            }
+            if (typeof checkPatchesStatus === 'function') checkPatchesStatus();
+        }
+
+        function _syncForcePluginUI() {
+            const on = _dbgForcePluginOn();
+            const g = document.getElementById('dbgForcePluginGroup');
+            if (g) g.querySelectorAll('button').forEach(b =>
+                b.classList.toggle('sel', (b.dataset.f === '1') === on));
+        }
+
         // Сила блюра панели настроек (8–32px, см. --frost-blur в :root).
         // Навигация внутри панели следует автоматически (половина радиуса).
         function setBlur(px) {
@@ -16827,6 +16905,7 @@
         async function loadDebugInfo() {
             _syncAnimModeUI();
             _syncCompactUI();
+            _syncForcePluginUI();
             try {
                 if (window.pywebview && window.pywebview.api.get_debug_info) {
                     const r = await window.pywebview.api.get_debug_info();
