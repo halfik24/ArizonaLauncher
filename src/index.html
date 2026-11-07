@@ -382,6 +382,27 @@
             to   { opacity: 1; filter: blur(0); }
         }
 
+        /* Плавное исчезновение меню при открытии настроек (fix «главное меню
+           резко пропадает»): вместо мгновенного visibility:hidden — fade
+           0.25с. visibility в keyframes интерполируется так, что 'visible'
+           держится до 100%, поэтому визуально идёт только opacity — честный
+           cross-fade с поднимающейся панелью; в конце — fill forwards
+           visibility:hidden + pointer-events:none (класс снимает
+           _showMainInterface при закрытии — и меню входит обратно entrance'ом
+           opacity + blur + подъём). Анимация по ДЕТЯМ .interface: filter/
+           opacity на самом .interface создавали backdrop-root. Правая панель
+           исключена — она уезжает news-away; #launchScreen исключён — своя
+           система видимости. */
+        .interface.menu-out > *:not(.right-panel):not(#launchScreen) {
+            animation: interfaceOut 0.25s ease-out forwards;
+            pointer-events: none;
+        }
+
+        @keyframes interfaceOut {
+            from { opacity: 1; visibility: visible; }
+            to   { opacity: 0; visibility: hidden; }
+        }
+
         /* ── Статус-строка главного экрана (положение: sb-pos-*) ── */
         .status-bar {
             position: absolute;
@@ -10556,22 +10577,25 @@
             const iface = document.querySelector('.interface');
             const right = document.querySelector('.right-panel');
             if (iface) {
-                // Фейд-перезапуск нужен ТОЛЬКО если меню было скрыто (mods).
-                // Папка/настройки/профили идут через _closeWithAnim, но меню под
-                // ними видно всё время — сбрасывать его в blur(12px) и показывать
-                // заново нельзя, иначе выглядит как «перезагрузка» главного меню.
-                const wasHidden = getComputedStyle(iface).display === 'none';
+                // Фейд-перезапуск нужен, ТОЛЬКО если меню было скрыто:
+                // display:none (моды) или fade-класс menu-out (настройки —
+                // меню плавно исчезло при открытии, показываем тем же входом:
+                // opacity + blur + подъём). Папка/профили идут через
+                // _closeWithAnim при ВИДИМОМ меню — им входной фейд не нужен
+                // (выглядело бы как «перезагрузка» главного меню).
+                const wasDisplayNone = getComputedStyle(iface).display === 'none';
+                const wasMenuOut = iface.classList.contains('menu-out');
+                const leftPanelEl = iface.querySelector('.left-panel');
+                const wasHidden = wasDisplayNone || wasMenuOut ||
+                    (leftPanelEl && getComputedStyle(leftPanelEl).visibility === 'hidden');
                 if (wasHidden) {
-                    // Ставим СТАРТ-состояние interfaceFadeIn инлайн ДО первого кадра:
-                    // иначе между display:none→flex и реальным стартом CSS-анимации
-                    // может мелькнуть резкий кадр «готового» меню («чёткое → размытое»).
-                    // Анимация применяется к ДЕТЯМ .interface: filter/opacity на самом
-                    // .interface создавали backdrop-root — backdrop-blur стекляных
-                    // панелей на время фейда пропадал, а в конце резко появлялся.
-                    // #launchScreen не трогаем (у него своя система видимости
-                    // через .visible/opacity:0), у .right-panel не трогаем
-                    // transform (он паркует панель translateX за краем окна).
-                    const kids = [...iface.children].filter(k => k.id !== 'launchScreen');
+                    // Скрытые дети: при display:none — все (кроме launchScreen);
+                    // при menu-out — только реально невидимые (left-panel):
+                    // right-panel виден всё время (news-away), ему вход не нужен.
+                    const kids = [...iface.children].filter(k =>
+                        k.id !== 'launchScreen' &&
+                        (wasDisplayNone || getComputedStyle(k).visibility === 'hidden'));
+                    iface.classList.remove('menu-out'); // fill interfaceOut снят — дальше вход инлайн + анимация
                     for (const k of kids) {
                         k.style.opacity = '0';
                         k.style.filter  = 'blur(12px)';
@@ -15508,7 +15532,11 @@
         // Открыть настройки
         async function openSettings() {
             _lucideObserver.disconnect();
-            document.querySelector('.interface').style.visibility = 'hidden';
+            // Плавное исчезновение меню (interfaceOut, 0.25с) вместо резкого
+            // visibility:hidden: fade стартует с первого кадра, в конце
+            // (fill forwards) — visibility:hidden + pointer-events:none.
+            // Класс снимает _showMainInterface при закрытии.
+            document.querySelector('.interface').classList.add('menu-out');
             // Вкладка новостей не гаснет мгновенно: язычок (и раскрытая панель
             // новостей) плавно уезжает в бок за край окна — см. .news-away.
             const rightPanel = document.querySelector('.right-panel');
