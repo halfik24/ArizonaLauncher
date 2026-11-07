@@ -1,0 +1,83 @@
+{
+  "source": "home-pc, Intel HD 4000, собранное приложение arizona-launcher.exe (release с CDP), окно 1028x732, dpr 1, tools/perf-anim-ab.js 4 цикла, AB_ONLY=mode:",
+  "date": "2026-11-07",
+  "note": "Идея №1 (запечённый фон-блюр #settingsBaked) вшита в сборку. Условия: обычный GPU (без --disable-gpu-прокси), окно visible.",
+  "results": [
+    {
+      "variant": "mode: fade",
+      "frames": 341,
+      "avgMs": 16.6,
+      "p50Ms": 16.7,
+      "p95Ms": 18.4,
+      "maxMs": 28.4,
+      "janky33": 0,
+      "over50": 0,
+      "over100": 0,
+      "longTasks": 0,
+      "longestMs": 0,
+      "byPhase": {
+        "open-anim":   { "n": 94, "avgMs": 16.6, "p95Ms": 18.6, "maxMs": 28.4, "janky33": 0, "over50": 0 },
+        "open-static": { "n": 77, "avgMs": 16.7, "p95Ms": 18.1, "maxMs": 24.6, "janky33": 0, "over50": 0 },
+        "close-anim":  { "n": 95, "avgMs": 16.7, "p95Ms": 21.9, "maxMs": 26.0, "janky33": 0, "over50": 0 },
+        "after":       { "n": 75, "avgMs": 16.6, "p95Ms": 18.2, "maxMs": 18.4, "janky33": 0, "over50": 0 }
+      }
+    },
+    {
+      "variant": "mode: pop",
+      "frames": 341,
+      "avgMs": 16.7,
+      "p50Ms": 16.7,
+      "p95Ms": 18.1,
+      "maxMs": 39.8,
+      "janky33": 2,
+      "over50": 0,
+      "over100": 0,
+      "longTasks": 0,
+      "longestMs": 0,
+      "byPhase": {
+        "open-anim":   { "n": 94, "avgMs": 16.7, "p95Ms": 18.0, "maxMs": 39.8, "janky33": 1, "over50": 0 },
+        "open-static": { "n": 76, "avgMs": 16.9, "p95Ms": 22.4, "maxMs": 34.6, "janky33": 1, "over50": 0 },
+        "close-anim":  { "n": 96, "avgMs": 16.7, "p95Ms": 18.1, "maxMs": 27.0, "janky33": 0, "over50": 0 },
+        "after":       { "n": 75, "avgMs": 16.7, "p95Ms": 17.9, "maxMs": 18.1, "janky33": 0, "over50": 0 }
+      }
+    },
+    {
+      "variant": "mode: smooth",
+      "frames": 339,
+      "avgMs": 16.8,
+      "p50Ms": 16.6,
+      "p95Ms": 18.5,
+      "maxMs": 40.0,
+      "janky33": 2,
+      "over50": 0,
+      "over100": 0,
+      "longTasks": 0,
+      "longestMs": 0,
+      "byPhase": {
+        "open-anim":   { "n": 94, "avgMs": 16.7, "p95Ms": 18.4, "maxMs": 40.0, "janky33": 1, "over50": 0 },
+        "open-static": { "n": 74, "avgMs": 17.1, "p95Ms": 24.1, "maxMs": 26.8, "janky33": 0, "over50": 0 },
+        "close-anim":  { "n": 96, "avgMs": 16.7, "p95Ms": 18.2, "maxMs": 34.3, "janky33": 1, "over50": 0 },
+        "after":       { "n": 76, "avgMs": 16.6, "p95Ms": 18.3, "maxMs": 18.9, "janky33": 0, "over50": 0 }
+      }
+    },
+    {
+      "variant": "mode: full (дефолт)",
+      "frames": 340,
+      "avgMs": 16.8,
+      "p50Ms": 16.7,
+      "p95Ms": 19.6,
+      "maxMs": 27.8,
+      "janky33": 0,
+      "over50": 0,
+      "over100": 0,
+      "longTasks": 0,
+      "longestMs": 0,
+      "byPhase": {
+        "open-anim":   { "n": 95, "avgMs": 16.7, "p95Ms": 18.8, "maxMs": 27.8, "janky33": 0, "over50": 0 },
+        "open-static": { "n": 77, "avgMs": 16.6, "p95Ms": 18.0, "maxMs": 18.2, "janky33": 0, "over50": 0 },
+        "close-anim":  { "n": 92, "avgMs": 17.1, "p95Ms": 22.3, "maxMs": 24.4, "janky33": 0, "over50": 0 },
+        "after":       { "n": 76, "avgMs": 16.6, "p95Ms": 18.3, "maxMs": 22.5, "janky33": 0, "over50": 0 }
+      }
+    }
+  ]
+}
