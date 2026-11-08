@@ -14814,7 +14814,17 @@
             if (window.pywebview && window.pywebview.api.get_wallpapers) {
                 try {
                     const result = await window.pywebview.api.get_wallpapers();
-                    if (result.success) _wallpapers = result.wallpapers;
+                    if (result.success) {
+                        // Merge: thumb (data_url), уже загруженные в этой сессии,
+                        // сохраняем по filename — переоткрытие пикера не
+                        // перезапрашивает их. Новые файлы приходят без data_url
+                        // и рисуются через очередь flushWallpaperThumbs.
+                        const prev = new Map(_wallpapers.map(w => [w.filename, w.data_url]));
+                        for (const w of result.wallpapers) {
+                            if (prev.has(w.filename)) w.data_url = prev.get(w.filename);
+                        }
+                        _wallpapers = result.wallpapers;
+                    }
                 } catch(e) {
                     console.warn('get_wallpapers:', e);
                 }
@@ -14823,9 +14833,42 @@
         }
 
         // Карточка «Своя» — свой фон (диалог выбора файла)
+        // Полное разрешение (сотни КБ base64) в карточке ~190×106 — лишний
+        // декод на каждом открытии пикера. Кэшируем уменьшенную копию (500px)
+        // и один раз перерисовываем сетку, когда она готова. Первый рендер
+        // показывает оригинал (как раньше), следующие — thumb.
+        let _customThumbCache = { src: null, url: null, loading: null };
+        function _customBgThumb(src) {
+            if (!src) return null;
+            if (_customThumbCache.src === src) return _customThumbCache.url || src;
+            if (_customThumbCache.loading !== src) {
+                _customThumbCache = { src: null, url: null, loading: src };
+                const img = new Image();
+                img.onload = () => {
+                    try {
+                        const scale = Math.min(1, 500 / Math.max(img.naturalWidth, img.naturalHeight));
+                        const c = document.createElement('canvas');
+                        c.width = Math.max(1, Math.round(img.naturalWidth * scale));
+                        c.height = Math.max(1, Math.round(img.naturalHeight * scale));
+                        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+                        _customThumbCache = { src, url: c.toDataURL('image/jpeg', 0.85), loading: null };
+                    } catch (e) {
+                        // canvas «испорчен» (file:) — оставляем оригинал
+                        _customThumbCache = { src, url: src, loading: null };
+                    }
+                    renderWallpaperGrid();
+                };
+                img.onerror = () => {
+                    _customThumbCache = { src, url: src, loading: null };
+                };
+                img.src = src;
+            }
+            return src;
+        }
+
         function createCustomWallpaperCard(current) {
             const isCustom = current && !_wallpapers.find(w => w.filename === current);
-            const customPreview = isCustom ? _normalizeBgUrl(launcherSettings.bg_data || current) : null;
+            const customPreview = isCustom ? _customBgThumb(_normalizeBgUrl(launcherSettings.bg_data || current)) : null;
             const card = document.createElement('div');
             card.className = 'wp-card' + (isCustom ? ' wp-card-active' : '');
             card.innerHTML = `
@@ -14851,8 +14894,12 @@
                 if (!thumb) return;
                 thumb.style.backgroundImage = `url('${dataUrl}')`;
                 thumb.classList.remove('wp-thumb-loading');
-                if (isActive) thumb.innerHTML = '<div class="wp-check"><i data-lucide="check"></i></div>';
-                if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
+                // Иконка появляется только на активной карточке — refresh
+                // нужен лишь ей, не всем 17 (рефреш сканирует весь документ).
+                if (isActive) {
+                    thumb.innerHTML = '<div class="wp-check"><i data-lucide="check"></i></div>';
+                    if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
+                }
             };
 
             if (wp.data_url) {
@@ -14923,14 +14970,16 @@
             return !!panel && panel.classList.contains('wp-mode');
         }
 
-        function openWallpaperPicker() {
+        async function openWallpaperPicker() {
             const panel = document.getElementById('settingsPanel');
             if (!panel) return;
-            if (_wallpapers.length === 0) loadWallpapers();
             // Панель плавно уезжает в левый край окна, внутри — список обоев
             panel.classList.add('wp-mode');
-            renderWallpaperPicker();
-            if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
+            // Всегда свежий скан wallpapers/: новый файл в папке виден сразу
+            // после открытия, а не после рестарта лаунчера. Загруженные thumb
+            // сохраняются merge-ем в loadWallpapers, повторных запросов нет;
+            // рендер списка — внутри loadWallpapers (renderWallpaperGrid).
+            await loadWallpapers();
         }
 
         function closeWallpaperPicker() {
@@ -15029,6 +15078,9 @@
             if (launcherSettings.bg_data) {
                 // base64 в конфиге есть (свой фон, выбранный через диалог)
                 applyBgImage(launcherSettings.bg_data);
+                // Прогреваем уменьшенное превью для карточки «Своя» заранее,
+                // чтобы пикер при первом открытии не декодировал полный размер
+                _customBgThumb(launcherSettings.bg_data);
             } else if (launcherSettings.bg_image) {
                 // Файловые обои в конфиге больше не хранятся (2.8 МБ на каждое
                 // чтение) — они лежат в wallpapers/. В CSS имя файла не подставляем:
