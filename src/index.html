@@ -359,13 +359,13 @@
         }
 
         .interface > * {
-            animation: interfaceFadeSoft 0.5s ease-out;
+            animation: interfaceFadeSoft 0.34s ease-out;
         }
 
         /* У .left-panel свой keyframes со сдвигом — у карточки нет позиционного
            transform, который можно затереть. */
         .interface > .left-panel {
-            animation: interfaceFadeIn 0.5s ease-out;
+            animation: interfaceFadeIn 0.34s ease-out;
         }
 
         /* launch-screen исключён: он невидим (opacity:0) пока не получит
@@ -388,16 +388,19 @@
 
         /* Вход меню после закрытия настроек — ТОЛЬКО fade + blur, без
            подъёма (fix «почему меню выезжает снизу»: translateY(12px) был
-           унаследован от entrance-анимации модов). Линейная кривая 0.8с:
-           панель настроек гаснет ~440мс и полностью перекрывает меню, пока
+           унаследован от entrance-анимации модов). Линейная кривая 0.46с
+           (жалоба 08.11 «меню долго появляется»: было 0.8с — ускорили и
+           sink-закрытие до 0.26с, чтобы фазы сошлись):
+           панель настроек гаснет ~300мс и полностью перекрывает меню, пока
            вход шёл ease-out — вся blur-фаза проходила за панелью, и меню
            «появлялось» уже чётким (fix «меню без блюра»). При линейной
            к моменту исчезновения панели меню ещё размыто (~7px) и плавно
-           проявляется до чёткого на глазах. Селектор повторяет menu-out
+           проявляется до чёткого на глазах — 0.46 > 0.3, поэтому фаза
+           за панелью сохраняется. Селектор повторяет menu-out
            (порядок: menu-out ниже — при повторном открытии во время
            входа выигрывает fade-out). */
         .interface.reveal-in > *:not(.right-panel):not(#launchScreen) {
-            animation: interfaceReveal 0.8s linear;
+            animation: interfaceReveal 0.46s linear;
         }
 
         @keyframes interfaceReveal {
@@ -1903,7 +1906,7 @@
         .script-detail-overlay.closing                { animation: overlayFadeOut 0.25s ease forwards; }
         .script-detail-overlay.closing .sd-panel     { animation: slideOutRight 0.22s ease forwards; }
 
-        .settings-panel.closing { animation: settingsSink 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards; }
+        .settings-panel.closing { animation: settingsSink 0.26s cubic-bezier(0.4, 0, 0.2, 1) forwards; }
         /* Закрытие из пикера обоев: та же анимация, но на «левой» позиции */
         .settings-panel.wp-mode.closing { animation-name: settingsSinkWp; }
 
@@ -1928,14 +1931,14 @@
            под ним, titlebar, version-stable…) пересчитывают СВОЙ backdrop-
            блюр каждый кадр, пока панель отъезжает/возвращается. Гасим их блюр
            ТОЛЬКО на время анимации (body.settings-anim ставит openSettings/
-           closeSettings на 0.55с); сами элементы остаются видимыми — без
+           closeSettings на 0.42с); сами элементы остаются видимыми — без
            дымки они на полсекунды, на фоне анимации незаметно.
            Замер (V22 vs mode:smooth): 21.1 → 17.6 мс, рывков 18 → 1.
            Свою панель и её подэлементы правило НЕ трогает — ими управляют
            режимы (fade/full держат блюр включённым всё время).
            Пилюли тайтлбара (#tbTitle/#tbButtons) ИЗ КЛЮЧА: они статичны и
            крошечны (пересчёт дёшев), а пользователь замечает их мигание —
-           блюр пропадал на 0.55с при каждом открытии/закрытии настроек. */
+           блюр пропадал на 0.55с (тогдашняя длительность) при каждом открытии/закрытии настроек. */
         body.settings-anim *:not(.settings-panel):not(.settings-panel *)
             :not(#tbTitle):not(#tbButtons) {
             backdrop-filter: none !important;
@@ -1962,7 +1965,7 @@
            full (живой backdrop всю анимацию) — 18.5мс / 14 рывков,
            baked (запечённая копия обоев) — 16.7мс / 0 = уровень пола.
            Поэтому в режимах full/fade на время анимации (body.settings-anim,
-           0.55с) панель, навигация и её подэлементы теряют свой backdrop —
+           0.42с) панель, навигация и её подэлементы теряют свой backdrop —
            стекло с первого кадра даёт заранее запечённый слой #settingsBaked
            (см. блок «Идея №1» у _markSettingsAnim). Потом включается обычный
            статичный backdrop — на неподвижной панели он считается один раз.
@@ -2005,7 +2008,7 @@
             -webkit-backdrop-filter: none !important;
         }
 
-        /* «Моды»: на время анимации open/close (body.mods-anim, 0.55с) под
+        /* «Моды»: на время анимации open/close (body.mods-anim, 0.42с) под
            модалкой вместо живого backdrop-filter — запечённый слой #modsBaked
            (тот же stage, что у панели настроек, но со своим тинтом 0.9).
            Только режимы full/fade — как у настроек; pop/smooth оставляют
@@ -2099,10 +2102,10 @@
         html.anim-fade .settings-panel.closing     { animation-name: settingsSinkFade; }
         html.anim-fade .settings-panel.wp-mode.closing { animation-name: settingsSinkWpFade; }
 
-        .folder-modal.closing { animation: settingsSink 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards; }
+        .folder-modal.closing { animation: settingsSink 0.26s cubic-bezier(0.4, 0, 0.2, 1) forwards; }
 
         /* Закрытие «Модов» — та же длительность/кривая, что у настроек и папки */
-        .mods-modal.closing { animation: modsSink 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards; }
+        .mods-modal.closing { animation: modsSink 0.26s cubic-bezier(0.4, 0, 0.2, 1) forwards; }
 
         .cre-header {
             display: flex;
@@ -8244,6 +8247,22 @@
                                 </span>
                             </span>
                         </div>
+                        <div class="debug-row">
+                            <span class="debug-label">Лимит FPS анимаций</span>
+                            <span class="debug-value">
+                                <span class="dbg-anim-group" id="dbgFpsGroup">
+                                    <button type="button" data-fps="0"   onclick="setAnimFps(0)">Без лимита</button><button type="button" data-fps="120" onclick="setAnimFps(120)">120</button><button type="button" data-fps="60"  onclick="setAnimFps(60)">60</button><button type="button" data-fps="30"  onclick="setAnimFps(30)">30</button>
+                                </span>
+                            </span>
+                        </div>
+                        <div class="debug-row">
+                            <span class="debug-label">Замер кадров</span>
+                            <span class="debug-value" id="dbgFpsMeter">—</span>
+                        </div>
+                        <div class="debug-row">
+                            <span class="debug-label">Что это</span>
+                            <span class="debug-value">Потолок кадров CSS-анимаций (фейды, выезды, панели). «Без лимита» = частота экрана — выше веб-анимации не бывают. Лимит ниже — анимации отрисовываются реже (проверка плавности). Сохраняется в localStorage airAnimFps</span>
+                        </div>
                     </div>
 
                     <div class="dbg-card">
@@ -9002,22 +9021,22 @@
             document.body.classList.add('settings-anim');
             clearTimeout(_settingsAnimT);
             _settingsAnimT = setTimeout(() =>
-                document.body.classList.remove('settings-anim'), 550);
+                document.body.classList.remove('settings-anim'), 420);
         }
 
-        // Аналог для модалки «Моды»: на 0.55с гасит backdrop внешних слоёв
+        // Аналог для модалки «Моды»: на 0.42с гасит backdrop внешних слоёв
         // и включает запечённый слой #modsBaked (CSS-гейты full/fade).
         let _modsAnimT = 0;
         function _markModsAnim() {
             document.body.classList.add('mods-anim');
             clearTimeout(_modsAnimT);
             _modsAnimT = setTimeout(() =>
-                document.body.classList.remove('mods-anim'), 550);
+                document.body.classList.remove('mods-anim'), 420);
         }
 
         // ── Идея №1: запечённый фон-блюр панели настроек ──────────────────
         // На время анимации open/close (режимы full/fade, пока на body стоит
-        // settings-anim — 0.55с) под панелью вместо живого backdrop-filter
+        // settings-anim — 0.42с) под панелью вместо живого backdrop-filter
         // лежит заранее запечённая копия обоев: размытый cover-кадр всего
         // окна (как #container), сдвинутый так, что под панелью видна
         // правильная его часть. Запекается один проход при старте/смене
@@ -10945,8 +10964,9 @@
                         k.id !== 'launchScreen' &&
                         (wasDisplayNone || getComputedStyle(k).visibility === 'hidden'));
                     // После настроек — вход reveal-in (fade+blur, БЕЗ подъёма,
-                    // линейный 0.8с — см. @keyframes interfaceReveal); после
-                    // модов — прежний interfaceFadeIn. reveal-in снимаем ТОЛЬКО
+                    // линейный 0.46с — см. @keyframes interfaceReveal); после
+                    // модов — прежний interfaceFadeIn (0.34с). reveal-in снимаем
+                    // ТОЛЬКО
                     // пока .interface ещё display:none: смена animation-name на
                     // видимом элементе перезапустила бы interfaceFadeIn, и меню
                     // «въехало» бы повторно. Между визитами в настройки класс
@@ -10988,7 +11008,7 @@
                         }
                         // reveal-in здесь НЕ снимаем (см. выше): на видимом
                         // элементе это перезапустило бы interfaceFadeIn.
-                    }, reveal ? 1000 : 600); // reveal 0.8с, базовый 0.5с + запас, страховка если animationstart не пришёл
+                    }, reveal ? 600 : 450); // reveal 0.46с, базовый 0.34с + запас, страховка если animationstart не пришёл
                 } else {
                     // Меню уже видно — просто гарантируем показ (без перезапуска фейда)
                     iface.style.display = 'flex';
@@ -11073,8 +11093,8 @@
         }
 
         function closeFolderModal() {
-            // 440мс = анимации settingsSink (0.4s) + запас на кадр
-            _closeWithAnim(folderModal, () => { folderModal.style.display = 'none'; }, 440);
+            // 300мс = анимации settingsSink (0.26s) + запас на кадр
+            _closeWithAnim(folderModal, () => { folderModal.style.display = 'none'; }, 300);
         }
 
         // ---- МОДЫ (fullscreen) ----
@@ -11084,7 +11104,7 @@
             // закрытие шло по ветке «меню было скрыто» и входил базовый
             // interfaceFadeIn (блюр выгорал за первые мс за непрозрачной модалкой) —
             // меню появлялось резко и без блюра. С menu-out закрытие идёт по
-            // reveal-in (fade+blur 0.8с) — как после настроек.
+            // reveal-in (fade+blur 0.46с) — как после настроек.
             document.querySelector('.interface').classList.add('menu-out');
             // Язычок новостей уезжает в бок, а не стоит, пока модалка поднимается
             // (модалка стартует с opacity 0 — под ней всё видно)
@@ -11121,10 +11141,10 @@
             // scale; маркер гасит внешние блюры на время sink-анимации
             _markModsAnim();
             _alignModsBaked();
-            // 440мс = анимации modsSink (0.4s) + запас на кадр
+            // 300мс = анимации modsSink (0.26s) + запас на кадр
             _closeWithAnim(modal, () => {
                 modal.style.display = 'none';
-            }, 440);
+            }, 300);
         }
 
         // Плавное переключение вкладок «Моды»: старая панель уезжает и гаснет,
@@ -16053,7 +16073,7 @@
         }
 
         function closeSettings() {
-            // Длительность = анимации settingsSink (0.4s) + запас на кадр
+            // Длительность = анимации settingsSink (0.26s) + запас на кадр
             _markSettingsAnim();   // внешние блюры гаснут на время sink-анимации
             // Запечённый фон-блюр (идея №1): до .closing — координаты без
             // scale; wp-mode ещё на панели — кусок окна берём под «левым»
@@ -16068,7 +16088,8 @@
                 const cats = document.getElementById('patchesCategories');
                 if (cats) cats.innerHTML = '';
                 _lucideObserver.observe(document.body, { childList: true, subtree: true });
-            }, 440);
+                if (typeof _stopFpsMeter === 'function') _stopFpsMeter(); // замер кадров — только пока панель открыта
+            }, 300);
         }
 
         async function saveSettings() {
@@ -16899,6 +16920,125 @@
             _syncAnimModeUI();
         }
 
+        // ── Лимит FPS для CSS-анимаций (карточка «Анимации», вкладка Отладка) ──
+        // Веб-анимации привязаны к vsync экрана — потолок сверху задаёт сам
+        // монитор («Без лимита» = его частота, выше веб-анимации не бывают).
+        // Здесь ограничиваем СНИЗУ: губернатор берёт все document.getAnimations()
+        // на паузу и продвигает их currentTime квантами 1000/N мс по своему
+        // rAF-тику — визуально анимация отрисовывается ровно N раз в секунду.
+        // Кванты накапливаются по РЕАЛЬНОМУ времени, поэтому «длительность в
+        // стенах» не меняется (0.46с остаётся 0.46с) и все setTimeout-колбэки
+        // закрытий (300мс) синхронизированы с анимацией. Новые анимации
+        // (созданные после включения) подхватываются сами на ближайшем тике.
+        // Хранение: localStorage 'airAnimFps' (0 = без лимита), как airAnimMode.
+        const FPS_OPTIONS = [0, 120, 60, 30];
+        let _fpsCap = 0;            // 0 = лимита нет
+        let _fpsQuantum = 0;        // мс анимационного кадра (1000/N)
+        let _fpsFrames = 0;         // сколько квантов отмотано (глобальная шкала)
+        let _fpsAcc = 0;            // накопленная реальная дельта, мс
+        let _fpsLastTs = 0;         // метка прошлого тика rAF
+        let _fpsRaf = 0;            // id цикла губернатора
+        let _fpsCommits = 0;        // отрисованных кадров анимации в секунду (замер)
+        let _fpsCommitsAcc = 0;
+        const _fpsHeld = new Map(); // Animation -> базовый currentTime на момент захвата
+
+        function setAnimFps(n) {
+            n = parseInt(n, 10);
+            if (FPS_OPTIONS.indexOf(n) < 0) n = 0;
+            try { localStorage.setItem('airAnimFps', String(n)); } catch (e) {}
+            _applyAnimFps(n);
+            _syncFpsUI();
+        }
+
+        function _applyAnimFps(n) {
+            if (_fpsCap) {   // старый лимит снимаем — анимации продолжают с того же места
+                for (const a of _fpsHeld.keys()) { try { a.play(); } catch (e) {} }
+                _fpsHeld.clear();
+            }
+            _fpsCap = n;
+            _fpsQuantum = n ? 1000 / n : 0;
+            _fpsFrames = 0; _fpsAcc = 0; _fpsLastTs = 0; _fpsCommitsAcc = 0;
+            if (n && !_fpsRaf) _fpsRaf = requestAnimationFrame(_fpsTick);
+            if (!n && _fpsRaf) { cancelAnimationFrame(_fpsRaf); _fpsRaf = 0; }
+        }
+
+        function _fpsTick(ts) {
+            _fpsRaf = requestAnimationFrame(_fpsTick);
+            if (!_fpsCap) return;
+            if (!_fpsLastTs) { _fpsLastTs = ts; return; }
+            _fpsAcc += ts - _fpsLastTs;
+            _fpsLastTs = ts;
+            const steps = Math.floor(_fpsAcc / _fpsQuantum);
+            if (steps <= 0) return;             // квант не набран — кадра нет
+            _fpsAcc -= steps * _fpsQuantum;     // хвост оставляем (без дрейфа)
+            _fpsFrames += steps;
+            _fpsCommitsAcc++;                   // видимый кадр = 1 коммит на тик
+            const t = _fpsFrames * _fpsQuantum;
+            const anims = (typeof document.getAnimations === 'function')
+                ? document.getAnimations() : [];
+            for (const a of anims) {
+                let base = _fpsHeld.get(a);
+                if (base === undefined) {
+                    // новая анимация — захватываем: база под текущий глобальный
+                    // тик, чтобы позиция уже начавшейся не дёрнулась
+                    base = a.currentTime - t;
+                    _fpsHeld.set(a, base);
+                    try { a.pause(); } catch (e) {}
+                }
+                try { a.currentTime = base + t; } catch (e) {}
+            }
+            // выбывшие из документа (отмена, конец без fill) чистим — им больше
+            // не пишем currentTime (иначе fill-forwards можно было бы «отмотать»)
+            if (_fpsHeld.size > anims.length) {
+                const live = new Set(anims);
+                for (const k of _fpsHeld.keys()) if (!live.has(k)) _fpsHeld.delete(k);
+            }
+        }
+
+        function _syncFpsUI() {
+            const g = document.getElementById('dbgFpsGroup');
+            if (g) g.querySelectorAll('button').forEach(b =>
+                b.classList.toggle('sel', b.dataset.fps === String(_fpsCap)));
+            _startFpsMeter();
+        }
+
+        // Замер: частота экрана (rAF) и фактически отрисованные кадры анимации
+        // (коммиты губернатора). Панель закрыта — считаем, но в DOM не пишем
+        // (offsetParent скрытого элемента пустой). Запускается при открытии
+        // настроек (loadDebugInfo → _syncFpsUI), останавливается в closeSettings.
+        let _fpsMeterRaf = 0, _fpsMeterTs = 0, _fpsMeterN = 0;
+        function _startFpsMeter() {
+            if (_fpsMeterRaf) return;
+            _fpsMeterTs = 0; _fpsMeterN = 0; _fpsCommitsAcc = 0;
+            _fpsMeterRaf = requestAnimationFrame(_fpsMeterTick);
+        }
+        function _stopFpsMeter() {
+            if (_fpsMeterRaf) { cancelAnimationFrame(_fpsMeterRaf); _fpsMeterRaf = 0; }
+        }
+        function _fpsMeterTick(ts) {
+            _fpsMeterRaf = requestAnimationFrame(_fpsMeterTick);
+            if (!_fpsMeterTs) { _fpsMeterTs = ts; _fpsCommitsAcc = 0; return; }
+            _fpsMeterN++;
+            const el = document.getElementById('dbgFpsMeter');
+            if (!el || !el.offsetParent) return;
+            if (ts - _fpsMeterTs >= 1000) {
+                const dt = ts - _fpsMeterTs;
+                const screen = Math.round(_fpsMeterN * 1000 / dt);
+                const anim = _fpsCap ? Math.round(_fpsCommitsAcc * 1000 / dt) : screen;
+                el.textContent = 'экран ' + screen + ' к/с • анимации ' + anim + ' к/с' +
+                    (_fpsCap ? ' (лимит ' + _fpsCap + ')' : ' (без лимита)');
+                _fpsMeterN = 0; _fpsCommitsAcc = 0; _fpsMeterTs = ts;
+            }
+        }
+
+        // Применяем сохранённый лимит сразу при старте
+        (function initAnimFps() {
+            let v = 0;
+            try { v = parseInt(localStorage.getItem('airAnimFps'), 10) || 0; } catch (e) {}
+            if (FPS_OPTIONS.indexOf(v) < 0) v = 0;
+            if (v) _applyAnimFps(v);
+        })();
+
         // ── Демо-прогресс обновления лаунчера (вкладка Debug, только графика) ──
         // Шлёт фейковые события в общий хаб _onLauncherInstallProgress: открывает
         // оверлей установки и двигает полосу gpBar. Ничего не качает, бэкенд не
@@ -16934,6 +17074,7 @@
 
         async function loadDebugInfo() {
             _syncAnimModeUI();
+            _syncFpsUI();
             _syncCompactUI();
             _syncForcePluginUI();
             try {
@@ -18095,7 +18236,7 @@
             // («уход вглубь»: рост + размытие + затухание), а не мгновенно.
             // closeSettings внутри сразу показывает главный экран и возвращает
             // язычок новостей (_showMainInterface снимает news-away), а через
-            // 440мс прячет панель и сбрасывает wp-mode.
+            // 300мс прячет панель и сбрасывает wp-mode.
             closeSettings();
             // Show float bar
             const bar = document.getElementById('layoutFloatBar');
