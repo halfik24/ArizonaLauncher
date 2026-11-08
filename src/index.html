@@ -3802,6 +3802,27 @@
             gap: 14px !important;
         }
 
+        /* ── Уборка вкладки «Лаунчер» (08.11): сетки по 2 колонки ──
+           Обёртка — flex-ребёнок #launcherTab, ей нужен flex-shrink:0,
+           иначе сожмётся и обрежется (overflow:hidden у .s-section)
+           вместо скролла вкладки. minmax(0,1fr) — колонка не распирается
+           длинным текстом (ellipsis на .launch-item-name). */
+        #launcherTab .lt-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 14px;
+            flex-shrink: 0;
+        }
+        /* Два тумблера в одну линию внутри карточки (без инлайн-margin:
+           горизонтальные отступы даёт сама обёртка) */
+        #launcherTab .lt-toggles {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 8px;
+            padding: 8px 16px;
+            flex-shrink: 0;
+        }
+
         .wp-section-title {
             font-family: 'Montserrat Alternates', sans-serif;
             font-size: 11px;
@@ -7970,28 +7991,50 @@
                 <!-- Лаунчер -->
                 <div id="launcherTab" class="settings-tab-content">
 
+                    <!-- Обои — наверху (просьба 08.11): быстрый доступ,
+                         раньше висели после всех карточек -->
+                    <div class="wp-section-title"><i data-lucide="image"></i> ОБОИ</div>
+                    <div class="wp-controls">
+                        <button class="s-btn" onclick="openWallpaperPicker()" style="height:36px;">
+                            <i data-lucide="images" style="width:14px;height:14px;"></i> Обои
+                        </button>
+                        <label class="launch-item wp-old-style" title="Сетка обоев прямо под кнопкой, как раньше"
+                               onclick="event.preventDefault(); toggleWallpaperOldStyle(!document.getElementById('wpOldStyleCheck').checked)">
+                            <input type="checkbox" id="wpOldStyleCheck">
+                            <div class="s-toggle"></div>
+                            <div class="launch-item-text">
+                                <span class="launch-item-name">Старый стиль</span>
+                            </div>
+                        </label>
+                    </div>
+                    <div id="wallpaperGrid" class="wallpaper-grid" style="display:none;"></div>
+
                     <div class="s-section" style="flex-shrink:0;">
                         <div class="s-section-head">
                             <span class="s-section-head-icon"><i data-lucide="hard-drive-download"></i></span>
                             <span class="s-section-title">Установка игры</span>
                         </div>
                         <div class="s-section-body">
-                            <label class="launch-item" style="margin:8px 16px;"
-                                   onclick="event.preventDefault(); toggleGameUpdateFuture()">
-                                <input type="checkbox" id="gameUpdateFutureCheck">
-                                <div class="s-toggle"></div>
-                                <div class="launch-item-text">
-                                    <span class="launch-item-name">Новая графика (future)</span>
-                                </div>
-                            </label>
-                            <label class="launch-item" style="margin:8px 16px;"
-                                   onclick="event.preventDefault(); toggleGameUpdateCheckOnStart()">
-                                <input type="checkbox" id="gameCheckOnStartCheck">
-                                <div class="s-toggle"></div>
-                                <div class="launch-item-text">
-                                    <span class="launch-item-name">Проверять обновления при запуске</span>
-                                </div>
-                            </label>
+                            <!-- Два тумблера в одну линию (уборка 08.11):
+                                 инлайн margin убран — отступы у обёртки -->
+                            <div class="lt-toggles">
+                                <label class="launch-item"
+                                       onclick="event.preventDefault(); toggleGameUpdateFuture()">
+                                    <input type="checkbox" id="gameUpdateFutureCheck">
+                                    <div class="s-toggle"></div>
+                                    <div class="launch-item-text">
+                                        <span class="launch-item-name">Новая графика (future)</span>
+                                    </div>
+                                </label>
+                                <label class="launch-item"
+                                       onclick="event.preventDefault(); toggleGameUpdateCheckOnStart()">
+                                    <input type="checkbox" id="gameCheckOnStartCheck">
+                                    <div class="s-toggle"></div>
+                                    <div class="launch-item-text">
+                                        <span class="launch-item-name">Проверять обновления при запуске</span>
+                                    </div>
+                                </label>
+                            </div>
                             <div class="s-input-row" style="justify-content:flex-start; gap:10px;">
                                 <span class="s-input-label" style="flex:none;">Лимит скорости, МБ/с</span>
                                 <input type="number" id="gameUpdateLimitInput" class="s-input" min="0" max="1000" step="1"
@@ -8031,6 +8074,8 @@
                         </div>
                     </div>
 
+                    <!-- Мелкие карточки по 2 в ряд (уборка 08.11) -->
+                    <div class="lt-grid">
                     <div class="s-section" style="flex-shrink:0;">
                         <div class="s-section-head">
                             <span class="s-section-head-icon"><i data-lucide="file-pen-line"></i></span>
@@ -8096,6 +8141,7 @@
                             </label>
                         </div>
                     </div>
+                    </div><!-- /.lt-grid: Заголовок окна, Рамка окна, Положение панели, Профили -->
 
                     <div class="s-section">
                         <div class="s-section-head">
@@ -8129,22 +8175,6 @@
                             </div>
                         </div>
                     </div>
-
-                    <div class="wp-section-title"><i data-lucide="image"></i> ОБОИ</div>
-                    <div class="wp-controls">
-                        <button class="s-btn" onclick="openWallpaperPicker()" style="height:36px;">
-                            <i data-lucide="images" style="width:14px;height:14px;"></i> Обои
-                        </button>
-                        <label class="launch-item wp-old-style" title="Сетка обоев прямо под кнопкой, как раньше"
-                               onclick="event.preventDefault(); toggleWallpaperOldStyle(!document.getElementById('wpOldStyleCheck').checked)">
-                            <input type="checkbox" id="wpOldStyleCheck">
-                            <div class="s-toggle"></div>
-                            <div class="launch-item-text">
-                                <span class="launch-item-name">Старый стиль</span>
-                            </div>
-                        </label>
-                    </div>
-                    <div id="wallpaperGrid" class="wallpaper-grid" style="display:none;"></div>
 
                 </div>
 
