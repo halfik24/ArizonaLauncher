@@ -15,11 +15,16 @@
         (function () {
             var MODES = ['fade', 'pop', 'smooth', 'full'];
             var BLURS = [8, 12, 16, 24, 32];
-            var m = null, b = null, c = null;
+            var m = null, b = null, c = null, sn = null, vg = null, fr = null;
             try {
                 m = localStorage.getItem('airAnimMode');
                 b = parseInt(localStorage.getItem('airBlur'), 10);
                 c = localStorage.getItem('arp_compactMenu');
+                // Зимние эффекты (дебаг → карточка «Зима»): до декабря
+                // выключены, класс до первой отрисовки чтобы не мигало
+                sn = localStorage.getItem('airSnow');
+                vg = localStorage.getItem('airVignette');
+                fr = localStorage.getItem('airFrost');
             } catch (e) {}
             if (MODES.indexOf(m) < 0) m = 'full';
             if (BLURS.indexOf(b) < 0) b = 24;
@@ -28,6 +33,9 @@
             // Компактное меню — эксперимент из дебага («а что если», не
             // постоянный режим), см. setCompactMenu; класс до первой отрисовки
             if (c === '1') document.documentElement.className += ' compact-menu';
+            if (sn === '1') document.documentElement.className += ' winter-snow';
+            if (vg === '1') document.documentElement.className += ' winter-vignette';
+            if (fr === '1') document.documentElement.className += ' winter-frost';
         })();
     </script>
     <style>
@@ -6498,6 +6506,55 @@
             color: #fff;
         }
 
+        /* ── Зимние эффекты (дебаг → карточка «Зима»,08.11) ─────────────
+           Включаются классами winter-* на <html> (ставит скрипт в <head> из
+           localStorage airSnow/airVignette/airFrost; всё по умолчанию выкл —
+           декабрь не наступил). Оверлеи pointer-events:none, z=9000/9001:
+           под тайтлбаром (100000), тостами (99999) и feedbackFab (9999),
+           но над всеми панелями/модалками (≤1500). */
+        #winterSnow {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            z-index: 9000;
+            pointer-events: none;
+        }
+        html.winter-snow #winterSnow { display: block; }
+
+        /* Морозная тёмная виньетка: тёмный краевой градиент + ледяной
+           синий отлив по краям. Над снегом — снежинки у краёв уходят
+           в темноту (глубина). */
+        html.winter-vignette body::after {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 9001;
+            pointer-events: none;
+            background:
+                radial-gradient(ellipse 130% 110% at 50% 45%, rgba(0,0,0,0) 55%, rgba(3,7,13,0.62) 100%),
+                radial-gradient(ellipse 120% 100% at 50% 42%, rgba(0,0,0,0) 62%, rgba(150,200,255,0.10) 100%);
+        }
+
+        /* Иней на кнопках при наведении: backdrop полупрозрачной кнопки
+           блюрится и освечается (её фон становится «мёрзлым»), плюс
+           ледяной ободок inset-тенью. Окно-пилюли (#tbButtons) исключены —
+           у них свой красный hover. transition продублирован списком
+           dbg-кнопок, чтобы фон не щёлкал мгновенно. */
+        html.winter-frost button:hover:not(#tbButtons button) {
+            backdrop-filter: blur(8px) brightness(1.3) saturate(1.45);
+            -webkit-backdrop-filter: blur(8px) brightness(1.3) saturate(1.45);
+            outline: 1px solid rgba(214, 240, 255, 0.5);
+            outline-offset: -1px;
+            box-shadow: inset 0 0 14px rgba(170, 220, 255, 0.22), 0 0 10px rgba(140, 205, 255, 0.12);
+            transition: background 0.15s, border-color 0.15s, color 0.15s,
+                        backdrop-filter 0.25s, -webkit-backdrop-filter 0.25s,
+                        outline-color 0.25s, box-shadow 0.25s;
+        }
+
         /* ── О программе ── */
         .about-hero { align-items: center; text-align: center; gap: 6px; padding: 24px 18px; }
         .about-logo {
@@ -7406,6 +7463,9 @@
 
     <!-- Toast контейнер для глобальных уведомлений -->
     <div id="toastContainer" style="position:fixed; right:20px; z-index:9999; display:flex; flex-direction:column; gap:8px; max-width:360px;"></div>
+    <!-- Зимний снег: canvas на весь экран, включается классом winter-snow
+         на <html> (дебаг → карточка «Зима»), движок setWinterFx внизу -->
+    <canvas id="winterSnow" aria-hidden="true"></canvas>
     <style>
         .dll-toast { display:flex; align-items:flex-start; gap:10px; padding:12px 14px; border-radius:8px; background:rgba(255,68,68,0.15); border:1px solid rgba(255,68,68,0.3); box-shadow:0 4px 20px rgba(0,0,0,0.4); animation:slideIn 0.3s ease; cursor:default; overflow:hidden; transition:width 0.35s ease, padding 0.35s ease, border-radius 0.35s ease, opacity 0.35s ease, background 0.35s ease, border-color 0.35s ease, max-height 0.35s ease; width:100%; }
         .dll-toast.collapsed { width:36px; height:36px; padding:0; border-radius:50%; background:rgba(255,68,68,0.35); border-color:rgba(255,68,68,0.5); cursor:pointer; justify-content:center; align-items:center; max-height:36px; }
@@ -8262,6 +8322,38 @@
                         <div class="debug-row">
                             <span class="debug-label">Что это</span>
                             <span class="debug-value">Потолок кадров CSS-анимаций (фейды, выезды, панели). «Без лимита» = частота экрана — выше веб-анимации не бывают. Лимит ниже — анимации отрисовываются реже (проверка плавности). Сохраняется в localStorage airAnimFps</span>
+                        </div>
+                    </div>
+
+                    <div class="dbg-card">
+                        <div class="debug-section-title"><i data-lucide="snowflake"></i> Зима</div>
+                        <div class="debug-row">
+                            <span class="debug-label">Снег</span>
+                            <span class="debug-value">
+                                <span class="dbg-anim-group" id="dbgSnowGroup">
+                                    <button type="button" data-w="0" onclick="setWinterFx('snow', 0)">Выкл</button><button type="button" data-w="1" onclick="setWinterFx('snow', 1)">Вкл</button>
+                                </span>
+                            </span>
+                        </div>
+                        <div class="debug-row">
+                            <span class="debug-label">Виньетка</span>
+                            <span class="debug-value">
+                                <span class="dbg-anim-group" id="dbgVignetteGroup">
+                                    <button type="button" data-w="0" onclick="setWinterFx('vignette', 0)">Выкл</button><button type="button" data-w="1" onclick="setWinterFx('vignette', 1)">Вкл</button>
+                                </span>
+                            </span>
+                        </div>
+                        <div class="debug-row">
+                            <span class="debug-label">Иней на кнопках</span>
+                            <span class="debug-value">
+                                <span class="dbg-anim-group" id="dbgFrostGroup">
+                                    <button type="button" data-w="0" onclick="setWinterFx('frost', 0)">Выкл</button><button type="button" data-w="1" onclick="setWinterFx('frost', 1)">Вкл</button>
+                                </span>
+                            </span>
+                        </div>
+                        <div class="debug-row">
+                            <span class="debug-label">Что это</span>
+                            <span class="debug-value">Сезонные эффекты к декабрю (пока живут только здесь, все по умолчанию выкл): снег падает поверх интерфейса, морозная виньетка темнит края с ледяным отливом, при наведении на кнопки их фон покрывается инеем. Хранится в localStorage airSnow/airVignette/airFrost</span>
                         </div>
                     </div>
 
@@ -17039,6 +17131,113 @@
             if (v) _applyAnimFps(v);
         })();
 
+        // ── Зимние эффекты (дебаг → карточка «Зима») ─────────────────────
+        // Три независимых флага: класс winter-* на <html> (ставит скрипт в
+        // <head> до отрисовки), localStorage airSnow/airVignette/airFrost
+        // ('1'/'0', дефолт выкл — сезон не наступил). Виньетка и иней на
+        // кнопках — чистый CSS под классами; снег — canvas-движок на СВОЁМ
+        // rAF: губернатор airAnimFps ставит на паузу только
+        // document.getAnimations(), ему снег не мешает и наоборот.
+        const WINTER_FX = ['snow', 'vignette', 'frost'];
+        const WINTER_STORE = { snow: 'airSnow', vignette: 'airVignette', frost: 'airFrost' };
+
+        function setWinterFx(key, on) {
+            if (WINTER_FX.indexOf(key) < 0) return;
+            on = !!on;
+            try { localStorage.setItem(WINTER_STORE[key], on ? '1' : '0'); } catch (e) {}
+            document.documentElement.classList.toggle('winter-' + key, on);
+            if (key === 'snow') { on ? _snowStart() : _snowStop(); }
+            _syncWinterUI();
+        }
+
+        function _syncWinterUI() {
+            for (const k of WINTER_FX) {
+                const g = document.getElementById('dbg' + k.charAt(0).toUpperCase() + k.slice(1) + 'Group');
+                if (g) {
+                    const on = document.documentElement.classList.contains('winter-' + k);
+                    g.querySelectorAll('button').forEach(b =>
+                        b.classList.toggle('sel', (b.dataset.w === '1') === on));
+                }
+            }
+        }
+
+        // ── Движок снега ──────────────────────────────────────────────────
+        // Канвас на весь экран (z=9000, pointer-events:none): N снежинок
+        // падают с качкой (sin), внизу переносятся наверх. dt ограничен
+        // 50мс — после сворачивания окна кадр не «телепортирует» холсты.
+        const _snow = { raf: 0, ctx: null, w: 0, h: 0, dpr: 1, flakes: [], last: 0 };
+        const SNOW_COUNT = 90;
+        const _snowRand = (a, b) => a + Math.random() * (b - a);
+
+        function _snowFlake(y) {
+            return {
+                x: _snowRand(0, _snow.w),
+                y: y,
+                r: _snowRand(0.8, 2.6),
+                vy: _snowRand(18, 55),                 // px/сек
+                amp: _snowRand(6, 26),                // амплитуда качки, px
+                ph: _snowRand(0, Math.PI * 2),        // фаза качки
+                vw: _snowRand(0.25, 0.7),             // оборотов качки в сек
+                op: _snowRand(0.25, 0.85),
+            };
+        }
+
+        function _snowResize() {
+            const c = document.getElementById('winterSnow');
+            if (!c) return;
+            _snow.dpr = window.devicePixelRatio || 1;
+            _snow.w = window.innerWidth;
+            _snow.h = window.innerHeight;
+            c.width = Math.round(_snow.w * _snow.dpr);
+            c.height = Math.round(_snow.h * _snow.dpr);
+            c.style.width = _snow.w + 'px';
+            c.style.height = _snow.h + 'px';
+            _snow.ctx = c.getContext('2d');
+            _snow.ctx.setTransform(_snow.dpr, 0, 0, _snow.dpr, 0, 0);
+        }
+
+        function _snowStart() {
+            if (_snow.raf) return;
+            _snowResize();
+            if (!_snow.flakes.length)
+                for (let i = 0; i < SNOW_COUNT; i++)
+                    _snow.flakes.push(_snowFlake(_snowRand(0, _snow.h)));
+            window.addEventListener('resize', _snowResize);
+            _snow.last = 0;
+            _snow.raf = requestAnimationFrame(_snowTick);
+        }
+
+        function _snowStop() {
+            if (_snow.raf) { cancelAnimationFrame(_snow.raf); _snow.raf = 0; }
+            window.removeEventListener('resize', _snowResize);
+            if (_snow.ctx) _snow.ctx.clearRect(0, 0, _snow.w, _snow.h);
+        }
+
+        function _snowTick(ts) {
+            _snow.raf = requestAnimationFrame(_snowTick);
+            const dt = Math.min((ts - (_snow.last || ts)) / 1000, 0.05);
+            _snow.last = ts;
+            const ctx = _snow.ctx;
+            if (!ctx) return;
+            ctx.clearRect(0, 0, _snow.w, _snow.h);
+            for (const f of _snow.flakes) {
+                f.y += f.vy * dt;
+                f.ph += f.vw * dt * Math.PI * 2;
+                if (f.y - f.r > _snow.h) { f.y = -f.r; f.x = _snowRand(0, _snow.w); }
+                const x = f.x + Math.sin(f.ph) * f.amp;
+                ctx.globalAlpha = f.op;
+                ctx.fillStyle = '#fff';
+                ctx.beginPath();
+                ctx.arc(x, f.y, f.r, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            ctx.globalAlpha = 1;
+        }
+
+        // Снег был включён в прошлой сессии — стартуем сразу при загрузке
+        // (класс winter-snow уже стоит, разметка canvas выше по документу)
+        if (document.documentElement.classList.contains('winter-snow')) _snowStart();
+
         // ── Демо-прогресс обновления лаунчера (вкладка Debug, только графика) ──
         // Шлёт фейковые события в общий хаб _onLauncherInstallProgress: открывает
         // оверлей установки и двигает полосу gpBar. Ничего не качает, бэкенд не
@@ -17075,6 +17274,7 @@
         async function loadDebugInfo() {
             _syncAnimModeUI();
             _syncFpsUI();
+            _syncWinterUI();
             _syncCompactUI();
             _syncForcePluginUI();
             try {
