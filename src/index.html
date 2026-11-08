@@ -20,8 +20,10 @@
                 m = localStorage.getItem('airAnimMode');
                 b = parseInt(localStorage.getItem('airBlur'), 10);
                 c = localStorage.getItem('arp_compactMenu');
-                // Зимние эффекты (дебаг → карточка «Зима»): до декабря
-                // выключены, класс до первой отрисовки чтобы не мигало
+                // Зимние эффекты (дебаг → карточка «Зима»). Три состояния:
+                // '1' — явно включены (работают всегда), '0' — явно выключены
+                // (не включает даже сезон), null — сезон решает сам:
+                // с 1 декабря по 1 марта включаются сами, 1 марта — гаснут.
                 sn = localStorage.getItem('airSnow');
                 vg = localStorage.getItem('airVignette');
                 fr = localStorage.getItem('airFrost');
@@ -33,9 +35,44 @@
             // Компактное меню — эксперимент из дебага («а что если», не
             // постоянный режим), см. setCompactMenu; класс до первой отрисовки
             if (c === '1') document.documentElement.className += ' compact-menu';
-            if (sn === '1') document.documentElement.className += ' winter-snow';
-            if (vg === '1') document.documentElement.className += ' winter-vignette';
-            if (fr === '1') document.documentElement.className += ' winter-frost';
+            // Зимний сезон 1 дек → 1 мар (включительно только до 1 мар:
+            // getMonth() 11/0/1). __winterOn на window — его гоняет проба.
+            function winterOn(v, d) {
+                var mo = d.getMonth(); // 11=дек, 0=янв, 1=фев
+                var season = (mo === 11 || mo === 0 || mo === 1);
+                return v === '1' || (v !== '0' && season);
+            }
+            window.__winterOn = winterOn;
+            var now = new Date();
+            // Сезон завершён: первый запуск после 1 марта (мар–ноя) снимает
+            // явные «вкл» прошлого сезона в null — 1 марта зимний режим
+            // гаснет, включая включённое руками, и к следующему декабрю
+            // снова включается сам (null → сезон). Явное «Выкл» ('0')
+            // не трогаем — оно сильнее сезона. Маркер airWinterYear даёт
+            // снять «вкл» ровно один раз в год; при самом первом запуске
+            // (маркера нет) ничего не снимаем — только ставим маркер,
+            // чтобы не потерять только что включённое вручную.
+            var sm = now.getMonth();
+            if (sm >= 2 && sm <= 10) {
+                var wy = null;
+                try { wy = localStorage.getItem('airWinterYear'); } catch (e) {}
+                if (!wy) {
+                    try { localStorage.setItem('airWinterYear', String(now.getFullYear())); } catch (e) {}
+                } else if (+wy < now.getFullYear()) {
+                    try {
+                        localStorage.setItem('airWinterYear', String(now.getFullYear()));
+                        if (sn === '1') localStorage.removeItem('airSnow');
+                        if (vg === '1') localStorage.removeItem('airVignette');
+                        if (fr === '1') localStorage.removeItem('airFrost');
+                    } catch (e) {}
+                    if (sn === '1') sn = null;
+                    if (vg === '1') vg = null;
+                    if (fr === '1') fr = null;
+                }
+            }
+            if (winterOn(sn, now)) document.documentElement.className += ' winter-snow';
+            if (winterOn(vg, now)) document.documentElement.className += ' winter-vignette';
+            if (winterOn(fr, now)) document.documentElement.className += ' winter-frost';
         })();
     </script>
     <style>
@@ -8353,7 +8390,7 @@
                         </div>
                         <div class="debug-row">
                             <span class="debug-label">Что это</span>
-                            <span class="debug-value">Сезонные эффекты к декабрю (пока живут только здесь, все по умолчанию выкл): снег падает поверх интерфейса, морозная виньетка темнит края с ледяным отливом, при наведении на кнопки их фон покрывается инеем. Хранится в localStorage airSnow/airVignette/airFrost</span>
+                            <span class="debug-value">Сезонные эффекты: с 1 декабря по 1 марта включаются сами (если явно не выключены), 1 марта гаснут — включённое руками включается только до конца сезона, а явное «Выкл» сильнее сезона. Снег падает поверх интерфейса, морозная виньетка темнит края с ледяным отливом, при наведении на кнопки их фон покрывается инеем. Хранится в localStorage airSnow/airVignette/airFrost</span>
                         </div>
                     </div>
 
