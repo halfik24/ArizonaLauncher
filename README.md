@@ -6,7 +6,7 @@
 [![Rust](https://img.shields.io/badge/Rust-1.77.2+-orange.svg)](https://www.rust-lang.org/)
 [![Tauri](https://img.shields.io/badge/Tauri_2-green.svg)](https://tauri.app)
 [![Platform](https://img.shields.io/badge/platform-Windows_10/11-blue.svg)](#требования)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 [![Status](https://img.shields.io/badge/status-beta-blueviolet.svg)](https://github.com/halfik24/ArizonaLauncher/releases)
 
 > Лаунчер для Arizona RP на Rust + Tauri 2. Полная переработка v1 на Python/pywebview: нативный бэкенд, быстрый запуск, установщик без прав администратора.
@@ -146,4 +146,13 @@ npm run build        # релиз + установщик (src-tauri/target/relea
 
 ## Лицензия
 
-MIT — см. [LICENSE](LICENSE).
+**GPL-3.0** — см. [LICENSE](LICENSE).
+
+Что это значит на практике:
+- **можно всё**: использовать, изменять, распространять, брать деньги за копию —
+  ограничений на коммерцию и приватное использование нет;
+- **нельзя закрывать исходники**: если ты распространяешь лаунчер (или свой форк),
+  обязан вместе с бинарником предоставить исходники под той же лицензией GPL-3.0;
+- модифицированные версии обязаны распространяться под GPL-3.0 — «открытый форк
+  навсегда остаётся открытым»;
+- программное обеспечение распространяется без гарантий (GPL, раздел 15).
