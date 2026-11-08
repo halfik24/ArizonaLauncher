@@ -457,7 +457,7 @@ exe на home-pc = перенесённая сборка раунда (свер�
 перенос exe на home-pc (`tailscale file cp` + `cleanup-exe.cmd`, сверка
 SHA256).
 
-**Инструменты этого раунда** (`C:\Users\halfik\AppData\Local\Temp\opencode\`):
+**Инструменты этого раунда** (во временном каталоге сессии, не в git):
 `exp-verify-bugs.js` (16 проверок, вкл. повторный цикл open/close),
 `exp-mods-after-settings.js` (7), `exp-align.js`, `probe-mods-bake.js` (15,
 бэкинг «Модов»), `probe-header.js` (замер геометрии/шрифтов хедера),
