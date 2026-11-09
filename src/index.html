@@ -3202,6 +3202,34 @@
             color: white;
         }
 
+        /* Ползунок (количество снега): нативный range перерисовываем
+           в тонкую дорожку с белым кружком — дефолтный в WebView2
+           синий и крупный */
+        .s-range {
+            -webkit-appearance: none;
+            appearance: none;
+            flex: 1;
+            min-width: 90px;
+            height: 4px;
+            background: rgba(255, 255, 255, 0.12);
+            border-radius: 999px;
+            outline: none;
+            cursor: pointer;
+        }
+        .s-range::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background: #fff;
+            border: none;
+            cursor: pointer;
+            transition: transform 0.15s;
+        }
+        .s-range:hover::-webkit-slider-thumb { transform: scale(1.2); }
+        .s-range:focus-visible { box-shadow: 0 0 0 2px rgba(var(--accent2-rgb), 0.4); }
+
         /* У number-полей нет.sys-стрелок — стиль лаунчера однородный */
         input[type="number"] {
             -moz-appearance: textfield;
@@ -8300,7 +8328,7 @@
                             <span class="s-section-title">Компактность меню</span>
                         </div>
                         <div class="s-section-body">
-                            <label class="launch-item" style="margin:8px 16px;"
+                            <label class="launch-item" style="margin:8px 16px; width:fit-content; min-width:300px;"
                                    onclick="event.preventDefault(); setCompactMenu(!document.getElementById('compactMenuCheck').checked)">
                                 <input type="checkbox" id="compactMenuCheck">
                                 <div class="s-toggle"></div>
@@ -8321,7 +8349,7 @@
                             <span class="s-section-title">Зимние эффекты</span>
                         </div>
                         <div class="s-section-body">
-                            <label class="launch-item" style="margin:8px 16px;"
+                            <label class="launch-item" style="margin:8px 16px; width:fit-content; min-width:300px;"
                                    onclick="event.preventDefault(); setWinterFx('snow', !document.getElementById('winterSnowCheck').checked)">
                                 <input type="checkbox" id="winterSnowCheck">
                                 <div class="s-toggle"></div>
@@ -8329,7 +8357,13 @@
                                     <span class="launch-item-name">Снег</span>
                                 </div>
                             </label>
-                            <label class="launch-item" style="margin:8px 16px;"
+                            <div class="s-input-row" style="padding:0 16px 8px;">
+                                <span class="s-input-label" style="flex:none; font-size:11px; color:rgba(255,255,255,0.55);">Количество снежинок</span>
+                                <input type="range" id="snowAmountRange" class="s-range" min="30" max="180" step="5"
+                                       oninput="setSnowAmount(this.value)">
+                                <span id="snowAmountVal" style="flex:none; width:32px; text-align:right; font-family:'Montserrat Alternates', sans-serif; font-size:12px; font-weight:600; color:rgba(255,255,255,0.75);">90</span>
+                            </div>
+                            <label class="launch-item" style="margin:0 16px 8px; width:fit-content; min-width:300px;"
                                    onclick="event.preventDefault(); setWinterFx('vignette', !document.getElementById('winterVignetteCheck').checked)">
                                 <input type="checkbox" id="winterVignetteCheck">
                                 <div class="s-toggle"></div>
@@ -8337,7 +8371,7 @@
                                     <span class="launch-item-name">Морозная виньетка</span>
                                 </div>
                             </label>
-                            <label class="launch-item" style="margin:8px 16px;"
+                            <label class="launch-item" style="margin:0 16px 8px; width:fit-content; min-width:300px;"
                                    onclick="event.preventDefault(); setWinterFx('frost', !document.getElementById('winterFrostCheck').checked)">
                                 <input type="checkbox" id="winterFrostCheck">
                                 <div class="s-toggle"></div>
@@ -8345,10 +8379,19 @@
                                     <span class="launch-item-name">Иней на кнопках</span>
                                 </div>
                             </label>
+                            <label class="launch-item" style="margin:0 16px 8px; width:fit-content; min-width:300px;"
+                                   onclick="event.preventDefault(); toggleClickBurst()">
+                                <input type="checkbox" id="clickBurstCheck">
+                                <div class="s-toggle"></div>
+                                <div class="launch-item-text">
+                                    <span class="launch-item-name">Частицы при клике</span>
+                                </div>
+                            </label>
                             <div style="padding:4px 16px 10px;font-family:'Montserrat Alternates';font-size:10px;color:rgba(255,255,255,0.25);line-height:1.5;">
                                 Сезон: с 1 декабря по 1 марта включаются сами (если явно не выключены) — явное «Выкл»
                                 сильнее сезона. Снег падает поверх интерфейса, виньетка темнит края с ледяным отливом,
-                                иней покрывает кнопки при наведении.
+                                иней покрывает кнопки при наведении. Частицы при клике — белые искры из точки клика,
+                                работают и без снега.
                             </div>
                         </div>
                     </div>
@@ -14104,7 +14147,7 @@
                 if (tabName === 'debug')  loadDebugInfo();
                 if (tabName === 'patches') checkPatchesStatus();
                 if (tabName === 'about')  _renderAboutBug();
-                if (tabName === 'launcher') { applyGameUpdateFuture(); _syncWinterUI(); _syncCompactUI(); }
+                if (tabName === 'launcher') { applyGameUpdateFuture(); _syncWinterUI(); _syncCompactUI(); _syncBurstUI(); _syncSnowAmountUI(); }
             }
         }
 
@@ -17360,6 +17403,49 @@
             }
         }
 
+        // ── Частицы при клике: тумблер в «Зимние эффекты» ──────────────
+        // Выкл = _spawnBurst не спавним; работает и без снега (живёт
+        // всегда — просто по флагу). Дефолт включён.
+        function clickBurstEnabled() {
+            return localStorage.getItem('airClickBurst') !== '0';
+        }
+
+        function toggleClickBurst() {
+            const on = !clickBurstEnabled();
+            try { localStorage.setItem('airClickBurst', on ? '1' : '0'); } catch (e) {}
+            _syncBurstUI();
+        }
+
+        function _syncBurstUI() {
+            const cb = document.getElementById('clickBurstCheck');
+            if (cb) cb.checked = clickBurstEnabled();
+        }
+
+        // ── Сила снега: сколько снежинок (30–180, дефолт SNOW_COUNT) ───
+        function snowAmount() {
+            const v = parseInt(localStorage.getItem('airSnowAmount'), 10);
+            return (v >= 30 && v <= 180) ? v : SNOW_COUNT;
+        }
+
+        function setSnowAmount(raw) {
+            let n = parseInt(raw, 10);
+            if (isNaN(n)) return;
+            n = Math.max(30, Math.min(180, n));
+            try { localStorage.setItem('airSnowAmount', String(n)); } catch (e) {}
+            _syncSnowAmountUI();
+            // при выключенном снеге flakes пуст — количество применится
+            // при следующем включении в _snowStart
+            if (_snow.flakes.length) _snowSetAmount(n);
+        }
+
+        function _syncSnowAmountUI() {
+            const n = snowAmount();
+            const r = document.getElementById('snowAmountRange');
+            if (r) r.value = n;
+            const v = document.getElementById('snowAmountVal');
+            if (v) v.textContent = n;
+        }
+
         // ── Движок снега ──────────────────────────────────────────────────
         // Канвас на весь экран (z=9000, pointer-events:none). Два источника
         // частиц на одном холсте: снег (3 плана глубины, класс winter-snow)
@@ -17401,6 +17487,29 @@
                 ox: 0, oy: 0,   // смещение от курсора (отталкивание)
                 rx: 0, ry: 0,   // скорость смещения (пружина обратно)
             };
+        }
+
+        // Привести число снежинок к n, сохраняя баланс планов (спавн —
+        // i%3): цель по слоям floor(n/3) + (L < n%3), как при спавне.
+        // Лишние убираем с конца нужного слоя, недостающие спавним
+        // случайными точками по высоте (без «кучи в углу»).
+        function _snowSetAmount(n) {
+            const base = Math.floor(n / 3), rem = n % 3;
+            for (let L = 0; L < SNOW_LAYERS.length; L++) {
+                const target = base + (L < rem ? 1 : 0);
+                let cnt = 0;
+                for (const f of _snow.flakes) if (f.layer === L) cnt++;
+                while (cnt > target) {
+                    for (let i = _snow.flakes.length - 1; i >= 0; i--) {
+                        if (_snow.flakes[i].layer === L) { _snow.flakes.splice(i, 1); break; }
+                    }
+                    cnt--;
+                }
+                while (cnt < target) {
+                    _snow.flakes.push(_snowFlake(_snowRand(0, _snow.h), L));
+                    cnt++;
+                }
+            }
         }
 
         function _snowResize() {
@@ -17445,9 +17554,11 @@
             // лаунчера) w/h ещё 0, и все снежинки родились бы в точке
             // (0,0) — снег полосой у левого края, пока не респавнится.
             _snowResize();
-            if (!_snow.flakes.length)
-                for (let i = 0; i < SNOW_COUNT; i++)
+            if (!_snow.flakes.length) {
+                const want = snowAmount(); // из настроек (30–180), дефолт 90
+                for (let i = 0; i < want; i++)
                     _snow.flakes.push(_snowFlake(_snowRand(0, _snow.h), i % SNOW_LAYERS.length));
+            }
             if (!_snow.inputOn) {
                 _snow.inputOn = true;
                 window.addEventListener('resize', _snowResize);
@@ -17546,9 +17657,12 @@
             _snow.raf = requestAnimationFrame(_snowTick);
         }
 
-        // Клик-всплеск — всегда включён (не зависит от снега): холст
-        // показывается на время жизни частиц и снова прячется.
+        // Клик-всплеск — живёт всегда (не зависит от снега), но по
+        // тумблеру «Частицы при клике» (airClickBurst, дефолт вкл):
+        // выкл — не спавним вовсе. Холст показывается на время жизни
+        // частиц и снова прячется.
         function _spawnBurst(x, y) {
+            if (!clickBurstEnabled()) return;
             for (let i = 0; i < BURST_COUNT; i++) {
                 const a = Math.random() * Math.PI * 2;
                 const sp = _snowRand(60, 220); // разлёт, px/сек
