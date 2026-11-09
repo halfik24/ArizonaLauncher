@@ -132,8 +132,8 @@
         }
         
         :root {
-            --accent-rgb: 0, 120, 212;      /* dynamic (Monet-like) */
-            --accent2-rgb: 0, 180, 255;     /* dynamic (Monet-like) */
+            --accent-rgb: 235, 238, 243;     /* dynamic (Monet-like); дефолт — нейтральный молочный */
+            --accent2-rgb: 204, 210, 220;    /* dynamic (Monet-like) */
             --surface-rgb: 11, 13, 20;      /* dynamic (Monet-like) */
             --primary-color: rgba(var(--accent-rgb), 0.82);
             --secondary-color: rgba(93, 93, 93, 0.3);
@@ -1682,7 +1682,7 @@
             background: rgba(255,255,255,0.1);
         }
 
-        .install-step.active .install-step-dot { background: rgba(0,150,255,0.8); border-color: rgba(0,180,255,0.5); }
+        .install-step.active .install-step-dot { background: rgba(var(--accent-rgb),0.8); border-color: rgba(var(--accent2-rgb),0.5); }
         .install-step.done .install-step-dot { background: rgba(0,180,80,0.8); border-color: rgba(0,200,100,0.5); }
         .install-step.error .install-step-dot { background: rgba(220,50,50,0.8); border-color: rgba(255,80,80,0.5); }
 
@@ -2188,14 +2188,14 @@
         .cre-bit-badge {
             width: 28px; height: 28px;
             border-radius: 7px;
-            background: rgba(0, 120, 212, 0.15);
-            border: 1px solid rgba(0, 140, 255, 0.2);
+            background: rgba(var(--accent-rgb), 0.15);
+            border: 1px solid rgba(var(--accent2-rgb), 0.2);
             display: flex;
             align-items: center;
             justify-content: center;
             font-family: 'Montserrat Alternates', sans-serif;
             font-size: 10px;
-            color: rgba(100, 180, 255, 0.7);
+            color: rgba(var(--accent2-rgb), 0.7);
             flex-shrink: 0;
         }
 
@@ -3792,8 +3792,8 @@
         .bk-btn { height:28px; width:28px; padding:0; border-radius:6px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); color:rgba(220,220,220,0.85); cursor:pointer; display:inline-flex; align-items:center; justify-content:center; transition:all .15s; }
         .bk-btn svg { width:13px; height:13px; }
         .bk-btn:hover { background:rgba(255,255,255,0.12); }
-        .bk-btn-restore { background:rgba(0,120,212,0.2); border-color:rgba(0,140,255,0.3); color:rgba(140,200,255,0.9); }
-        .bk-btn-restore:hover { background:rgba(0,140,255,0.32); }
+        .bk-btn-restore { background:rgba(var(--accent-rgb),0.2); border-color:rgba(var(--accent2-rgb),0.3); color:rgba(var(--accent2-rgb),0.9); }
+        .bk-btn-restore:hover { background:rgba(var(--accent2-rgb),0.32); }
         .bk-btn-del { background:rgba(220,60,60,0.12); border-color:rgba(255,80,80,0.25); color:rgba(255,140,140,0.9); }
         .bk-btn-del:hover { background:rgba(220,60,60,0.28); }
         .bk-btn-del.armed { background:rgba(255,80,80,0.45); border-color:rgba(255,120,120,0.8); color:#fff; animation:bkPulse .8s ease-in-out infinite alternate; }
@@ -5891,7 +5891,7 @@
 
         .custom-select.open .cs-trigger {
             border-color: var(--primary-color);
-            box-shadow: 0 0 0 2px rgba(0, 120, 212, 0.2);
+            box-shadow: 0 0 0 2px rgba(var(--accent-rgb), 0.2);
             border-radius: 8px 8px 0 0;
             background: rgba(255, 255, 255, 0.11);
         }
@@ -5949,7 +5949,7 @@
             top: 100%;
             left: 0; right: 0;
             background: rgba(10, 14, 26, 0.97);
-            border: 1px solid rgba(0, 120, 212, 0.35);
+            border: 1px solid rgba(var(--accent-rgb), 0.35);
             border-top: none;
             border-radius: 0 0 10px 10px;
             max-height: 0;
@@ -5967,7 +5967,7 @@
         .custom-select.open-up .cs-dropdown {
             top: auto;
             bottom: 100%;
-            border-top: 1px solid rgba(0, 120, 212, 0.35);
+            border-top: 1px solid rgba(var(--accent-rgb), 0.35);
             border-bottom: none;
             border-radius: 10px 10px 0 0;
             box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.6);
@@ -5995,11 +5995,11 @@
         .cs-item:last-child { border-bottom: none; }
 
         .cs-item:hover {
-            background: rgba(0, 120, 212, 0.15);
+            background: rgba(var(--accent-rgb), 0.15);
         }
 
         .cs-item.selected {
-            background: rgba(0, 120, 212, 0.2);
+            background: rgba(var(--accent-rgb), 0.2);
         }
 
         .cs-item-top {
@@ -14527,10 +14527,10 @@
         function _ensureMonetDefaults() {
             if (_monetTheme.defaults) return;
             _monetTheme.defaults = {
-                '--accent-rgb': _getRootVar('--accent-rgb') || '0, 120, 212',
-                '--accent2-rgb': _getRootVar('--accent2-rgb') || '0, 180, 255',
+                '--accent-rgb': _getRootVar('--accent-rgb') || '235, 238, 243',
+                '--accent2-rgb': _getRootVar('--accent2-rgb') || '204, 210, 220',
                 '--surface-rgb': _getRootVar('--surface-rgb') || '11, 13, 20',
-                '--primary-color': _getRootVar('--primary-color') || 'rgba(0, 120, 212, 0.82)',
+                '--primary-color': _getRootVar('--primary-color') || 'rgba(235, 238, 243, 0.82)',
                 '--secondary-color': _getRootVar('--secondary-color') || 'rgba(93, 93, 93, 0.3)',
                 '--text-color': _getRootVar('--text-color') || 'rgba(255, 255, 255, 0.95)',
                 '--shadow-color': _getRootVar('--shadow-color') || 'rgba(0, 0, 0, 0.25)',
@@ -14595,6 +14595,16 @@
         // Используется только для accent2 (переключатели), чтобы они не пропадали на тусклых обоях.
         function _boostToggleAccent(r, g, b, minL = 0.50, minS = 0.62) {
             let { h, s, l } = _rgbToHsl(r, g, b);
+            // Нейтральный акцент (fallback под белые/серые обои) не красим:
+            // подъём насыщенности превратил бы серый в случайный оттенок.
+            // Порог 0.20: у «серебра» с лёгкой холодиной s≈0.15 — тоже нейтраль.
+            if (s < 0.20) {
+                if (l < minL) {
+                    const up = _hslToRgb(h, 0, minL);
+                    return up;
+                }
+                return { r, g, b };
+            }
             let changed = false;
             if (s < minS) { s = minS; changed = true; }
             if (l < minL) { l = minL; changed = true; }
@@ -14639,8 +14649,22 @@
             }
 
             if (ranked.length === 0) {
-                if (avg.w > 0) return { accent: { r: 0, g: 120, b: 212 }, accent2: { r: 0, g: 180, b: 255 } };
-                return { accent: { r: 0, g: 120, b: 212 }, accent2: { r: 0, g: 180, b: 255 } };
+                // Ненасыщенные обои (белые/серые): цветной акцент взять не из
+                // чего — берём нейтральный, контрастный к среднему тону:
+                // светлым обоям — графит, тёмным — молочный. Бывший синий
+                // дефолт на белых обоях смотрелся чужим.
+                const a = avg.w > 0
+                    ? { r: avg.r / avg.w, g: avg.g / avg.w, b: avg.b / avg.w }
+                    : { r: 16, g: 18, b: 24 };
+                const lum = (0.2126 * a.r + 0.7152 * a.g + 0.0722 * a.b) / 255;
+                const light = lum > 0.55;
+                const accent = light
+                    ? { r: 28, g: 30, b: 37 }
+                    : { r: 234, g: 236, b: 241 };
+                const accent2 = light
+                    ? { r: 64, g: 68, b: 77 }
+                    : { r: 203, g: 208, b: 217 };
+                return { accent, accent2 };
             }
 
             const accent = toRgb(ranked[0]);
@@ -14687,8 +14711,10 @@
             _monetTheme.lastKey = key;
 
             // cache in localStorage to avoid recompute
-            // v3 — инвалидирует старый кеш (добавлен буст переключателей)
-            const cacheKey = 'monetTheme:v3:' + key;
+            // v5 — инвалидирует старый кеш (нейтральный fallback вместо синего
+            // для белых/серых обоев + буст без колоризации нейтральных,
+            // порог нейтральности 0.20)
+            const cacheKey = 'monetTheme:v5:' + key;
             try {
                 const cached = localStorage.getItem(cacheKey);
                 if (cached) {
