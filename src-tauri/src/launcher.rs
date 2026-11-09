@@ -8,21 +8,43 @@ use tauri::{Emitter, Manager, State};
 
 #[tauri::command(async)]
 pub fn get_config(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
-    let cfg = util::lock_config(&state)?;
+    get_config_impl(&state)
+}
+
+/// Тело get_config без Tauri-обёртки `State` — чтобы регрессионный тест
+/// (`get_config_does_not_deadlock`) мог вызвать его напрямую.
+fn get_config_impl(state: &AppState) -> Result<serde_json::Value, String> {
+    // Копируем всё нужное и РАСТЕМ гвард: detect_launcher_version внутри
+    // снова лочит config, а std Mutex не реентерабелен. Раньше (b052dfd)
+    // гвард жил до конца функции — получался самодедлок, и из-за него
+    // висла кнопка «Играть» (её префлайт — единственный вызов get_config),
+    // а все конфиг-команды умирали до рестарта.
+    let (launcher_path, game_path, last_nickname, last_server, launch_params) = {
+        let cfg = util::lock_config(state)?;
+        (
+            cfg.launcher_path.clone(),
+            cfg.game_path.clone(),
+            cfg.last_nickname.clone(),
+            cfg.last_server,
+            cfg.launch_params.clone(),
+        )
+    };
     // Достаточно папки игры: лаунчер Air не обязателен — при нативном запуске
     // он не используется, а при Air его отсутствие покажет кнопка «Установить».
-    let paths_ok = !cfg.game_path.is_empty()
-        && std::path::Path::new(&cfg.game_path).exists();
+    let paths_ok = !game_path.is_empty()
+        && std::path::Path::new(&game_path).exists();
+    // Гвард уже отпущен — вложенный lock() внутри безопасен.
+    let launcher_version = detect_launcher_version(state);
     Ok(serde_json::json!({
-        "launcher_path": cfg.launcher_path,
-        "game_path": cfg.game_path,
-        "last_nickname": cfg.last_nickname,
-        "last_server": cfg.last_server,
-        "launch_params": cfg.launch_params,
+        "launcher_path": launcher_path,
+        "game_path": game_path,
+        "last_nickname": last_nickname,
+        "last_server": last_server,
+        "launch_params": launch_params,
         "paths_configured": paths_ok,
         // Реальная версия из папки игры (как get_launcher_version), а не
         // константа "v8"
-        "launcher_version": detect_launcher_version(&state)
+        "launcher_version": launcher_version
     }))
 }
 
@@ -640,6 +662,49 @@ fn build_launch_args(
         cmd.push(cdn_value);
     }
     cmd
+}
+
+#[cfg(test)]
+mod config_deadlock_tests {
+    use super::*;
+    use std::sync::Arc;
+
+    /// Регрессия b052dfd: get_config держал гвард `config` Mutex и в том же
+    /// выражении звал `detect_launcher_version`, который вторично лочит тот
+    /// же std Mutex (не реентерабельный) — самодедлок. Единственный вызов
+    /// get_config во фронте — префлайт перед стартом игры, поэтому симптом:
+    /// нажатие «Играть» висит вечно, а все конфиг-команды умирают до рестарта.
+    #[test]
+    fn get_config_does_not_deadlock() {
+        let tmp = std::env::temp_dir().join(format!("azl-deadlock-test-{}", std::process::id()));
+        std::fs::create_dir_all(&tmp).unwrap();
+        let state = Arc::new(AppState {
+            config: std::sync::Mutex::new(crate::config::LauncherConfig::default()),
+            config_path: tmp.join("config.json"),
+            documents_path: tmp,
+            servers_cache: std::sync::Mutex::new(None),
+            servers_revalidating: std::sync::atomic::AtomicBool::new(false),
+            news_revalidating: std::sync::atomic::AtomicBool::new(false),
+            game_update_cancel: std::sync::Mutex::new(None),
+            game_update_pause: std::sync::Mutex::new(None),
+            last_picked_empty_folder: std::sync::Mutex::new(None),
+        });
+
+        // Если дедлок — вызов никогда не вернётся; гоняем в отдельном потоке
+        // и ждём с таймаутом, чтобы тест упал, а не завис.
+        let st = state.clone();
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let _ = tx.send(get_config_impl(&st));
+        });
+        let res = rx
+            .recv_timeout(std::time::Duration::from_secs(10))
+            .expect("get_config_impl не вернулся за 10 с — самодедлок на config Mutex");
+        let cfg = res.expect("get_config_impl вернул Err");
+        // Дефолтный конфиг: game_path пуст → пути не настроены.
+        assert_eq!(cfg["paths_configured"], serde_json::json!(false));
+        assert!(cfg["launcher_version"].is_string());
+    }
 }
 
 #[cfg(test)]
