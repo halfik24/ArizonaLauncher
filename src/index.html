@@ -17286,23 +17286,45 @@
         }
 
         // ── Движок снега ──────────────────────────────────────────────────
-        // Канвас на весь экран (z=9000, pointer-events:none): N снежинок
-        // падают с качкой (sin), внизу переносятся наверх. dt ограничен
+        // Канвас на весь экран (z=9000, pointer-events:none). Два источника
+        // частиц на одном холсте: снег (3 плана глубины, класс winter-snow)
+        // и клик-всплеск (живёт всегда — просьба 09.11 «не из снега, а
+        // везде»). Общий rAF крутится, пока есть что рисовать; dt ограничен
         // 50мс — после сворачивания окна кадр не «телепортирует» холсты.
-        const _snow = { raf: 0, ctx: null, w: 0, h: 0, dpr: 1, flakes: [], last: 0 };
-        const SNOW_COUNT = 90;
+        const _snow = { raf: 0, ctx: null, w: 0, h: 0, dpr: 1, flakes: [],
+                        last: 0, bursts: [], mx: 0, my: 0,
+                        mouseOn: false, inputOn: false };
+        const SNOW_COUNT = 90;               // 3 плана × 30 снежинок
+        const BURST_COUNT = 16;              // частиц на один клик
+        const BURST_MAX = BURST_COUNT * 4;   // ≤4 всплеска одновременно
         const _snowRand = (a, b) => a + Math.random() * (b - a);
 
-        function _snowFlake(y) {
+        // Три плана глубины. repel — множитель отталкивания от курсора:
+        // близкие снежинки «рядом со зрителем» носятся сильнее дальних —
+        // это и даёт параллакс-глубину.
+        const SNOW_LAYERS = [
+            // дальний: мелкая, тусклая, медленная муть на фоне
+            { r: [0.6, 1.2], op: [0.15, 0.35], vy: [8, 18],  amp: [3, 8],  vw: [0.15, 0.4], repel: 0.25 },
+            // средний
+            { r: [1.2, 2.2], op: [0.35, 0.6],  vy: [20, 40], amp: [8, 18], vw: [0.25, 0.6], repel: 0.6 },
+            // близкий: крупная, яркая, быстрая
+            { r: [2.2, 4.0], op: [0.6, 0.95], vy: [45, 80], amp: [15, 30], vw: [0.3, 0.8],  repel: 1.0 },
+        ];
+
+        function _snowFlake(y, layer) {
+            const L = SNOW_LAYERS[layer];
             return {
+                layer,
                 x: _snowRand(0, _snow.w),
                 y: y,
-                r: _snowRand(0.8, 2.6),
-                vy: _snowRand(18, 55),                 // px/сек
-                amp: _snowRand(6, 26),                // амплитуда качки, px
-                ph: _snowRand(0, Math.PI * 2),        // фаза качки
-                vw: _snowRand(0.25, 0.7),             // оборотов качки в сек
-                op: _snowRand(0.25, 0.85),
+                r: _snowRand(L.r[0], L.r[1]),
+                vy: _snowRand(L.vy[0], L.vy[1]),   // px/сек
+                amp: _snowRand(L.amp[0], L.amp[1]), // амплитуда качки, px
+                ph: _snowRand(0, Math.PI * 2),      // фаза качки
+                vw: _snowRand(L.vw[0], L.vw[1]),    // оборотов качки в сек
+                op: _snowRand(L.op[0], L.op[1]),
+                ox: 0, oy: 0,   // смещение от курсора (отталкивание)
+                rx: 0, ry: 0,   // скорость смещения (пружина обратно)
             };
         }
 
@@ -17320,43 +17342,152 @@
             _snow.ctx.setTransform(_snow.dpr, 0, 0, _snow.dpr, 0, 0);
         }
 
+        // Курсор: tick считает отталкивание от этих координат. mouseleave —
+        // курсор увёл из окна, сила гаснет (флаг, а не «замёрзшая» точка).
+        function _snowOnMove(e) { _snow.mx = e.clientX; _snow.my = e.clientY; _snow.mouseOn = true; }
+        function _snowOnLeave() { _snow.mouseOn = false; }
+
+        // Холст видим, пока идёт снег ИЛИ живы частицы всплеска. В простое
+        // инлайн сбрасывается — CSS снова прячет (display:none), ничего
+        // лишнего на экране не появляется.
+        function _snowSyncCanvas() {
+            const c = document.getElementById('winterSnow');
+            if (!c) return;
+            const need = document.documentElement.classList.contains('winter-snow')
+                || _snow.bursts.length > 0;
+            c.style.display = need ? 'block' : '';
+        }
+
+        function _snowWake() {
+            if (!_snow.ctx || _snow.w !== window.innerWidth || _snow.h !== window.innerHeight)
+                _snowResize();
+            _snowSyncCanvas();
+            if (!_snow.raf) { _snow.last = 0; _snow.raf = requestAnimationFrame(_snowTick); }
+        }
+
         function _snowStart() {
-            if (_snow.raf) return;
-            _snowResize();
             if (!_snow.flakes.length)
                 for (let i = 0; i < SNOW_COUNT; i++)
-                    _snow.flakes.push(_snowFlake(_snowRand(0, _snow.h)));
-            window.addEventListener('resize', _snowResize);
-            _snow.last = 0;
-            _snow.raf = requestAnimationFrame(_snowTick);
+                    _snow.flakes.push(_snowFlake(_snowRand(0, _snow.h), i % SNOW_LAYERS.length));
+            if (!_snow.inputOn) {
+                _snow.inputOn = true;
+                window.addEventListener('resize', _snowResize);
+                window.addEventListener('mousemove', _snowOnMove, { passive: true });
+                document.addEventListener('mouseleave', _snowOnLeave);
+            }
+            _snowWake();
         }
 
         function _snowStop() {
-            if (_snow.raf) { cancelAnimationFrame(_snow.raf); _snow.raf = 0; }
-            window.removeEventListener('resize', _snowResize);
-            if (_snow.ctx) _snow.ctx.clearRect(0, 0, _snow.w, _snow.h);
+            if (_snow.inputOn) {
+                _snow.inputOn = false;
+                window.removeEventListener('resize', _snowResize);
+                window.removeEventListener('mousemove', _snowOnMove);
+                document.removeEventListener('mouseleave', _snowOnLeave);
+            }
+            _snow.mouseOn = false;
+            if (_snow.bursts.length === 0) {
+                // всплесков нет — гасим сразу; если живы — tick доживёт их
+                // сам и остановится на «нечего рисовать»
+                if (_snow.raf) { cancelAnimationFrame(_snow.raf); _snow.raf = 0; }
+                if (_snow.ctx) _snow.ctx.clearRect(0, 0, _snow.w, _snow.h);
+            }
+            _snowSyncCanvas();
         }
 
         function _snowTick(ts) {
-            _snow.raf = requestAnimationFrame(_snowTick);
             const dt = Math.min((ts - (_snow.last || ts)) / 1000, 0.05);
             _snow.last = ts;
             const ctx = _snow.ctx;
-            if (!ctx) return;
+            if (!ctx) { _snow.raf = 0; return; }
+            const snowOn = document.documentElement.classList.contains('winter-snow');
             ctx.clearRect(0, 0, _snow.w, _snow.h);
-            for (const f of _snow.flakes) {
-                f.y += f.vy * dt;
-                f.ph += f.vw * dt * Math.PI * 2;
-                if (f.y - f.r > _snow.h) { f.y = -f.r; f.x = _snowRand(0, _snow.w); }
-                const x = f.x + Math.sin(f.ph) * f.amp;
-                ctx.globalAlpha = f.op;
+
+            if (snowOn && _snow.flakes.length) {
+                const R = 90; // радиус отталкивания от курсора, px
+                for (const f of _snow.flakes) {
+                    f.y += f.vy * dt;
+                    f.ph += f.vw * dt * Math.PI * 2;
+                    if (f.y - f.r > _snow.h) {
+                        f.y = -f.r; f.x = _snowRand(0, _snow.w);
+                        f.ox = 0; f.oy = 0; f.rx = 0; f.ry = 0;
+                    }
+                    // отталкивание от курсора: сила ~(1 - d/R) × repel плана
+                    if (_snow.mouseOn) {
+                        const bx = f.x + Math.sin(f.ph) * f.amp + f.ox;
+                        const by = f.y + f.oy;
+                        const dx = bx - _snow.mx, dy = by - _snow.my;
+                        const d2 = dx * dx + dy * dy;
+                        if (d2 < R * R && d2 > 1) {
+                            const d = Math.sqrt(d2);
+                            const force = (1 - d / R) * 1600 * SNOW_LAYERS[f.layer].repel;
+                            f.rx += (dx / d) * force * dt;
+                            f.ry += (dy / d) * force * dt;
+                        }
+                    }
+                    // пружина: смещение плавно возвращается к базовой траектории
+                    f.rx += (-f.ox * 40 - f.rx * 6) * dt;
+                    f.ry += (-f.oy * 40 - f.ry * 6) * dt;
+                    f.ox += f.rx * dt;
+                    f.oy += f.ry * dt;
+                    const x = f.x + Math.sin(f.ph) * f.amp + f.ox;
+                    const y = f.y + f.oy;
+                    ctx.globalAlpha = f.op;
+                    ctx.fillStyle = '#fff';
+                    ctx.beginPath();
+                    ctx.arc(x, y, f.r, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+
+            // клик-всплеск: белые частички из точки клика, гравитация
+            // вниз и увядание alpha за life/max
+            for (let i = _snow.bursts.length - 1; i >= 0; i--) {
+                const p = _snow.bursts[i];
+                p.life += dt;
+                if (p.life >= p.max) { _snow.bursts.splice(i, 1); continue; }
+                p.vy += 300 * dt; // гравитация, px/с²
+                p.x += p.vx * dt;
+                p.y += p.vy * dt;
+                ctx.globalAlpha = 0.9 * (1 - p.life / p.max);
                 ctx.fillStyle = '#fff';
                 ctx.beginPath();
-                ctx.arc(x, f.y, f.r, 0, Math.PI * 2);
+                ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
                 ctx.fill();
             }
             ctx.globalAlpha = 1;
+
+            if (!snowOn && _snow.bursts.length === 0) {
+                // нечего рисовать — останавливаемся и прячем холст
+                _snow.raf = 0;
+                ctx.clearRect(0, 0, _snow.w, _snow.h);
+                _snowSyncCanvas();
+                return;
+            }
+            _snow.raf = requestAnimationFrame(_snowTick);
         }
+
+        // Клик-всплеск — всегда включён (не зависит от снега): холст
+        // показывается на время жизни частиц и снова прячется.
+        function _spawnBurst(x, y) {
+            for (let i = 0; i < BURST_COUNT; i++) {
+                const a = Math.random() * Math.PI * 2;
+                const sp = _snowRand(60, 220); // разлёт, px/сек
+                _snow.bursts.push({
+                    x, y,
+                    vx: Math.cos(a) * sp,
+                    vy: Math.sin(a) * sp - _snowRand(0, 80), // слегка вверх
+                    r: _snowRand(1, 2.5),
+                    life: 0,
+                    max: _snowRand(0.5, 0.9),               // сек
+                });
+            }
+            // защита от спама кликами: ≤4 всплеска одновременно
+            while (_snow.bursts.length > BURST_MAX) _snow.bursts.splice(0, BURST_COUNT);
+            _snowWake();
+        }
+        window.addEventListener('pointerdown',
+            (e) => _spawnBurst(e.clientX, e.clientY), { passive: true });
 
         // Снег был включён в прошлой сессии — стартуем сразу при загрузке
         // (класс winter-snow уже стоит, разметка canvas выше по документу)
