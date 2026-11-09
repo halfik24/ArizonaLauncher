@@ -207,7 +207,9 @@ pub async fn download_to(
     on_progress(total);
     // Токен-ведро: базовая точка времени + total/rate = «когда позволено».
     // Проседания сервера компенсируются (сервер отдал стоп — не досыпаем).
-    let rate = (rate_bytes >= 1_048_576).then_some(rate_bytes);
+    // Любой rate > 0 троттлит: раньше тут был порог >= 1 МБ/с и мелкие
+    // лимиты (Кбит/с, КБ/с) молча игнорировались.
+    let rate = (rate_bytes > 0).then_some(rate_bytes);
     let mut due: Option<std::time::Instant> = None;
     let mut resp = resp;
     loop {
@@ -380,5 +382,57 @@ mod tests {
             part_path(Path::new(r"G:\game\readme")),
             PathBuf::from(r"G:\game\readme.part")
         );
+    }
+
+    /// Регресс порога rate > 0: лимит меньше 1 МБ/с реально троттлит.
+    /// Раньше downloader брал rate только >= 1_048_576 — выбор «Кбит/с»
+    /// и «КБ/с» в настройках молча игнорировался (localhost без лимита
+    /// отдаёт 300 КБ практически мгновенно — это и ловит assert).
+    #[tokio::test]
+    async fn sub_mb_rate_throttles_download() {
+        use std::io::{Read, Write};
+        const SIZE: usize = 300_000;
+        const RATE: u64 = 150_000; // 150 КБ/с → ~2 c
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        std::thread::spawn(move || {
+            let Ok((mut s, _)) = listener.accept() else { return };
+            // читаем запрос до конца заголовков
+            let mut req = [0u8; 512];
+            let mut got = 0;
+            while got < req.len() {
+                let n = s.read(&mut req[got..]).unwrap_or(0);
+                if n == 0 { break; }
+                got += n;
+                if req[..got].windows(4).any(|w | w == b"\r\n\r\n") { break; }
+            }
+            let head = format!(
+                "HTTP/1.1 200 OK\r\nContent-Length: {SIZE}\r\nConnection: close\r\n\r\n"
+            );
+            let _ = s.write_all(head.as_bytes());
+            let _ = s.write_all(&vec![0u8; SIZE]);
+            let _ = s.flush();
+        });
+
+        let dir = std::env::temp_dir().join(format!("az-dl-test-{}", std::process::id()));
+        let _ = fs::create_dir_all(&dir);
+        let dest = dir.join("file.bin");
+        let cancel = AtomicBool::new(false);
+        let pause = AtomicBool::new(false);
+        let url = format!("http://{addr}/file.bin");
+
+        let started = std::time::Instant::now();
+        let got = download_to(&client(), &url, &dest, RATE, &cancel, &pause, |_| {})
+            .await
+            .expect("качка с лимитом 150 КБ/с должна пройти");
+        let elapsed = started.elapsed();
+
+        assert_eq!(got, SIZE as u64);
+        assert!(
+            elapsed >= Duration::from_millis(1400),
+            "300 КБ при лимите 150 КБ/с ушли за {elapsed:?} — \
+             rate < 1 МБ/с снова игнорируется?"
+        );
+        let _ = fs::remove_dir_all(&dir);
     }
 }

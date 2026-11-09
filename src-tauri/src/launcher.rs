@@ -3776,22 +3776,32 @@ fn game_update_future(state: &AppState) -> bool {
         .unwrap_or(true)
 }
 
-/// Лимит скорости качки в байтах/с из настроек («game_update_limit_mb»,
-/// МБ/с; 0/нет = без лимита). Меньше 1 МБ/с прижимаем к 1 МБ/с, чтобы
-/// ноль в поле не ложил качку вовсе.
+/// Лимит скорости качки в байтах/с из настроек. Основной ключ —
+/// «game_update_limit_bps» (байт/с, ровно то, что выбрал юзер; 0/нет =
+/// без ограничения); старые конфиги, где был лишь «game_update_limit_mb»
+/// (МБ/с), конвертируем — там 0 тоже «без лимита», а 1+ МБ/с прижимаем
+/// к 1 МБ/с, чтобы дробные значения не превращались в ноль.
 fn game_update_limit(state: &AppState) -> u64 {
-    let mb = state
+    let (bps, mb) = state
         .config
         .lock()
         .ok()
-        .and_then(|c| {
-            c.launcher_settings
-                .extra
-                .get("game_update_limit_mb")
-                .and_then(|v| v.as_u64())
+        .map(|c| {
+            (
+                c.launcher_settings.extra.get("game_update_limit_bps").cloned(),
+                c.launcher_settings.extra.get("game_update_limit_mb").cloned(),
+            )
         })
-        .unwrap_or(0);
-    match mb {
+        .unwrap_or((None, None));
+    // JSON мог сохранить дробь/отрицательное — каст в u64 в Rust
+    // сатурируется (NaN и минус → 0)
+    let to_u64 = |v: Option<serde_json::Value>| -> Option<u64> {
+        v.and_then(|v| v.as_u64().or_else(|| v.as_f64().map(|f| f as u64)))
+    };
+    if let Some(bps) = to_u64(bps) {
+        return bps;
+    }
+    match to_u64(mb).unwrap_or(0) {
         0 => 0,
         // saturating: значение из extra-настроек может быть любым —
         // переполнение в debug паниковало бы всю команду

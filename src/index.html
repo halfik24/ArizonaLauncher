@@ -8136,12 +8136,28 @@
                                 </label>
                             </div>
                             <div class="s-input-row" style="justify-content:flex-start; gap:10px;">
-                                <span class="s-input-label" style="flex:none;">Лимит скорости, МБ/с</span>
-                                <input type="number" id="gameUpdateLimitInput" class="s-input" min="0" max="1000" step="1"
+                                <span class="s-input-label" style="flex:none;">Лимит скорости</span>
+                                <input type="number" id="gameUpdateLimitInput" class="s-input" min="0" max="10000000" step="any"
                                        style="width:80px; text-align:center;" onchange="applyGameUpdateLimit(this.value)">
+                                <!-- Единицы: кастомный селект (нативный <select> в
+                                     WebView2 даёт белый попап). Нативный рядом —
+                                     он и есть источник пунктов и хранилище значения -->
+                                <div class="s-select" id="limitUnitSelect" style="margin-left:0;">
+                                    <button class="s-select-btn" id="limitUnitBtn" type="button" aria-haspopup="listbox" aria-expanded="false" style="width:104px;">
+                                        <span class="s-select-val" id="limitUnitVal">МБ/с</span>
+                                        <svg class="s-select-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+                                    </button>
+                                    <div class="s-select-pop" id="limitUnitPop" role="listbox"></div>
+                                </div>
+                                <select id="gameUpdateLimitUnit" class="s-select-native">
+                                    <option value="kbit">Кбит/с</option>
+                                    <option value="kb">КБ/с</option>
+                                    <option value="mbit">Мбит/с</option>
+                                    <option value="mb" selected>МБ/с</option>
+                                </select>
                             </div>
                             <div style="padding:0 16px 2px; font-family:'Montserrat Alternates', sans-serif; font-size:10px; color:rgba(255,255,255,0.45); line-height:1.4;">
-                                0 — без лимита. Нужен, если играешь или стримишь, пока идёт установка.
+                                0 — без ограничения. Нужен, если играешь или стримишь, пока идёт установка.
                             </div>
                             <div style="padding:8px 16px 4px; display:flex; gap:8px; flex-wrap:wrap;">
                                 <button class="s-btn" id="gameCheckBtn" onclick="checkGameUpdate()"
@@ -10320,6 +10336,7 @@
             setCdnBtns(document.getElementById('cdnInput')?.value || '0,0,0');
             cdnInitReels();
             memInit();
+            limitUnitInit(); // единицы лимита скорости (селект рядом с числом)
             epMemInit();   // кастомный селект памяти в редакторе профиля
             applyDebugVisibility();   // вкладка Debug скрыта, пока жук не тапнут 5 раз
             perfMark('events bound');
@@ -15380,8 +15397,31 @@
             const cb = document.getElementById('gameUpdateFutureCheck');
             if (cb) cb.checked = gameUpdateFutureEnabled();
             applyGameUpdateCheckOnStart();
+            // Лимит скорости: единое хранилище — game_update_limit_bps (байт/с),
+            // value/unit — только для восстановления UI. Старый конфиг, где
+            // был лишь game_update_limit_mb, нормализуем (бэкенд умеет читать
+            // оба ключа, здесь важно только поле и селект).
+            if (typeof launcherSettings.game_update_limit_bps !== 'number') {
+                const mb = parseInt(launcherSettings.game_update_limit_mb, 10) || 0;
+                launcherSettings.game_update_limit_bps = mb > 0 ? mb * 1_048_576 : 0;
+                launcherSettings.game_update_limit_value = mb;
+                launcherSettings.game_update_limit_unit = 'mb';
+            }
             const lim = document.getElementById('gameUpdateLimitInput');
-            if (lim) lim.value = launcherSettings.game_update_limit_mb || 0;
+            const unitSel = document.getElementById('gameUpdateLimitUnit');
+            if (unitSel) {
+                const u = launcherSettings.game_update_limit_unit || 'mb';
+                unitSel.value = GAME_LIMIT_UNITS[u] ? u : 'mb';
+                launcherSettings.game_update_limit_unit = unitSel.value;
+                limitUnitSync();
+            }
+            if (lim) {
+                const uv = launcherSettings.game_update_limit_value;
+                lim.value = (typeof uv === 'number' && uv >= 0)
+                    ? uv
+                    : _limitRound((launcherSettings.game_update_limit_bps || 0)
+                                  / GAME_LIMIT_UNITS[unitSel ? unitSel.value : 'mb'].mult);
+            }
         }
 
         /** Проверка обновлений игры при старте лаунчера (по умолчанию вкл). */
@@ -15402,15 +15442,50 @@
             if (cb) cb.checked = gameUpdateCheckOnStartEnabled();
         }
 
-        /** Лимит скорости качки игры: МБ/с (0 — без лимита). Бэкенд читает
-            game_update_limit_mb из launcherSettings (складывается в config.json). */
+        /** Единицы лимита скорости: множитель — к байт/с (храним bps). */
+        const GAME_LIMIT_UNITS = {
+            kbit: { label: 'Кбит/с', mult: 125 },         // 1000 бит / 8
+            kb:   { label: 'КБ/с',   mult: 1_024 },
+            mbit: { label: 'Мбит/с', mult: 125_000 },     // 10^6 бит / 8
+            mb:   { label: 'МБ/с',   mult: 1_048_576 },
+        };
+
+        /** Округление пересчитанного значения: до 4 знаков, без хвоста. */
+        function _limitRound(v) { return Math.round(v * 10_000) / 10_000; }
+
+        /** Лимит скорости качки игры: число + единица → байты/с
+            (game_update_limit_bps, 0 — без ограничения). value/unit
+            сохраняем только для восстановления UI; game_update_limit_mb —
+            legacy-ключ (старый бэкенд читал МБ/с). */
         function applyGameUpdateLimit(raw) {
-            let v = parseInt(raw, 10);
+            let v = parseFloat(String(raw).replace(',', '.'));
             if (isNaN(v) || v < 0) v = 0;
-            launcherSettings.game_update_limit_mb = v;
+            const unitSel = document.getElementById('gameUpdateLimitUnit');
+            const unit = unitSel && GAME_LIMIT_UNITS[unitSel.value] ? unitSel.value : 'mb';
+            const bps = Math.round(v * GAME_LIMIT_UNITS[unit].mult);
+            launcherSettings.game_update_limit_value = v;
+            launcherSettings.game_update_limit_unit = unit;
+            launcherSettings.game_update_limit_bps = bps;
+            // legacy: min 1 при >0 — «0» в МБ/с читался бы как «без лимита»
+            launcherSettings.game_update_limit_mb =
+                bps > 0 ? Math.max(1, Math.ceil(bps / 1_048_576)) : 0;
             if (window.pywebview && window.pywebview.api.save_launcher_settings) {
                 window.pywebview.api.save_launcher_settings(launcherSettings);
             }
+        }
+
+        /** Смена единицы: число пересчитываем так, чтобы реальный лимит
+            не изменился — смена юнита не должна молча урезать/поднять его. */
+        function applyGameUpdateLimitUnit() {
+            const unitSel = document.getElementById('gameUpdateLimitUnit');
+            const lim = document.getElementById('gameUpdateLimitInput');
+            if (!unitSel || !lim) return;
+            const unit = GAME_LIMIT_UNITS[unitSel.value] ? unitSel.value : 'mb';
+            const bps = typeof launcherSettings.game_update_limit_bps === 'number'
+                ? launcherSettings.game_update_limit_bps
+                : (parseInt(launcherSettings.game_update_limit_mb, 10) || 0) * 1_048_576;
+            if (bps > 0) lim.value = _limitRound(bps / GAME_LIMIT_UNITS[unit].mult);
+            applyGameUpdateLimit(lim.value);
         }
 
         /** Прогресс починки/установки из настроек: переиспользуем хаб
@@ -17366,6 +17441,10 @@
         }
 
         function _snowStart() {
+            // Размер холста — ДО спавна: при первом старте (запуск
+            // лаунчера) w/h ещё 0, и все снежинки родились бы в точке
+            // (0,0) — снег полосой у левого края, пока не респавнится.
+            _snowResize();
             if (!_snow.flakes.length)
                 for (let i = 0; i < SNOW_COUNT; i++)
                     _snow.flakes.push(_snowFlake(_snowRand(0, _snow.h), i % SNOW_LAYERS.length));
@@ -17690,6 +17769,87 @@
                 sel.value = '4096';
             }
             val.textContent = sel.value;
+            if (pop) pop.querySelectorAll('.s-select-item').forEach(i =>
+                i.classList.toggle('sel', i.dataset.v === sel.value));
+        }
+
+        // ── Тот же паттерн для селекта единиц лимита скорости ──
+        // Отличие от памяти: попап на время открытия выносится в body
+        // (fixed, координаты от кнопки). Наша строка — верх секции, а
+        // .s-section имеет overflow:hidden: вверх от кнопки всего ~117px
+        // при высоте попапа 140px — обрезанная часть не проходит hit-test
+        // (клики по пунктам не доходят). В body обрезки нет.
+        function limitUnitInit() {
+            const sel = document.getElementById('gameUpdateLimitUnit');
+            const wrap = document.getElementById('limitUnitSelect');
+            const btn = document.getElementById('limitUnitBtn');
+            const pop = document.getElementById('limitUnitPop');
+            if (!sel || !wrap || !btn || !pop) return;
+            const check = '<svg class="s-select-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
+            pop.innerHTML = [...sel.options].map(o =>
+                `<button class="s-select-item" type="button" data-v="${o.value}" role="option">${o.text}${check}</button>`
+            ).join('');
+
+            const close = () => {
+                wrap.classList.remove('open');
+                btn.setAttribute('aria-expanded', 'false');
+                if (pop.parentElement === document.body) {
+                    wrap.appendChild(pop);
+                    pop.style.cssText = '';   // снять инлайн-позицию и размер
+                }
+                window.removeEventListener('resize', close);
+                document.removeEventListener('scroll', close, true);
+            };
+            const open = () => {
+                document.body.appendChild(pop);
+                const st = pop.style;
+                st.position = 'fixed';
+                st.right = 'auto'; st.bottom = 'auto';
+                st.minWidth = '0';           // иначе min-width:100% от body = всё окно
+                st.opacity = '1'; st.transform = 'none'; st.pointerEvents = 'auto';
+                // панель настроек сама fixed с z-index:1000 — попап должен
+                // быть выше неё, иначе лежит под ней и не кликается
+                st.zIndex = '1100';
+                const pr = pop.getBoundingClientRect();
+                const br = btn.getBoundingClientRect();
+                let top = br.top - 6 - pr.height;
+                if (top < 8) top = br.bottom + 6;         // flip вниз
+                let left = br.right - pr.width;
+                if (left < 8) left = 8;
+                if (left + pr.width > innerWidth - 8) left = innerWidth - 8 - pr.width;
+                st.top = Math.round(top) + 'px';
+                st.left = Math.round(left) + 'px';
+                wrap.classList.add('open');
+                btn.setAttribute('aria-expanded', 'true');
+                window.addEventListener('resize', close);
+                document.addEventListener('scroll', close, true);
+            };
+
+            pop.querySelectorAll('.s-select-item').forEach(item => {
+                item.addEventListener('click', () => {
+                    sel.value = item.dataset.v;
+                    limitUnitSync();
+                    close();
+                    applyGameUpdateLimitUnit(); // число → новый юнит, лимит тот же
+                });
+            });
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (wrap.classList.contains('open')) { close(); return; }
+                open();
+            });
+            document.addEventListener('click', (e) => { if (!wrap.contains(e.target) && !pop.contains(e.target)) close(); });
+            document.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
+            limitUnitSync();
+        }
+
+        function limitUnitSync() {
+            const sel = document.getElementById('gameUpdateLimitUnit');
+            const val = document.getElementById('limitUnitVal');
+            const pop = document.getElementById('limitUnitPop');
+            if (!sel || !val) return;
+            if (![...sel.options].some(o => o.value === sel.value)) sel.value = 'mb';
+            val.textContent = sel.options[sel.selectedIndex].text;
             if (pop) pop.querySelectorAll('.s-select-item').forEach(i =>
                 i.classList.toggle('sel', i.dataset.v === sel.value));
         }
