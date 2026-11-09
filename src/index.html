@@ -20,7 +20,7 @@
                 m = localStorage.getItem('airAnimMode');
                 b = parseInt(localStorage.getItem('airBlur'), 10);
                 c = localStorage.getItem('arp_compactMenu');
-                // Зимние эффекты (дебаг → карточка «Зима»). Три состояния:
+                // Зимние эффекты (вкладка Лаунчер → «Зимние эффекты»). Три состояния:
                 // '1' — явно включены (работают всегда), '0' — явно выключены
                 // (не включает даже сезон), null — сезон решает сам:
                 // с 1 декабря по 1 марта включаются сами, 1 марта — гаснут.
@@ -32,8 +32,8 @@
             if (BLURS.indexOf(b) < 0) b = 24;
             document.documentElement.className += ' anim-' + m;
             document.documentElement.style.setProperty('--frost-blur', b + 'px');
-            // Компактное меню — эксперимент из дебага («а что если», не
-            // постоянный режим), см. setCompactMenu; класс до первой отрисовки
+            // Компактное меню (вкладка Лаунчер → «Компактность меню»), см.
+            // setCompactMenu; класс до первой отрисовки
             if (c === '1') document.documentElement.className += ' compact-menu';
             // Зимний сезон 1 дек → 1 мар (включительно только до 1 мар:
             // getMonth() 11/0/1). __winterOn на window — его гоняет проба.
@@ -1014,8 +1014,8 @@
             letter-spacing: 0;
         }
 
-        /* ── Компактное меню — эксперимент на вкладке Отладка («а что если»),
-           НЕ постоянный режим: плотная компоновка левой панели (сетка 4px),
+        /* ── Компактность меню — вкладка Лаунчер (перенесено из дебага
+           09.11): плотная компоновка левой панели (сетка 4px),
            хедер одной строкой. Переключатель setCompactMenu — localStorage
            arp_compactMenu, класс на <html> (до первой отрисовки — см.
            inline-скрипт в <head>). */
@@ -6543,7 +6543,7 @@
             color: #fff;
         }
 
-        /* ── Зимние эффекты (дебаг → карточка «Зима»,08.11) ─────────────
+        /* ── Зимние эффекты (вкладка Лаунчер, перенесено из дебага) ───────
            Включаются классами winter-* на <html> (ставит скрипт в <head> из
            localStorage airSnow/airVignette/airFrost; всё по умолчанию выкл —
            декабрь не наступил). Оверлеи pointer-events:none, z=9000/9001:
@@ -7501,7 +7501,7 @@
     <!-- Toast контейнер для глобальных уведомлений -->
     <div id="toastContainer" style="position:fixed; right:20px; z-index:9999; display:flex; flex-direction:column; gap:8px; max-width:360px;"></div>
     <!-- Зимний снег: canvas на весь экран, включается классом winter-snow
-         на <html> (дебаг → карточка «Зима»), движок setWinterFx внизу -->
+         на <html> (вкладка Лаунчер → «Зимние эффекты»), движок setWinterFx внизу -->
     <canvas id="winterSnow" aria-hidden="true"></canvas>
     <style>
         .dll-toast { display:flex; align-items:flex-start; gap:10px; padding:12px 14px; border-radius:8px; background:rgba(255,68,68,0.15); border:1px solid rgba(255,68,68,0.3); box-shadow:0 4px 20px rgba(0,0,0,0.4); animation:slideIn 0.3s ease; cursor:default; overflow:hidden; transition:width 0.35s ease, padding 0.35s ease, border-radius 0.35s ease, opacity 0.35s ease, background 0.35s ease, border-color 0.35s ease, max-height 0.35s ease; width:100%; }
@@ -8276,6 +8276,67 @@
                         </div>
                     </div>
 
+                    <!-- Перенесено из дебага (09.11): компактность меню и
+                         зимние эффекты — постоянные настройки лаунчера -->
+                    <div class="s-section">
+                        <div class="s-section-head">
+                            <span class="s-section-head-icon"><i data-lucide="menu"></i></span>
+                            <span class="s-section-title">Компактность меню</span>
+                        </div>
+                        <div class="s-section-body">
+                            <label class="launch-item" style="margin:8px 16px;"
+                                   onclick="event.preventDefault(); setCompactMenu(!document.getElementById('compactMenuCheck').checked)">
+                                <input type="checkbox" id="compactMenuCheck">
+                                <div class="s-toggle"></div>
+                                <div class="launch-item-text">
+                                    <span class="launch-item-name">Компактное меню</span>
+                                </div>
+                            </label>
+                            <div style="padding:0 16px 10px;font-family:'Montserrat Alternates';font-size:10px;color:rgba(255,255,255,0.25);line-height:1.5;">
+                                Плотная компоновка левой панели и хедер в одну строку — больше информации на экране.
+                                Переключается сразу, без перезапуска.
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="s-section">
+                        <div class="s-section-head">
+                            <span class="s-section-head-icon"><i data-lucide="snowflake"></i></span>
+                            <span class="s-section-title">Зимние эффекты</span>
+                        </div>
+                        <div class="s-section-body">
+                            <label class="launch-item" style="margin:8px 16px;"
+                                   onclick="event.preventDefault(); setWinterFx('snow', !document.getElementById('winterSnowCheck').checked)">
+                                <input type="checkbox" id="winterSnowCheck">
+                                <div class="s-toggle"></div>
+                                <div class="launch-item-text">
+                                    <span class="launch-item-name">Снег</span>
+                                </div>
+                            </label>
+                            <label class="launch-item" style="margin:8px 16px;"
+                                   onclick="event.preventDefault(); setWinterFx('vignette', !document.getElementById('winterVignetteCheck').checked)">
+                                <input type="checkbox" id="winterVignetteCheck">
+                                <div class="s-toggle"></div>
+                                <div class="launch-item-text">
+                                    <span class="launch-item-name">Морозная виньетка</span>
+                                </div>
+                            </label>
+                            <label class="launch-item" style="margin:8px 16px;"
+                                   onclick="event.preventDefault(); setWinterFx('frost', !document.getElementById('winterFrostCheck').checked)">
+                                <input type="checkbox" id="winterFrostCheck">
+                                <div class="s-toggle"></div>
+                                <div class="launch-item-text">
+                                    <span class="launch-item-name">Иней на кнопках</span>
+                                </div>
+                            </label>
+                            <div style="padding:4px 16px 10px;font-family:'Montserrat Alternates';font-size:10px;color:rgba(255,255,255,0.25);line-height:1.5;">
+                                Сезон: с 1 декабря по 1 марта включаются сами (если явно не выключены) — явное «Выкл»
+                                сильнее сезона. Снег падает поверх интерфейса, виньетка темнит края с ледяным отливом,
+                                иней покрывает кнопки при наведении.
+                            </div>
+                        </div>
+                    </div>
+
                 </div>
 
                 <!-- О программе -->
@@ -8359,54 +8420,6 @@
                         <div class="debug-row">
                             <span class="debug-label">Что это</span>
                             <span class="debug-value">Потолок кадров CSS-анимаций (фейды, выезды, панели). «Без лимита» = частота экрана — выше веб-анимации не бывают. Лимит ниже — анимации отрисовываются реже (проверка плавности). Сохраняется в localStorage airAnimFps</span>
-                        </div>
-                    </div>
-
-                    <div class="dbg-card">
-                        <div class="debug-section-title"><i data-lucide="snowflake"></i> Зима</div>
-                        <div class="debug-row">
-                            <span class="debug-label">Снег</span>
-                            <span class="debug-value">
-                                <span class="dbg-anim-group" id="dbgSnowGroup">
-                                    <button type="button" data-w="0" onclick="setWinterFx('snow', 0)">Выкл</button><button type="button" data-w="1" onclick="setWinterFx('snow', 1)">Вкл</button>
-                                </span>
-                            </span>
-                        </div>
-                        <div class="debug-row">
-                            <span class="debug-label">Виньетка</span>
-                            <span class="debug-value">
-                                <span class="dbg-anim-group" id="dbgVignetteGroup">
-                                    <button type="button" data-w="0" onclick="setWinterFx('vignette', 0)">Выкл</button><button type="button" data-w="1" onclick="setWinterFx('vignette', 1)">Вкл</button>
-                                </span>
-                            </span>
-                        </div>
-                        <div class="debug-row">
-                            <span class="debug-label">Иней на кнопках</span>
-                            <span class="debug-value">
-                                <span class="dbg-anim-group" id="dbgFrostGroup">
-                                    <button type="button" data-w="0" onclick="setWinterFx('frost', 0)">Выкл</button><button type="button" data-w="1" onclick="setWinterFx('frost', 1)">Вкл</button>
-                                </span>
-                            </span>
-                        </div>
-                        <div class="debug-row">
-                            <span class="debug-label">Что это</span>
-                            <span class="debug-value">Сезонные эффекты: с 1 декабря по 1 марта включаются сами (если явно не выключены), 1 марта гаснут — включённое руками включается только до конца сезона, а явное «Выкл» сильнее сезона. Снег падает поверх интерфейса, морозная виньетка темнит края с ледяным отливом, при наведении на кнопки их фон покрывается инеем. Хранится в localStorage airSnow/airVignette/airFrost</span>
-                        </div>
-                    </div>
-
-                    <div class="dbg-card">
-                        <div class="debug-section-title"><i data-lucide="layout"></i> Меню</div>
-                        <div class="debug-row">
-                            <span class="debug-label">Компактное меню</span>
-                            <span class="debug-value">
-                                <span class="dbg-anim-group" id="dbgCompactGroup">
-                                    <button type="button" data-c="0" onclick="setCompactMenu(false)">Стандарт</button><button type="button" data-c="1" onclick="setCompactMenu(true)">Компакт</button>
-                                </span>
-                            </span>
-                        </div>
-                        <div class="debug-row">
-                            <span class="debug-label">Что это</span>
-                            <span class="debug-value">Эксперимент («а что если»): плотная компоновка левой панели, хедер в одну строку. Не постоянный режим</span>
                         </div>
                     </div>
 
@@ -14074,7 +14087,7 @@
                 if (tabName === 'debug')  loadDebugInfo();
                 if (tabName === 'patches') checkPatchesStatus();
                 if (tabName === 'about')  _renderAboutBug();
-                if (tabName === 'launcher') applyGameUpdateFuture();
+                if (tabName === 'launcher') { applyGameUpdateFuture(); _syncWinterUI(); _syncCompactUI(); }
             }
         }
 
@@ -17067,9 +17080,9 @@
                 b.classList.toggle('sel', b.dataset.b === curBlur));
         }
 
-        // Компактное меню — эксперимент «а что если» (плотная панель, хедер
-        // в одну строку). Только вкладка Отладка, не постоянный режим:
-        // localStorage arp_compactMenu ('1'/'0') + класс compact-menu на <html>.
+        // Компактное меню (плотная панель, хедер в одну строку) — вкладка
+        // Лаунчер: localStorage arp_compactMenu ('1'/'0') + класс compact-menu
+        // на <html>.
         function setCompactMenu(on) {
             on = (on === true || on === '1' || on === 1);
             try { localStorage.setItem('arp_compactMenu', on ? '1' : '0'); } catch (e) {}
@@ -17079,9 +17092,8 @@
 
         function _syncCompactUI() {
             const on = document.documentElement.classList.contains('compact-menu');
-            const g = document.getElementById('dbgCompactGroup');
-            if (g) g.querySelectorAll('button').forEach(b =>
-                b.classList.toggle('sel', (b.dataset.c === '1') === on));
+            const cb = document.getElementById('compactMenuCheck');
+            if (cb) cb.checked = on;
         }
 
         // Принудительный показ настроек плагина (карточка «Плагин» в дебаге).
@@ -17246,7 +17258,7 @@
             if (v) _applyAnimFps(v);
         })();
 
-        // ── Зимние эффекты (дебаг → карточка «Зима») ─────────────────────
+        // ── Зимние эффекты (вкладка Лаунчер → «Зимние эффекты») ───────────
         // Три независимых флага: класс winter-* на <html> (ставит скрипт в
         // <head> до отрисовки), localStorage airSnow/airVignette/airFrost
         // ('1'/'0', дефолт выкл — сезон не наступил). Виньетка и иней на
@@ -17266,13 +17278,10 @@
         }
 
         function _syncWinterUI() {
+            const ids = { snow: 'winterSnowCheck', vignette: 'winterVignetteCheck', frost: 'winterFrostCheck' };
             for (const k of WINTER_FX) {
-                const g = document.getElementById('dbg' + k.charAt(0).toUpperCase() + k.slice(1) + 'Group');
-                if (g) {
-                    const on = document.documentElement.classList.contains('winter-' + k);
-                    g.querySelectorAll('button').forEach(b =>
-                        b.classList.toggle('sel', (b.dataset.w === '1') === on));
-                }
+                const cb = document.getElementById(ids[k]);
+                if (cb) cb.checked = document.documentElement.classList.contains('winter-' + k);
             }
         }
 
@@ -17389,8 +17398,6 @@
         async function loadDebugInfo() {
             _syncAnimModeUI();
             _syncFpsUI();
-            _syncWinterUI();
-            _syncCompactUI();
             _syncForcePluginUI();
             try {
                 if (window.pywebview && window.pywebview.api.get_debug_info) {
