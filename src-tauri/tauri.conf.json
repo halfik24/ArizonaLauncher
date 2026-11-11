@@ -21,6 +21,7 @@
         "visible": false,
         "devtools": false,
         "center": true,
+        "dragDropEnabled": false,
         "additionalBrowserArgs": "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection"
       }
     ],

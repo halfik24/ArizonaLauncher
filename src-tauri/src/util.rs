@@ -59,8 +59,10 @@ pub fn fail_message(msg: impl Into<String>) -> Result<serde_json::Value, String>
 }
 
 /// Путь к диагностическому лог-файлу: `<Documents>/ArizonaLauncher/launcher.log`.
+/// Fallback тот же, что у `AppState::new` (config.rs): Documents → LOCALAPPDATA.
 pub fn log_file_path() -> PathBuf {
     dirs::document_dir()
+        .or_else(dirs::data_local_dir)
         .unwrap_or_else(|| PathBuf::from("."))
         .join("ArizonaLauncher")
         .join("launcher.log")

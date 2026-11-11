@@ -1598,10 +1598,24 @@ pub fn get_launcher_version(state: State<'_, AppState>) -> Result<serde_json::Va
 /// состояние папки игры с требуемым и сообщает, нужна ли установка/апгрейд.
 #[tauri::command(async)]
 pub fn check_launcher_update(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
-    let (game_path, launcher_path) = {
+    let (game_path, launcher_path, launch_method) = {
         let cfg = util::lock_config(&state)?;
-        (cfg.game_path.clone(), cfg.launcher_path.clone())
+        (
+            cfg.game_path.clone(),
+            cfg.launcher_path.clone(),
+            cfg.launch_method.clone(),
+        )
     };
+    // Нативный запуск не использует Air — установка/обновление не требуется.
+    // Раньше проверка была чисто файловой и показывала «Обновить» даже тем,
+    // кому Air не нужен.
+    if launch_method != "air" {
+        return Ok(serde_json::json!({
+            "success": true, "needs_update": false,
+            "message": "Нативный запуск — лаунчер Air не требуется",
+            "folder": serde_json::Value::Null
+        }));
+    }
     if game_path.is_empty() || launcher_path.is_empty() {
         return Ok(serde_json::json!({
             "success": true, "needs_update": false,
@@ -1656,6 +1670,24 @@ pub fn check_launcher_update(state: State<'_, AppState>) -> Result<serde_json::V
     }))
 }
 
+/// Установлена ли `preloading_plugins`: папка существует и содержит хоть один
+/// файл, кроме конфига патчера и его бэкапов. Иначе один
+/// `#ArizonaPatches.json`, сохранённый заранее, выдавал бы «патчи установлены».
+fn preloading_installed(dir: &std::path::Path) -> bool {
+    let plugins = dir.join("preloading_plugins");
+    let Ok(entries) = std::fs::read_dir(&plugins) else {
+        return false;
+    };
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().to_string();
+        if name == "#ArizonaPatches.json" || name.starts_with("patches_") {
+            continue;
+        }
+        return true;
+    }
+    false
+}
+
 /// Python `get_install_action`, но лаунчер определяется по ресурсу версии среди
 /// всех exe папки (не по имени файла):
 /// - action: 'none' | 'choose_version' | 'install_launcher_only'
@@ -1674,11 +1706,7 @@ fn install_action_for_folder(folder_path: &str) -> Result<serde_json::Value, Str
     let launcher_version: Option<&'static str> =
         launcher.as_ref().map(|(_, major)| major_to_version(*major));
     let has_v8 = launcher_version == Some("v8");
-    let plugins = folder.join("preloading_plugins");
-    let has_preloading = plugins.is_dir()
-        && std::fs::read_dir(&plugins)
-            .map(|mut rd| rd.next().is_some())
-            .unwrap_or(false);
+    let has_preloading = preloading_installed(folder);
 
     // 1. preloading + v8 → ничего делать не надо
     if has_preloading && has_v8 {
@@ -1702,16 +1730,8 @@ fn install_action_for_folder(folder_path: &str) -> Result<serde_json::Value, Str
     }
     // 4. нет preloading, но лаунчер есть
     if !has_preloading && has_launcher {
-        if has_v8 {
-            // Для v8 ставку preloading решает удалённый флаг патчера
-            return Ok(serde_json::json!({
-                "action": "none",
-                "message": "Лаунчер v8 уже установлен",
-                "has_launcher": true,
-                "has_preloading": false,
-                "launcher_version": "v8"
-            }));
-        }
+        // Для v8 тоже предлагаем доустановить preloading: без него патчи и
+        // плагины не работают. Раньше здесь был "none" — тупик без выхода.
         return Ok(serde_json::json!({
             "action": "install_preloading_only",
             "message": "Требуется установка папки preloading_plugins",
@@ -2736,13 +2756,13 @@ fn patches_download_url(version: &str) -> String {
     )
 }
 
-/// Все зеркала архива патчей: primary — ArzLaunchRepo, fallback — исходный
-/// репозиторий Python-версии (worteng/ArizonaLauncher).
+/// Все зеркала архива патчей: primary — ArzLaunchRepo, fallback — репозиторий
+/// лаунчера (halfik24/ArizonaLauncher).
 fn patches_download_urls(version: &str) -> Vec<String> {
     vec![
         patches_download_url(version),
         format!(
-            "https://raw.githubusercontent.com/worteng/ArizonaLauncher/main/patches/arizonapatches_{}.zip",
+            "https://raw.githubusercontent.com/halfik24/ArizonaLauncher/main/patches/arizonapatches_{}.zip",
             version
         ),
     ]
@@ -2825,18 +2845,35 @@ pub fn check_patches_files(state: State<'_, AppState>) -> Result<serde_json::Val
 
 #[tauri::command(async)]
 pub fn read_patches(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
-    let path = patches_json_path(&state);
+    // Без game_path относительный путь указывал бы в CWD приложения — файл
+    // из рабочей папки не должен считаться конфигом игры.
+    let Some(game_dir) = util::game_dir(&state) else {
+        return Ok(serde_json::json!({
+            "success": false,
+            "message": "Путь к игре не установлен",
+            "path": ""
+        }));
+    };
+    let path = game_dir.join("preloading_plugins").join("#ArizonaPatches.json");
     let path_str = path.to_string_lossy().to_string();
-    if path_str.is_empty() {
-        return Ok(serde_json::json!({"success": false, "message": "patches_path пустой", "path": ""}));
-    }
     if !path.exists() {
-        return Ok(serde_json::json!({"success": false, "message": format!("Файл не найден: {}", path_str), "path": path_str}));
+        // Конфига ещё нет — пока v2 не установлены, это нормальное состояние:
+        // настройки можно редактировать, файл создастся при сохранении.
+        return Ok(serde_json::json!({
+            "success": true,
+            "data": {},
+            "path": path_str,
+            "keys_count": 0,
+            "exists": false
+        }));
     }
     match util::read_patches_file(&path) {
         Ok(data) => {
             let keys_count = data.as_object().map(|o| o.len()).unwrap_or(0);
-            Ok(serde_json::json!({"success": true, "data": data, "path": path_str, "keys_count": keys_count}))
+            Ok(serde_json::json!({
+                "success": true, "data": data, "path": path_str,
+                "keys_count": keys_count, "exists": true
+            }))
         }
         Err(e) => Ok(serde_json::json!({"success": false, "message": e, "path": path_str})),
     }
@@ -2954,10 +2991,13 @@ pub fn restore_patches_backup(state: State<'_, AppState>, filename: String) -> R
 
 /// Общая тело записи патчей (используется и write_patches, и restore).
 fn write_patches_inner(state: &AppState, data: &serde_json::Value) -> serde_json::Value {
-    let path = patches_json_path(state);
-    if path.as_os_str().is_empty() {
-        return serde_json::json!({"success": false, "message": "Path not set"});
-    }
+    // Без game_path patches_json_path() даёт относительный путь
+    // "preloading_plugins/#ArizonaPatches.json" — и запись ушла бы в CWD
+    // приложения. Проверяем папку игры явно.
+    let Some(game_dir) = util::game_dir(state) else {
+        return serde_json::json!({"success": false, "message": "Путь к игре не установлен"});
+    };
+    let path = game_dir.join("preloading_plugins").join("#ArizonaPatches.json");
     // Бэкап обязателен: если он не создался (файл залочен), старый конфиг
     // не затираем — пользователь не теряет настройки из-за транзиентного сбоя
     if path.exists() {
@@ -3313,10 +3353,10 @@ pub async fn download_and_install_patches(
 
 #[tauri::command]
 pub async fn get_patches_latest_version() -> Result<serde_json::Value, String> {
-    // Python: чтение patches/version.txt с GitHub (primary ArzLaunchRepo, fallback worteng)
+    // Чтение patches/version.txt с GitHub (primary ArzLaunchRepo, fallback ArizonaLauncher)
     let urls = [
         "https://raw.githubusercontent.com/halfik24/ArzLaunchRepo/main/patches/version.txt",
-        "https://raw.githubusercontent.com/worteng/ArizonaLauncher/main/patches/version.txt",
+        "https://raw.githubusercontent.com/halfik24/ArizonaLauncher/main/patches/version.txt",
     ];
     let mut headers = reqwest::header::HeaderMap::new();
     headers.insert(
@@ -3537,7 +3577,9 @@ pub async fn import_patches(app: tauri::AppHandle, state: State<'_, AppState>) -
     } else {
         obj.clone()
     };
-    let bool_count = flat.values().filter(|v| v.as_bool().unwrap_or(false)).count();
+    // Считаем именно bool-ключи, а не только true: конфиг «всё выключено» —
+    // валиден (как в install_patches_file).
+    let bool_count = flat.values().filter(|v| v.as_bool().is_some()).count();
     if bool_count == 0 {
         return util::fail_message("Файл не содержит настроек патчей");
     }
@@ -3627,7 +3669,7 @@ pub fn install_patches_file(
 pub async fn fetch_patch_presets() -> Result<serde_json::Value, String> {
     let urls = [
         "https://raw.githubusercontent.com/halfik24/ArzLaunchRepo/main/configs.txt",
-        "https://raw.githubusercontent.com/worteng/ArizonaLauncher/main/configs.txt",
+        "https://raw.githubusercontent.com/halfik24/ArizonaLauncher/main/configs.txt",
     ];
     let mut last_err = "Неизвестная ошибка".to_string();
     for url in urls {
@@ -3748,7 +3790,7 @@ pub async fn fetch_patches_schema() -> Result<serde_json::Value, String> {
     }
     let urls = [
         "https://raw.githubusercontent.com/halfik24/ArzLaunchRepo/main/patches_schema.json",
-        "https://raw.githubusercontent.com/worteng/ArizonaLauncher/main/patches_schema.json",
+        "https://raw.githubusercontent.com/halfik24/ArizonaLauncher/main/patches_schema.json",
     ];
     let mut last_err = "Неизвестная ошибка".to_string();
     for url in urls {
@@ -4580,13 +4622,10 @@ fn remove_old_launcher_exes(folder: &std::path::Path) {
     }
 }
 
-/// Папка preloading_plugins существует и не пуста (как в get_install_action).
+/// Папка preloading_plugins установлена (как в get_install_action): есть хоть
+/// один файл, кроме конфига патчера и его бэкапов.
 fn has_preloading_plugins(folder: &std::path::Path) -> bool {
-    let plugins = folder.join("preloading_plugins");
-    plugins.is_dir()
-        && std::fs::read_dir(&plugins)
-            .map(|mut rd| rd.next().is_some())
-            .unwrap_or(false)
+    preloading_installed(folder)
 }
 
 /// Тело установки: скачивание → распаковка → обновление launcher_path.
@@ -5520,7 +5559,7 @@ fn resolve_dest_no_create(state: &AppState, destination: &str) -> Result<PathBuf
 pub async fn fetch_others_catalog() -> Result<serde_json::Value, String> {
     let urls = [
         "https://raw.githubusercontent.com/halfik24/ArzLaunchRepo/main/others.txt",
-        "https://raw.githubusercontent.com/worteng/ArizonaLauncher/main/others.txt",
+        "https://raw.githubusercontent.com/halfik24/ArizonaLauncher/main/others.txt",
     ];
     let mut last_err = "Неизвестная ошибка".to_string();
     for url in urls {

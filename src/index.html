@@ -3438,6 +3438,32 @@
             color: rgba(255,255,255,0.4);
         }
 
+        /* Air не установлен — предложение установки в настройках */
+        #airInstallSection .air-install-card {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 14px;
+            padding: 14px 16px;
+            background: rgba(var(--accent-rgb), 0.08);
+            border: 1px solid rgba(var(--accent2-rgb), 0.22);
+            border-radius: 10px;
+        }
+        #airInstallSection .air-install-info { flex: 1 1 200px; min-width: 0; }
+        #airInstallSection .air-install-title {
+            font-family: 'Montserrat Alternates', sans-serif;
+            font-size: 12px;
+            font-weight: 600;
+            color: rgba(255,255,255,0.9);
+            margin-bottom: 3px;
+        }
+        #airInstallSection .air-install-desc {
+            font-size: 11px;
+            line-height: 1.45;
+            color: rgba(255,255,255,0.5);
+        }
+        #airInstallSection .s-btn { flex-shrink: 0; }
+
         .launch-item-text { flex: 1; min-width: 0; }
 
         .launch-item-name {
@@ -5058,14 +5084,9 @@
             max-width: 360px;
         }
 
-        /* Тосты: top живёт здесь, а не инлайн-стилем в разметке — инлайн
-           перебивал бы любое CSS-правило (в т.ч. про тайтлбар ниже). */
-        #toastContainer { top: 20px; }
-
-        /* Под своим тайтлбаром (42px) уведомления и тосты иначе залезают
-           под кнопки окна (z-index тайтлбара выше) — отступаем 42 + 10px. */
-        body.frame-custom #notificationContainer,
-        body.frame-custom #toastContainer { top: 52px; }
+        /* Под своим тайтлбаром (42px) уведомления иначе залезают под кнопки
+           окна (z-index тайтлбара выше) — отступаем 42 + 10px. */
+        body.frame-custom #notificationContainer { top: 52px; }
 
         /* ══ Обратная связь: кнопка в углу + попап ══ */
         #feedbackFab {
@@ -7526,8 +7547,6 @@
         <div class="ph-dropdown hide" id="phDropdown"></div>
     </div>
 
-    <!-- Toast контейнер для глобальных уведомлений -->
-    <div id="toastContainer" style="position:fixed; right:20px; z-index:9999; display:flex; flex-direction:column; gap:8px; max-width:360px;"></div>
     <!-- Зимний снег: canvas на весь экран, включается классом winter-snow
          на <html> (вкладка Лаунчер → «Зимние эффекты»), движок setWinterFx внизу -->
     <canvas id="winterSnow" aria-hidden="true"></canvas>
@@ -7737,15 +7756,8 @@
                                 <div id="patchStatusTitle" style="font-family:'Montserrat Alternates'; font-size:13px; font-weight:600; color:rgba(255,255,255,0.95); margin-bottom:2px;"></div>
                                 <div id="patchStatusDetail" style="font-family:'Montserrat Alternates'; font-size:11px; color:rgba(255,255,255,0.55); line-height:1.4;"></div>
                             </div>
-                            <div style="display:flex; gap:8px; flex-shrink:0;">
-                                <button id="patchActionBtn" class="s-btn" style="display:none; width:auto; padding:0 14px; height:32px; font-size:11px;">
-                                    <i id="patchActionIcon" data-lucide="download" style="width:14px;height:14px;"></i>
-                                    <span id="patchActionText"></span>
-                                </button>
-                                <button id="patchCheckUpdateBtn" class="s-btn" style="display:none; width:auto; padding:0 14px; height:32px; font-size:11px;">
-                                    <i data-lucide="refresh-cw" style="width:14px;height:14px;"></i> Проверить обновления
-                                </button>
-                            </div>
+                            <!-- Кнопки скачивания/обновления и прогресс патчей
+                                 вернутся после выхода v2 (PATCHES_DOWNLOAD_ENABLED). -->
                         </div>
                     </div>
                     <div id="checkboxGroup">
@@ -7765,16 +7777,6 @@
                         <!-- Контейнер категорий (рендерится data-driven) -->
                         <div id="patchesCategories"></div>
                     </div>
-                    <!-- Прогресс установки (скрыт до начала) -->
-                    <div id="patchInstallProgress" style="display:none; margin-top:16px; padding:12px; background:rgba(255,255,255,0.02); border-radius:8px;">
-                        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-                            <div id="patchProgressMsg" style="font-family:'Montserrat Alternates';font-size:11px;color:rgba(255,255,255,0.8);">Подготовка...</div>
-                            <div id="patchProgressPct" style="font-family:'Montserrat Alternates';font-size:11px;font-weight:600;color:rgba(130,220,150,1);">0%</div>
-                        </div>
-                        <div style="height:6px;background:rgba(255,255,255,0.1);border-radius:3px;overflow:hidden;">
-                            <div id="patchProgressFill" style="width:0%;height:100%;background:linear-gradient(90deg,rgba(130,220,150,1),rgba(80,200,120,1));border-radius:3px;transition:width 0.3s;"></div>
-                        </div>
-                    </div>
                 </div>
 
                 <!-- Запуск -->
@@ -7789,7 +7791,8 @@
                         <div class="lp-grid">
 
                             <label class="launch-item">
-                                <input type="radio" name="launchMethodRadio" id="lmNative" value="native" checked>
+                                <input type="radio" name="launchMethodRadio" id="lmNative" value="native" checked
+                                       onchange="onLaunchMethodChange()">
                                 <span class="lp-ico"><i data-lucide="rocket"></i></span>
                                 <span class="launch-item-text">
                                     <span class="lp-nameline">
@@ -7800,7 +7803,8 @@
                             </label>
 
                             <label class="launch-item">
-                                <input type="radio" name="launchMethodRadio" id="lmAir" value="air">
+                                <input type="radio" name="launchMethodRadio" id="lmAir" value="air"
+                                       onchange="onLaunchMethodChange()">
                                 <span class="lp-ico"><i data-lucide="wind"></i></span>
                                 <span class="launch-item-text">
                                     <span class="lp-nameline">
@@ -7813,6 +7817,21 @@
                         </div>
                         <div class="lm-hint">Нативный запускает gta_sa.exe напрямую, минуя лаунчер Air.
                             Плагины из preloading_plugins при нативном запуске пока не внедряются.</div>
+                    </section>
+
+                    <!-- Установка Air: показывается только когда выбран Air,
+                         а лаунчера/preloading в папке игры нет -->
+                    <section class="lp-sec" id="airInstallSection" style="display:none;">
+                        <div class="lp-cap">Лаунчер Air</div>
+                        <div class="air-install-card">
+                            <div class="air-install-info">
+                                <div class="air-install-title" id="airInstallTitle">Лаунчер Air не установлен</div>
+                                <div class="air-install-desc" id="airInstallDesc"></div>
+                            </div>
+                            <button class="s-btn primary" id="airInstallBtn" onclick="openAirInstall()">
+                                <i data-lucide="download"></i> Установить
+                            </button>
+                        </div>
                     </section>
 
                     <!-- Окно -->
@@ -7919,6 +7938,8 @@
                                 <span class="lp-check"><i data-lucide="check" stroke-width="3"></i></span>
                             </label>
 
+                            <!-- Пара в 2 колонки: id читает _applyLauncherVersionUI -->
+                            <div id="v7_vulkanPair" style="display:none; grid-column:1/-1; grid-template-columns:1fr 1fr; gap:8px;">
                             <label class="launch-item" id="v7_modernScale" style="display:none;">
                                 <input type="checkbox" id="modernScaleCheck" onchange="onVulkanIncompatChange('modernScaleWarn', this.checked)">
                                 <span class="lp-ico"><i data-lucide="scan"></i></span>
@@ -7946,6 +7967,7 @@
                                 </span>
                                 <span class="lp-check"><i data-lucide="check" stroke-width="3"></i></span>
                             </label>
+                            </div><!-- /v7_vulkanPair -->
 
                         </div>
                     </section>
@@ -8479,22 +8501,6 @@
                         <div class="debug-row">
                             <span class="debug-label">Что это</span>
                             <span class="debug-value">Потолок кадров CSS-анимаций (фейды, выезды, панели). «Без лимита» = частота экрана — выше веб-анимации не бывают. Лимит ниже — анимации отрисовываются реже (проверка плавности). Сохраняется в localStorage airAnimFps</span>
-                        </div>
-                    </div>
-
-                    <div class="dbg-card">
-                        <div class="debug-section-title"><i data-lucide="puzzle"></i> Плагин</div>
-                        <div class="debug-row">
-                            <span class="debug-label">Показ настроек плагина</span>
-                            <span class="debug-value">
-                                <span class="dbg-anim-group" id="dbgForcePluginGroup">
-                                    <button type="button" data-f="0" onclick="setForcePluginSettings(false)">Авто</button><button type="button" data-f="1" onclick="setForcePluginSettings(true)">Принудительно</button>
-                                </span>
-                            </span>
-                        </div>
-                        <div class="debug-row">
-                            <span class="debug-label">Что это</span>
-                            <span class="debug-value">Показывает панель настроек патчей (#checkboxGroup), даже если плагин не установлен/устарел или активен нативный запуск. Только отладка, в конфиг не сохраняется</span>
                         </div>
                     </div>
 
@@ -9488,6 +9494,12 @@
         let _patchesActiveCategories = new Set();  // выбранные чипы категорий (пусто = все)
         let _patchesSearchQuery = '';
 
+        // Скачивание/обновление патчей из UI выключено до выхода v2:
+        // старый DLL 1.0.0.0 крашил игру. Настройки при этом редактируются.
+        // Включение: true + вернуть кнопки и #patchInstallProgress в разметку
+        // вкладки ArizonaPatches (downloadPatches/checkPatchesUpdate живы).
+        const PATCHES_DOWNLOAD_ENABLED = false;
+
         /**
          * Применяет дефолты схемы к patchesData: для каждой настройки из схемы,
          * если её нет в patchesData — добавляет с default-значением.
@@ -9518,6 +9530,13 @@
                 .replace(/>/g, '&gt;')
                 .replace(/"/g, '&quot;')
                 .replace(/'/g, '&#39;');
+        }
+
+        /** Иконка профиля из config.json: пускаем только сгенерированный нами
+            формат `<i data-lucide="name"></i>`, иначе — user. */
+        function profileIconHtml(icon) {
+            const m = /^<i data-lucide="([a-z0-9-]+)"><\/i>$/.exec(String(icon || ''));
+            return `<i data-lucide="${m ? m[1] : 'user'}"></i>`;
         }
 
         // Значение для JS-строки внутри inline-обработчика (HTML-атрибут вида
@@ -9708,7 +9727,7 @@
                 const item = document.createElement('div');
                 item.className = 'profile-item' + (isActive ? ' active-profile' : '');
                 item.innerHTML = `
-                    <div class="profile-icon">${p.icon || '<i data-lucide="user"></i>'}</div>
+                    <div class="profile-icon">${profileIconHtml(p.icon)}</div>
                     <div class="profile-info">
                         <div class="profile-name">${escapeHtml(p.name)}</div>
                         <div class="profile-meta">${meta}</div>
@@ -9799,7 +9818,7 @@
             _profiles.push(profile);
             await _saveProfiles();
             _renderProfiles();
-            showNotification('<i data-lucide="check"></i> Профиль «' + name + '» сохранён', 'success');
+            showNotification('<i data-lucide="check"></i> Профиль «' + escapeHtml(name) + '» сохранён', 'success');
         }
 
         async function applyProfile(id) {
@@ -9890,9 +9909,9 @@
             await _saveProfiles();
             _renderProfiles();
             if (errors.length) {
-                showNotification('Профиль «' + p.name + '» применён не полностью: ' + errors.join('; '), 'error');
+                showNotification('Профиль «' + escapeHtml(p.name) + '» применён не полностью: ' + escapeHtml(errors.join('; ')), 'error');
             } else {
-                showNotification('<i data-lucide="check"></i> Профиль «' + p.name + '» применён', 'success');
+                showNotification('<i data-lucide="check"></i> Профиль «' + escapeHtml(p.name) + '» применён', 'success');
             }
         }
 
@@ -10928,6 +10947,9 @@
                         _renderInstallHandle();
                         return;
                     }
+                    // native/всё установлено: сбрасываем кнопку, оставшуюся от
+                    // прошлого способа запуска (Air), иначе она висит зря.
+                    if (info && info.action === 'none') _installActionBtn = null;
                 }
 
                 if (window.pywebview && window.pywebview.api.check_update_api) {
@@ -13183,7 +13205,7 @@
 
                 // Патчи внедряются только при запуске через лаунчер Air
                 // (плагины из preloading_plugins). При нативном запуске DLL
-                // не грузится — баннер сообщает об этом, настройки скрыты.
+                // не грузится — баннер сообщает об этом, настройки доступны.
                 let method = 'native';
                 try {
                     if (api.get_launch_method) {
@@ -13197,19 +13219,8 @@
                 const status = await api.check_patches_status();
                 renderPatchStatusUI(status, method);
 
-                // Автопроверка обновлений патчей: в Python событие приходило
-                // извне (_onPatchesUpdateAvailable), в Tauri его никто не
-                // эмитил — баннер был мёртв. Сравниваем версию манифеста
-                // с установленной сами.
-                if (api.check_patches_update_status && status && status.installed_version) {
-                    try {
-                        const upd = await api.check_patches_update_status();
-                        if (upd && upd.success && upd.released
-                            && upd.latest_version && upd.latest_version !== status.installed_version) {
-                            showPatchUpdateBanner(upd.latest_version);
-                        }
-                    } catch (e) { console.warn('check_patches_update_status:', e); }
-                }
+                // Автопроверку обновлений и плашку «Доступно обновление
+                // патчей» убрали вместе со скачиванием до выхода v2.
             } catch (e) {
                 console.error('checkPatchesStatus error:', e);
             }
@@ -13221,52 +13232,51 @@
 
         // ===== Patches Status UI =====
 
-        /** Баннер + доступность настроек патчей. Патчер применим только при
-            запуске через Air и когда DLL/конфиг на месте и не устарели.
-            Иначе настройки скрываются (нельзя «настраивать» то, что не
-            применится) и показывается баннер с причиной. */
+        /** Баннер статуса патчей. Настройки редактируются всегда: патчи v2
+            ещё не вышли, а конфиг — заготовка, которая применится после
+            установки. Скачивание/обновление из UI намеренно недоступно
+            (см. PATCHES_DOWNLOAD_ENABLED). */
         function renderPatchStatusUI(status, method) {
             try {
-                document.getElementById('patchInstallProgress').style.display = 'none';
+                var progress = document.getElementById('patchInstallProgress');
+                if (progress) progress.style.display = 'none';
 
-                var alert    = document.getElementById('patchStatusAlert');
-                var group    = document.getElementById('checkboxGroup');
-                var actBtn   = document.getElementById('patchActionBtn');
-                var checkBtn = document.getElementById('patchCheckUpdateBtn');
-                if (actBtn)   actBtn.style.display   = 'none';
-                if (checkBtn) checkBtn.style.display = 'none';
+                var alert = document.getElementById('patchStatusAlert');
+                var group = document.getElementById('checkboxGroup');
+                // Настройки не прячем ни при native, ни при отсутствии патчей.
+                if (group) group.style.display = 'flex';
 
                 var kind, title, detail;
                 if (method !== 'air') {
-                    // Нативный запуск: патчи гарантированно не применяются.
+                    // Нативный запуск: патчи гарантированно не применяются,
+                    // но конфиг можно подготовить заранее.
                     kind   = 'native';
                     title  = 'Активен нативный запуск';
-                    detail = 'Плагины из preloading_plugins при нативном запуске не внедряются — '
-                           + 'патчи не будут применены. Переключи способ запуска на «Через лаунчер Air» '
-                           + 'во вкладке «Запуск», чтобы патчи работали.';
+                    detail = 'Патчи применятся только при запуске через лаунчер Air. '
+                           + 'Настройки можно менять заранее — они сохранятся в папку игры.';
                 } else if (!status || !status.status) {
                     // Backend недоступен — честно пишем, что проверить не удалось.
                     kind   = 'missing';
                     title  = 'Не удалось проверить патчи';
-                    detail = 'Нет ответа от лаунчера. Настройки патчей скрыты до подтверждения работоспособности.';
+                    detail = 'Нет ответа от лаунчера. Настройки доступны — изменения сохранятся.';
                 } else if (status.status === 'current') {
-                    // Всё готово: баннер не показываем, настройки доступны.
+                    // Всё готово: баннер не показываем.
                     kind = null;
                 } else if (status.status === 'outdated_dll_v1') {
                     kind   = 'outdated';
-                    title  = 'Патчи недоступны: устаревшая DLL';
-                    detail = (status.message_detail || status.message || '')
-                           + ' Настройки скрыты, ждём v2 от EIR.';
+                    title  = 'Старый DLL патчей отключён';
+                    detail = 'ArizonaPatches.dll 1.0.0.0 вызывал краши игры и был отключён. '
+                           + 'Настройки можно менять — они применятся после выхода v2.';
                 } else if (status.status === 'outdated_v1') {
                     kind   = 'outdated';
-                    title  = 'Патчи недоступны: устаревшая версия';
-                    detail = (status.message_detail || status.message || '');
+                    title  = 'Установлена старая версия патчей';
+                    detail = 'Настройки можно менять — они применятся после обновления до v2.';
                 } else {
                     // missing и прочее
                     kind   = 'missing';
-                    title  = 'Патчи недоступны';
-                    detail = (status.message_detail || status.message || '')
-                           + ' Файлы нужно установить, затем настройки станут доступны.';
+                    title  = 'Патчи v2 не установлены';
+                    detail = 'Настройки можно менять — они сохранятся в папку игры '
+                           + 'и применятся после установки патчей v2.';
                 }
 
                 if (kind) {
@@ -13281,13 +13291,8 @@
                     document.getElementById('patchStatusLucide').innerHTML =
                         '<i data-lucide="' + C.i + '" style="width:20px;height:20px;color:' + C.c + '"></i>';
                     alert.style.display = 'block';
-                    // Дебаг-флаг «принудительный показ настроек плагина»:
-                    // панель видна всегда; баннер с причиной остаётся (он
-                    // информативен — объясняет, почему панель скрыта бы без флага)
-                    group.style.display = _dbgForcePluginOn() ? 'flex' : 'none';
                 } else {
                     alert.style.display = 'none';
-                    group.style.display = 'flex';   // #checkboxGroup — flex-column в CSS
                 }
 
                 if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
@@ -13297,6 +13302,7 @@
         }
 
         async function downloadPatches() {
+            if (!PATCHES_DOWNLOAD_ENABLED) return;   // до выхода v2
             const btn = document.getElementById('patchActionBtn');
             const progressDiv = document.getElementById('patchInstallProgress');
             const msgEl = document.getElementById('patchProgressMsg');
@@ -13370,6 +13376,7 @@
         }
 
         async function checkPatchesUpdate() {
+            if (!PATCHES_DOWNLOAD_ENABLED) return;   // до выхода v2
             const btn = document.getElementById('patchCheckUpdateBtn');
             btn.disabled = true;
             btn.innerHTML = '<i data-lucide="loader" style="animation:spin 1s linear infinite;"></i> Проверка...';
@@ -13537,6 +13544,9 @@
                         // Обновляет путь и кнопку в правой панели
                         // (checkLauncherInstallation увидит install_info)
                         await loadSavedData();
+                        // Путь появился — блок установки Air в настройках
+                        // может стать актуальным (если выбран Air).
+                        refreshAirInstallSection();
                         const info = result.install_info;
                         if (info && info.action && info.action !== 'none') {
                             // Модалку установки не открываем сами — установка
@@ -13665,7 +13675,7 @@
                     label.style.fontSize = '16px';
                     showNotification('<i data-lucide="check-circle"></i> Обновление установлено!', 'success');
                     setTimeout(() => {
-                        checkLauncherInstallation(true);
+                        loadSavedData();
                         resetPatchHandle();
                         _updateDownloading = false;
                         _patchHandleProgressCb = null;
@@ -13703,6 +13713,97 @@
                 resetPatchHandle();
                 _updateDownloading = false;
             }
+        }
+
+        // ── Установка Air из настроек («Запуск») ──
+        // Показываем блок только когда выбран Air, а в папке игры нет
+        // лаунчера/preloading (или стоит старая версия). Установка не
+        // обязательна: при нативном запуске блок скрыт.
+        let _airInstallTarget = null;
+
+        async function onLaunchMethodChange() {
+            // Метод сохраняем сразу: get_install_action_api учитывает его
+            // (для native всегда возвращает none), иначе блок не обновится
+            // до нажатия «Сохранить».
+            try {
+                const method = document.getElementById('lmAir').checked ? 'air' : 'native';
+                if (window.pywebview?.api?.set_launch_method) {
+                    await window.pywebview.api.set_launch_method(method);
+                }
+            } catch (e) {
+                console.warn('set_launch_method:', e);
+            }
+            await refreshAirInstallSection();
+        }
+
+        async function refreshAirInstallSection() {
+            const sec = document.getElementById('airInstallSection');
+            if (!sec) return;
+            const air = document.getElementById('lmAir');
+            if (!air || !air.checked) {
+                sec.style.display = 'none';
+                _airInstallTarget = null;
+                return;
+            }
+            try {
+                const saved = window.pywebview?.api?.get_saved_data
+                    ? await window.pywebview.api.get_saved_data()
+                    : null;
+                const gamePath = (saved && saved.success) ? saved.game_path : '';
+                if (!gamePath) {
+                    // Путь к игре ещё не выбран — устанавливать некуда.
+                    sec.style.display = 'none';
+                    _airInstallTarget = null;
+                    return;
+                }
+                const sep = gamePath.lastIndexOf('\\') >= 0 ? '\\' : '/';
+                const folder = gamePath.substring(0, gamePath.lastIndexOf(sep));
+                const actionResult = window.pywebview?.api?.get_install_action_api
+                    ? await window.pywebview.api.get_install_action_api(folder)
+                    : null;
+                const info = (actionResult && actionResult.success) ? actionResult.install_info : null;
+                if (!info || !info.action || info.action === 'none' || info.action === 'error') {
+                    sec.style.display = 'none';
+                    _airInstallTarget = null;
+                    return;
+                }
+                _airInstallTarget = { folder, info };
+                const labels = {
+                    choose_version: [
+                        'Лаунчер Air не установлен',
+                        'Будет установлен ArizonaLauncher 8.0 (Air) и папка preloading_plugins.'
+                    ],
+                    install_launcher_only: [
+                        'Не хватает лаунчера Air',
+                        'Папка preloading_plugins уже есть — осталось установить ArizonaLauncher 8.0 (Air).'
+                    ],
+                    install_preloading_only: [
+                        'Не хватает папки preloading_plugins',
+                        'Лаунчер Air уже установлен — будет добавлена папка preloading_plugins.'
+                    ],
+                    upgrade_to_v8: [
+                        'Установлена старая версия Air',
+                        'Будет установлен ArizonaLauncher 8.0 (Air) вместо старой версии.'
+                    ],
+                };
+                const pair = labels[info.action] || ['Требуется установка Air', info.message || ''];
+                document.getElementById('airInstallTitle').textContent = pair[0];
+                document.getElementById('airInstallDesc').textContent = pair[1];
+                sec.style.display = '';
+                if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
+            } catch (e) {
+                console.warn('refreshAirInstallSection:', e);
+                sec.style.display = 'none';
+                _airInstallTarget = null;
+            }
+        }
+
+        function openAirInstall() {
+            if (!_airInstallTarget) {
+                refreshAirInstallSection();
+                return;
+            }
+            openInstallModalWithAction(_airInstallTarget.folder, _airInstallTarget.info);
         }
 
         // Функция для кнопки "Установить лаунчер" (legacy, через модалку)
@@ -13919,8 +14020,11 @@
                     // Скрываем карточки выбора версии — они не нужны после установки
                     document.getElementById('installVersionPicker').style.display = 'none';
                     document.getElementById('installAvWarning').style.display = 'none';
-                    // Скрываем кнопку "Установить лаунчер" на главном экране
-                    checkLauncherInstallation(true);
+                    // Обновляем кнопку в правой панели и блок установки в
+                    // настройках. checkLauncherInstallation(true) без gamePath
+                    // пропускал проверку install-action.
+                    loadSavedData();
+                    refreshAirInstallSection();
                     showNotification('<i data-lucide="check-circle"></i> Лаунчер установлен!', 'success');
                     if (_flInstallPending) {
                         // Обновляем статус игры и вернёмся в FL после закрытия
@@ -14079,35 +14183,8 @@
             );
         }
 
-        // Баннер обновления патчей (появляется сверху при автопроверке)
-        function showPatchUpdateBanner(version) {
-            const container = document.getElementById('notificationContainer');
-            if (!container) return;
-            
-            // Удаляем старый баннер патчей если есть
-            const old = container.querySelector('.patch-update-banner');
-            if (old) old.remove();
-            
-            const banner = document.createElement('div');
-            banner.className = 'notification patch-update-banner';
-            banner.style.background = 'linear-gradient(90deg, rgba(130,220,150,0.95), rgba(80,200,120,1))';
-            banner.style.border = 'none';
-            banner.style.boxShadow = '0 4px 20px rgba(130,220,150,0.3)';
-            banner.innerHTML = `
-                <div style="display:flex;align-items:center;gap:12px;">
-                    <i data-lucide="shield-check" style="width:20px;height:20px;color:white;"></i>
-                    <div style="flex:1;">
-                        <div style="font-weight:600;font-size:12px;color:white;">Доступно обновление патчей</div>
-                        <div style="font-size:11px;color:rgba(255,255,255,0.9);">Доступна версия ${version} — EIR пофиксил патчи после глобальной обновы игры</div>
-                    </div>
-                    <button onclick="this.parentElement.parentElement.remove(); loadPatchSettings();" style="background:rgba(255,255,255,0.2);border:none;color:white;padding:6px 12px;border-radius:6px;font-size:11px;cursor:pointer;">Обновить сейчас</button>
-                </div>`;
-            const containerEl = document.getElementById('notificationContainer');
-            if (containerEl) {
-                containerEl.appendChild(banner);
-                if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
-            }
-        }
+        // Плашка «Доступно обновление патчей» удалена: скачивание отключено до
+        // выхода v2. Информационный баннер живёт на вкладке ArizonaPatches.
 
         // ---- НАСТРОЙКИ ----
 
@@ -15311,8 +15388,6 @@
         function tbCloseToTray() {
             if (window.pywebview && window.pywebview.api.minimize_to_tray) {
                 window.pywebview.api.minimize_to_tray();
-            } else if (window.pywebview && window.pywebview.api.hide_window) {
-                window.pywebview.api.hide_window();
             }
         }
         async function _syncMaxState() {
@@ -15354,7 +15429,7 @@
             // Интерактивные зоны — тянуть окно от них нельзя
             const INTERACTIVE = 'button, input, select, textarea, label, a, ' +
                 '.left-panel, .right-panel, .settings-panel, .status-bar, ' +
-                '#profilesHoverWidget, #toastContainer, .modal, .cs-dropdown, ' +
+                '#profilesHoverWidget, .modal, .cs-dropdown, ' +
                 '.resize-handle, #tbButtons, .launch-item, .wp-picker-list, ' +
                 '.notification, #notificationContainer, ' +
                 // Карточки каталогов/модов — div'ы с click-обработчиком
@@ -16376,6 +16451,8 @@
             } catch (e) {
                 console.warn('get_launch_method failed:', e);
             }
+            // Блок установки Air — после того как способ запуска прочитан
+            refreshAirInstallSection();
 
             if (verResult && verResult.success) launcherVer = verResult.version;
             _applyLauncherVersionUI(launcherVer);
@@ -16528,6 +16605,7 @@
                                 // нативном запуске лаунчер Air не нужен — кнопка
                                 // исчезает; при Air — появляется, если не установлен.
                                 loadSavedData();
+                                refreshAirInstallSection();
                             }
                         } catch (e) {
                             paramsOk = false;
@@ -16647,8 +16725,22 @@
             });
 
             document.addEventListener('dragleave', function (e) {
-                dragCounter--;
-                if (dragCounter <= 0) hideOverlay();
+                // relatedTarget === null — курсор ушёл за пределы окна,
+                // dragend за ним может не прийти: сбрасываем счётчик сразу,
+                // иначе оверлей залипает до следующего dragenter.
+                if (e.relatedTarget === null) {
+                    hideOverlay();
+                    return;
+                }
+                dragCounter = Math.max(0, dragCounter - 1);
+                if (dragCounter === 0) hideOverlay();
+            });
+
+            // Отмена перетаскивания (Esc, отпускание за окном, уход из окна)
+            document.addEventListener('dragend', hideOverlay);
+            window.addEventListener('blur', hideOverlay);
+            window.addEventListener('dragleave', function (e) {
+                if (e.relatedTarget === null) hideOverlay();
             });
 
             document.addEventListener('dragover', function (e) {
@@ -16693,6 +16785,14 @@
                 (async function processJsonFiles() {
                     for (const file of jsonFiles) {
                         try {
+                            // Импорт конфига заменяет весь #ArizonaPatches.json —
+                            // спрашиваем явно (бэкап бэкенд сделает сам).
+                            const confirmed = await confirmAction(
+                                `Файл «${file.name}» заменит все настройки патчей. Текущий конфиг будет сохранён в бэкап.`,
+                                'Заменить'
+                            );
+                            if (!confirmed) continue;
+
                             const buffer = await file.arrayBuffer();
                             const b64 = _arrayBufferToBase64(buffer);
                             let result;
@@ -16956,7 +17056,7 @@
                         const item = document.createElement('div');
                         item.className = 'ph-item' + (isActive ? ' ph-active' : '');
                         item.innerHTML = `
-                            <span class="ph-item-icon">${p.icon || '<i data-lucide="user"></i>'}</span>
+                            <span class="ph-item-icon">${profileIconHtml(p.icon)}</span>
                             <div class="ph-item-info">
                                 <div class="ph-item-name">${escapeHtml(p.name)}</div>
                                 <div class="ph-item-meta">${meta}</div>
@@ -17212,38 +17312,6 @@
             const on = document.documentElement.classList.contains('compact-menu');
             const cb = document.getElementById('compactMenuCheck');
             if (cb) cb.checked = on;
-        }
-
-        // Принудительный показ настроек плагина (карточка «Плагин» в дебаге).
-        // #checkboxGroup обычно скрыт, если плагин не установлен/устарел или
-        // активен нативный запуск — см. renderPatchStatusUI. Флаг
-        // localStorage arp_forcePluginSettings ('1') эту блокировку игнорирует:
-        // панель патчей видна всегда (баннер с причиной остаётся).
-        // Только отладка — в конфиг лаунчера не пишется.
-        function _dbgForcePluginOn() {
-            try { return localStorage.getItem('arp_forcePluginSettings') === '1'; }
-            catch (e) { return false; }
-        }
-
-        function setForcePluginSettings(on) {
-            on = (on === true || on === '1' || on === 1);
-            try { localStorage.setItem('arp_forcePluginSettings', on ? '1' : '0'); } catch (e) {}
-            _syncForcePluginUI();
-            // Перерисовать баннер/панель с учётом флага. Если бэкенд
-            // недоступен — checkPatchesStatus выйдет рано, поэтому при
-            // включении показываем панель и напрямую.
-            if (on) {
-                const g = document.getElementById('checkboxGroup');
-                if (g) g.style.display = 'flex';
-            }
-            if (typeof checkPatchesStatus === 'function') checkPatchesStatus();
-        }
-
-        function _syncForcePluginUI() {
-            const on = _dbgForcePluginOn();
-            const g = document.getElementById('dbgForcePluginGroup');
-            if (g) g.querySelectorAll('button').forEach(b =>
-                b.classList.toggle('sel', (b.dataset.f === '1') === on));
         }
 
         // Сила блюра панели настроек (8–32px, см. --frost-blur в :root).
@@ -17722,7 +17790,6 @@
         async function loadDebugInfo() {
             _syncAnimModeUI();
             _syncFpsUI();
-            _syncForcePluginUI();
             try {
                 if (window.pywebview && window.pywebview.api.get_debug_info) {
                     const r = await window.pywebview.api.get_debug_info();
@@ -18467,7 +18534,7 @@
                             <div class="fl-lm-card-ico"><i data-lucide="wind"></i></div>
                             <div class="fl-lm-card-text">
                                 <div class="fl-lm-card-name">Через лаунчер Air</div>
-                                <div class="fl-lm-card-desc">Требуется установленный ArizonaLauncher 8.0 (Air)</div>
+                                <div class="fl-lm-card-desc">ArizonaLauncher 8.0 (Air) можно установить позже, в настройках</div>
                             </div>
                             <div class="fl-lm-check"><i data-lucide="check" stroke-width="3"></i></div>
                         </div>
@@ -18908,13 +18975,6 @@
             }
         });
         _lucideObserver.observe(document.body, { childList: true, subtree: true });
-
-        // ── Подписка на события обновлений патчей от Python (autocheck)
-        window._onPatchesUpdateAvailable = function(data) {
-            if (data && data.version) {
-                showPatchUpdateBanner(data.version);
-            }
-        };
 
         // ── Прогрев настроек: принудительно рендерим все вкладки на старте,
         //    чтобы при первом открытии браузер не делал cold-start layout/paint ──
