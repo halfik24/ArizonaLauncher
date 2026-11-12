@@ -8828,6 +8828,7 @@
                         </div>
                     </div>
 
+                    <div class="lt-grid">
                     <div class="s-section">
                         <div class="s-section-head">
                             <span class="s-section-head-icon"><i data-lucide="sparkles"></i></span>
@@ -8843,7 +8844,7 @@
                                     <button class="sb-pos-btn" data-speed="off" onclick="setAnimSpeed('off')">Выкл</button>
                                 </div>
                             </div>
-                            <label class="launch-item" style="margin:0 16px 8px; width:fit-content; min-width:300px;"
+                            <label class="launch-item" style="margin:0 16px 8px;"
                                    onclick="event.preventDefault(); setWeakPcMode(!document.getElementById('weakPcCheck').checked)">
                                 <input type="checkbox" id="weakPcCheck">
                                 <div class="s-toggle"></div>
@@ -8865,7 +8866,7 @@
                             <span class="s-section-title">Звук интерфейса</span>
                         </div>
                         <div class="s-section-body">
-                            <label class="launch-item" style="margin:8px 16px; width:fit-content; min-width:300px;"
+                            <label class="launch-item" style="margin:8px 16px;"
                                    onclick="event.preventDefault(); toggleSfx()">
                                 <input type="checkbox" id="sfxEnabledCheck">
                                 <div class="s-toggle"></div>
@@ -8879,7 +8880,7 @@
                                        oninput="setSfxVolume(this.value)">
                                 <span id="sfxVolumeVal" style="flex:none; width:32px; text-align:right; font-family:'Montserrat Alternates', sans-serif; font-size:12px; font-weight:600; color:rgba(255,255,255,0.75);">40</span>
                             </div>
-                            <label class="launch-item" style="margin:0 16px 8px; width:fit-content; min-width:300px;"
+                            <label class="launch-item" style="margin:0 16px 8px;"
                                    onclick="event.preventDefault(); toggleSfxClicks()">
                                 <input type="checkbox" id="sfxClicksCheck" checked>
                                 <div class="s-toggle"></div>
@@ -8887,7 +8888,7 @@
                                     <span class="launch-item-name">Клики</span>
                                 </div>
                             </label>
-                            <label class="launch-item" style="margin:0 16px 8px; width:fit-content; min-width:300px;"
+                            <label class="launch-item" style="margin:0 16px 8px;"
                                    onclick="event.preventDefault(); toggleSfxNotifications()">
                                 <input type="checkbox" id="sfxNotificationsCheck" checked>
                                 <div class="s-toggle"></div>
@@ -8901,6 +8902,7 @@
                             </div>
                         </div>
                     </div>
+                    </div><!-- /.lt-grid: Анимации + Звук -->
 
                 </div>
 
