@@ -2371,7 +2371,7 @@
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            width: min(940px, 95vw);
+            width: min(var(--settings-w, 940px), 95vw);
             height: min(86vh, 680px);
             background: rgba(var(--surface-rgb), 0.7);
             backdrop-filter: blur(var(--frost-blur)) saturate(1.2);
@@ -2391,6 +2391,52 @@
         .settings-panel {
             transition: transform 0.5s cubic-bezier(0.32, 0.72, 0, 1),
                         width 0.5s cubic-bezier(0.32, 0.72, 0, 1);
+        }
+
+        /* Ручка ширины настроек: тянем за правый край. Панель центрирована,
+           поэтому ширина меняется симметрично (см. 2*dx в JS) — ручка
+           остаётся под курсором. В режиме обоев ручка не нужна. */
+        .settings-resize-handle {
+            position: absolute;
+            top: 50%;
+            right: 0;
+            width: 12px;
+            height: 78px;
+            margin-top: -39px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: ew-resize;
+            z-index: 20;
+            opacity: 0;
+            transition: opacity 0.15s;
+            touch-action: none;
+        }
+        .settings-panel:hover .settings-resize-handle,
+        .settings-panel.resizing .settings-resize-handle {
+            opacity: 1;
+        }
+        .settings-resize-handle::before {
+            content: '';
+            width: 3px;
+            height: 42px;
+            border-radius: 3px;
+            background: rgba(255, 255, 255, 0.22);
+            box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.04);
+            transition: background 0.15s;
+        }
+        .settings-resize-handle:hover::before {
+            background: rgba(var(--accent2-rgb), 0.65);
+        }
+        .settings-panel.resizing {
+            transition: none;
+            user-select: none;
+        }
+        .settings-panel.resizing .settings-resize-handle {
+            transition: none;
+        }
+        .settings-panel.wp-mode .settings-resize-handle {
+            display: none;
         }
 
         .settings-panel.wp-mode {
@@ -2691,12 +2737,16 @@
         /* ── Layout editor float bar ── */
         .layout-float-bar {
             position: fixed;
-            top: 14px;
-            right: 14px;
+            bottom: 16px;
+            left: 50%;
+            transform: translateX(-50%);
             z-index: 9999;
             display: flex;
             align-items: center;
+            justify-content: center;
+            flex-wrap: wrap;
             gap: 10px;
+            max-width: calc(100vw - 24px);
             padding: 10px 14px;
             background: rgba(var(--surface-rgb), 0.9);
             backdrop-filter: blur(24px) saturate(1.2);
@@ -2713,6 +2763,15 @@
             color: rgba(255, 255, 255, 0.4);
             white-space: nowrap;
         }
+        .layout-float-target {
+            font-family: 'Montserrat Alternates', sans-serif;
+            font-size: 10px;
+            color: rgba(255, 255, 255, 0.3);
+            max-width: 150px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
         .layout-float-zones {
             display: flex;
             gap: 4px;
@@ -2722,20 +2781,98 @@
             padding: 0 12px !important;
             font-size: 11px !important;
         }
+        .layout-float-reset {
+            height: 30px !important;
+            padding: 0 10px !important;
+            font-size: 11px !important;
+        }
         .layout-float-cancel {
             width: 30px !important;
             height: 30px !important;
             padding: 0 !important;
         }
 
-        /* ── Layout edit mode ── */
+        /* ── Layout edit mode v2 (свободное положение) ── */
+        /* Позиции считает JS: left/top в px из процентов свободного хода.
+           Фиксируем меню только после загрузки раскладки — до этого оно
+           остаётся во flex и не прыгает. */
+        body.layout-positioned .left-panel {
+            position: fixed;
+            margin: 0 !important;
+            z-index: 4;
+        }
+        body.layout-positioned #profilesHoverWidget {
+            transform: none;
+        }
         .layout-edit-mode .left-panel {
             cursor: grab;
-            transition: margin 0.3s cubic-bezier(0.4, 0, 0.2, 1), align-self 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            box-shadow: 0 0 0 2px rgba(79, 195, 247, 0.3);
+            touch-action: none;
+            user-select: none;
+            box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35),
+                        0 0 0 2px rgba(79, 195, 247, 0.35);
         }
         .layout-edit-mode .left-panel:hover {
-            box-shadow: 0 0 0 2px rgba(79, 195, 247, 0.5);
+            box-shadow: 0 24px 60px rgba(0, 0, 0, 0.4),
+                        0 0 0 2px rgba(79, 195, 247, 0.55);
+        }
+        .layout-edit-mode .left-panel.dragging {
+            cursor: grabbing;
+            box-shadow: 0 30px 80px rgba(0, 0, 0, 0.5),
+                        0 0 0 2px rgba(79, 195, 247, 0.7);
+        }
+        /* В режиме правки клики не должны попадать в поля и кнопки:
+           тянем панель целиком, а не вводим ник. */
+        .layout-edit-mode .left-panel > * {
+            pointer-events: none;
+        }
+        .layout-edit-mode #profilesHoverWidget {
+            cursor: grab;
+            touch-action: none;
+            user-select: none;
+        }
+        .layout-edit-mode #profilesHoverWidget .ph-trigger {
+            pointer-events: none;
+            box-shadow: 0 0 0 2px rgba(79, 195, 247, 0.35);
+        }
+        .layout-edit-mode #profilesHoverWidget.dragging {
+            cursor: grabbing;
+        }
+        .layout-edit-mode #profilesHoverWidget.dragging .ph-trigger {
+            box-shadow: 0 0 0 2px rgba(79, 195, 247, 0.7);
+        }
+        /* Сетка свободного хода: показывается только во время перетаскивания,
+           совпадает с точками snap 0/25/50/75/100. */
+        #layoutGrid {
+            position: fixed;
+            inset: 0;
+            z-index: 2;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.14s;
+        }
+        body.layout-dragging #layoutGrid {
+            opacity: 1;
+        }
+        #layoutGridBox {
+            position: absolute;
+            border: 1px dashed rgba(79, 195, 247, 0.28);
+            border-radius: 8px;
+            background-image:
+                linear-gradient(to right, rgba(255, 255, 255, 0.055) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(255, 255, 255, 0.055) 1px, transparent 1px);
+            background-size: 25% 25%;
+        }
+        #layoutGridBox::before,
+        #layoutGridBox::after {
+            content: '';
+            position: absolute;
+            background: rgba(79, 195, 247, 0.22);
+        }
+        #layoutGridBox::before {
+            left: 50%; top: 0; bottom: 0; width: 1px;
+        }
+        #layoutGridBox::after {
+            top: 50%; left: 0; right: 0; height: 1px;
         }
         .layout-zone-btn {
             height: 28px;
@@ -2757,6 +2894,13 @@
             background: rgba(79, 195, 247, 0.12);
             border-color: rgba(79, 195, 247, 0.3);
             color: #4fc3f7;
+        }
+        .layout-settings-hint {
+            padding: 0 16px 6px;
+            font-family: 'Montserrat Alternates', sans-serif;
+            font-size: 10px;
+            line-height: 1.5;
+            color: rgba(255, 255, 255, 0.25);
         }
 
         /* ── Checkbox / Toggle rows ── */
@@ -5357,6 +5501,10 @@
                 padding: 20px;
             }
 
+            .settings-resize-handle {
+                display: none;
+            }
+
             .bottom-buttons {
                 flex-wrap: wrap;
             }
@@ -6320,6 +6468,30 @@
             align-items: center;
         }
 
+        /* Компактная кнопка профилей: только иконка, без подписи.
+           Это не setCompactMenu — тот сжимает всё главное меню. */
+        html.profiles-compact .ph-trigger {
+            position: relative;
+            width: 34px;
+            padding: 0;
+            justify-content: center;
+            gap: 0;
+            border-radius: 50%;
+        }
+        html.profiles-compact .ph-trigger .ph-trigger-label {
+            display: none;
+        }
+        html.profiles-compact .ph-trigger svg {
+            width: 16px;
+            height: 16px;
+        }
+        html.profiles-compact .ph-active-dot {
+            position: absolute;
+            right: 5px;
+            bottom: 5px;
+            margin: 0;
+        }
+
         .ph-trigger {
             height: 34px;
             padding: 0 13px;
@@ -6389,6 +6561,61 @@
             opacity: 0;
             transform: translateX(-50%) translateY(-4px) scale(0.97);
             pointer-events: none;
+        }
+
+        /* Кнопка у края: дропдаун прижимается к её краю, а не центрируется.
+           ph-up — если снизу не хватает места, меню раскрывается вверх. */
+        #profilesHoverWidget.ph-align-left .ph-dropdown {
+            left: 0;
+            transform: translateX(0) translateY(-6px) scale(0.95);
+        }
+        #profilesHoverWidget.ph-align-left .ph-dropdown.show {
+            transform: translateX(0) translateY(0) scale(1);
+        }
+        #profilesHoverWidget.ph-align-left .ph-dropdown.hide {
+            transform: translateX(0) translateY(-4px) scale(0.97);
+        }
+        #profilesHoverWidget.ph-align-right .ph-dropdown {
+            left: auto;
+            right: 0;
+            transform: translateX(0) translateY(-6px) scale(0.95);
+        }
+        #profilesHoverWidget.ph-align-right .ph-dropdown.show {
+            transform: translateX(0) translateY(0) scale(1);
+        }
+        #profilesHoverWidget.ph-align-right .ph-dropdown.hide {
+            transform: translateX(0) translateY(-4px) scale(0.97);
+        }
+        #profilesHoverWidget.ph-up .ph-dropdown {
+            top: auto;
+            bottom: calc(100% + 6px);
+            transform: translateX(-50%) translateY(6px) scale(0.95);
+        }
+        #profilesHoverWidget.ph-up .ph-dropdown.show {
+            transform: translateX(-50%) translateY(0) scale(1);
+        }
+        #profilesHoverWidget.ph-up .ph-dropdown.hide {
+            transform: translateX(-50%) translateY(4px) scale(0.97);
+        }
+        #profilesHoverWidget.ph-up.ph-align-left .ph-dropdown {
+            transform: translateX(0) translateY(6px) scale(0.95);
+        }
+        #profilesHoverWidget.ph-up.ph-align-left .ph-dropdown.show {
+            transform: translateX(0) translateY(0) scale(1);
+        }
+        #profilesHoverWidget.ph-up.ph-align-left .ph-dropdown.hide {
+            transform: translateX(0) translateY(4px) scale(0.97);
+        }
+        #profilesHoverWidget.ph-up.ph-align-right .ph-dropdown {
+            left: auto;
+            right: 0;
+            transform: translateX(0) translateY(6px) scale(0.95);
+        }
+        #profilesHoverWidget.ph-up.ph-align-right .ph-dropdown.show {
+            transform: translateX(0) translateY(0) scale(1);
+        }
+        #profilesHoverWidget.ph-up.ph-align-right .ph-dropdown.hide {
+            transform: translateX(0) translateY(4px) scale(0.97);
         }
 
         .ph-dropdown::-webkit-scrollbar { width: 5px; }
@@ -7541,7 +7768,7 @@
     <div id="profilesHoverWidget">
         <div class="ph-trigger" id="phTrigger">
             <span><i data-lucide="user"></i></span>
-            <span>Профили</span>
+            <span class="ph-trigger-label">Профили</span>
             <div class="ph-active-dot" id="phActiveDot"></div>
         </div>
         <div class="ph-dropdown hide" id="phDropdown"></div>
@@ -7696,6 +7923,9 @@
 
         <!-- Модальное окно настроек -->
         <div class="settings-panel" id="settingsPanel" role="dialog" aria-modal="true" aria-labelledby="settingsPanelTitle">
+            <!-- Ручка изменения ширины панели (P1): тянется за правый край. -->
+            <div class="settings-resize-handle" id="settingsResizeHandle"
+                 title="Потяните, чтобы изменить ширину" aria-hidden="true"></div>
             <!-- Идея №1: запечённый фон-блюр — виден ТОЛЬКО на время анимации
                  open/close (режимы full/fade, пока на body стоит settings-anim).
                  Первый ребёнок панели, под контентом (z-index:-1), размер и
@@ -8281,13 +8511,22 @@
                     <div class="s-section">
                         <div class="s-section-head">
                             <span class="s-section-head-icon"><i data-lucide="layout"></i></span>
-                            <span class="s-section-title">Положение панели</span>
+                            <span class="s-section-title">Раскладка интерфейса</span>
                         </div>
                         <div class="s-section-body">
-                            <div style="padding:8px 16px;">
+                            <div style="padding:8px 16px;display:flex;flex-direction:column;gap:8px;">
                                 <button class="s-btn" onclick="startLayoutEdit()" style="width:100%;height:36px;font-size:12px;">
-                                    <i data-lucide="move" style="width:14px;height:14px;"></i> Изменить положение панели
+                                    <i data-lucide="move" style="width:14px;height:14px;"></i> Настроить интерфейс
                                 </button>
+                                <div class="sb-pos-row" style="margin-top:2px;">
+                                    <button class="sb-pos-btn" onclick="startLayoutEdit('classic')">Классика</button>
+                                    <button class="sb-pos-btn" onclick="startLayoutEdit('compact')">Компакт</button>
+                                    <button class="sb-pos-btn" onclick="startLayoutEdit('minimal')">Минимал</button>
+                                </div>
+                            </div>
+                            <div class="layout-settings-hint">
+                                Откроется режим перетаскивания: двигайте меню и кнопку профилей, затем «Применить».<br>
+                                Ширину этой панели можно менять, потянув за правый край.
                             </div>
                         </div>
                     </div>
@@ -8305,9 +8544,19 @@
                                     <span class="launch-item-name">Скрыть кнопку «Профили»</span>
                                 </div>
                             </label>
+                            <label class="launch-item" style="margin:8px 16px;" onclick="event.preventDefault(); toggleProfilesCompact()">
+                                <input type="checkbox" id="profilesCompactCheck">
+                                <div class="s-toggle"></div>
+                                <div class="launch-item-text">
+                                    <span class="launch-item-name">Компактная кнопка профилей</span>
+                                </div>
+                            </label>
+                            <div class="layout-settings-hint">
+                                Компактная кнопка — только иконка, без подписи «Профили».
+                            </div>
                         </div>
                     </div>
-                    </div><!-- /.lt-grid: Заголовок окна, Рамка окна, Положение панели, Профили -->
+                    </div><!-- /.lt-grid: Заголовок окна, Рамка окна, Раскладка, Профили -->
 
                     <div class="s-section">
                         <div class="s-section-head">
@@ -9807,6 +10056,10 @@
                 nickname,
                 icon: '<i data-lucide="user"></i>',
                 created: new Date().toLocaleDateString('ru-RU'),
+                // Текущая раскладка — часть профиля (P1). Глобальная остаётся
+                // фолбэком для профилей без своего layout.
+                layout: (typeof _effectiveLayout === 'function')
+                    ? JSON.parse(JSON.stringify(_effectiveLayout())) : null,
                 patches,
                 launch_params: launchParams,
                 lua_enabled: luaEnabled
@@ -9906,6 +10159,9 @@
             } catch (e) { console.error('applyProfile error:', e); errors.push(String(e)); }
 
             _activeProfileId = id;
+            // Раскладка профиля поверх глобальной (P1). Если у старого
+            // профиля поля нет — остаётся текущая/глобальная.
+            if (typeof _applyEffectiveLayout === 'function') _applyEffectiveLayout(true);
             await _saveProfiles();
             _renderProfiles();
             if (errors.length) {
@@ -9919,10 +10175,13 @@
             const p = _profiles.find(x => x.id === id);
             if (!p) return;
             if (!(await confirmAction(`Удалить профиль «${p.name}»?`))) return;
+            const wasActive = _activeProfileId === id;
             _profiles = _profiles.filter(x => x.id !== id);
-            if (_activeProfileId === id) _activeProfileId = null;
+            if (wasActive) _activeProfileId = null;
             await _saveProfiles();
             _renderProfiles();
+            // Удалили активный профиль — возвращаем глобальную раскладку.
+            if (wasActive && typeof _applyEffectiveLayout === 'function') _applyEffectiveLayout(true);
         }
 
         // ══════════════════════════════════════════════
@@ -14647,7 +14906,15 @@
         }
 
         // ---- НАСТРОЙКИ ЛАУНЧЕРА ----
-        let launcherSettings = { bg_image: null, hide_profiles: false, status_bar: true, status_bar_pos: 'bottom' };
+        let launcherSettings = {
+            bg_image: null,
+            hide_profiles: false,
+            status_bar: true,
+            status_bar_pos: 'bottom',
+            profiles_compact: false,
+            settings_width: 940,
+            layout: null
+        };
 
         // ---- Monet-like dynamic theme from wallpaper ----
         const _monetTheme = {
@@ -15297,9 +15564,15 @@
             applyHideProfiles();
             const hideCb = document.getElementById('hideProfilesCheck');
             if (hideCb) hideCb.checked = !!launcherSettings.hide_profiles;
+            applyProfilesCompact();
 
             // Статус-строка главного экрана
             applyStatusBar();
+
+            // Раскладка меню/профилей + миграция старого layout_order.
+            // После applyStatusBar: безопасные отступы зависят от строки.
+            await initLauncherLayout();
+            applySettingsWidth();
 
             // «Старый стиль» обоев (сетка под кнопкой вместо пикера слева)
             let wpOldStyle = false;
@@ -15482,14 +15755,48 @@
             const cb = document.getElementById('hideProfilesCheck');
             if (cb) cb.checked = launcherSettings.hide_profiles;
             applyHideProfiles();
-            if (window.pywebview && window.pywebview.api.save_launcher_settings) {
-                window.pywebview.api.save_launcher_settings(launcherSettings);
-            }
+            persistLauncherSettings();
         }
 
         function applyHideProfiles() {
             const widget = document.getElementById('profilesHoverWidget');
             if (widget) widget.style.display = launcherSettings.hide_profiles ? 'none' : '';
+            // Виджет мог появиться/исчезнуть — пересчитываем позицию.
+            if (typeof _layoutRepositionCurrent === 'function') _layoutRepositionCurrent();
+        }
+
+        // Компактная кнопка профилей (только иконка). Не путать с
+        // setCompactMenu — тот сжимает всё главное меню.
+        function toggleProfilesCompact() {
+            setProfilesCompact(!launcherSettings.profiles_compact, true);
+            if (typeof _layoutRepositionCurrent === 'function') _layoutRepositionCurrent();
+        }
+
+        function setProfilesCompact(on, save) {
+            launcherSettings.profiles_compact = !!on;
+            document.documentElement.classList.toggle('profiles-compact', !!on);
+            const cb = document.getElementById('profilesCompactCheck');
+            if (cb) cb.checked = !!on;
+            // Подпись скрыта — имя кнопки живёт в подсказке (title).
+            // Кастомные тултипы сами перенесут его в data-tt при наведении.
+            const trigger = document.getElementById('phTrigger');
+            if (trigger) trigger.title = on ? 'Профили' : '';
+            if (save) persistLauncherSettings();
+        }
+
+        function applyProfilesCompact() {
+            setProfilesCompact(!!launcherSettings.profiles_compact, false);
+        }
+
+        /** Единая точка сохранения launcherSettings: молча, как в остальном UI. */
+        function persistLauncherSettings() {
+            try {
+                if (window.pywebview && window.pywebview.api.save_launcher_settings) {
+                    return window.pywebview.api.save_launcher_settings(launcherSettings);
+                }
+            } catch (e) {
+                console.warn('save_launcher_settings:', e);
+            }
         }
 
         // ══════════════════════════════════════════════
@@ -15846,6 +16153,8 @@
             for (let i = 0; i < sizeBtns.length; i++) {
                 sizeBtns[i].classList.toggle('active', sizeBtns[i].dataset.size === launcherSettings.status_bar_size);
             }
+            // Строка меняет безопасные отступы раскладки.
+            if (typeof _layoutRepositionCurrent === 'function') _layoutRepositionCurrent();
         }
 
         function setStatusBarPos(pos) {
@@ -16692,7 +17001,6 @@
         window.addEventListener('pywebviewready', function() {
             console.log("PyWebView готов");
             init();
-            loadLayoutOrder();
         });
 
         // ──────────────────────────────────────────
@@ -17011,13 +17319,36 @@
 
             async function openMenu() {
                 _cancelLeave();
+                // В режиме раскладки кнопка профилей — объект перетаскивания,
+                // а не меню.
+                if (document.body.classList.contains('layout-edit-mode')) return;
                 if (_open) return;
                 await _loadProfiles();
                 _renderHoverProfiles();
+                _alignDropdown();
                 dropdown.classList.remove('hide');
                 dropdown.classList.add('show');
                 trigger.classList.add('active');
                 _open = true;
+            }
+
+            /** Если кнопка стоит у края, центрированный дропдаун уезжает
+                за экран. Прижимаем его к краю кнопки и при нехватке места
+                снизу раскрываем вверх. */
+            function _alignDropdown() {
+                widget.classList.remove('ph-align-left', 'ph-align-right', 'ph-up');
+                const wr = widget.getBoundingClientRect();
+                const dw = dropdown.offsetWidth || 260;
+                const dh = dropdown.offsetHeight || 300;
+                const center = wr.left + wr.width / 2;
+                if (center - dw / 2 < 8) {
+                    widget.classList.add('ph-align-left');
+                } else if (center + dw / 2 > window.innerWidth - 8) {
+                    widget.classList.add('ph-align-right');
+                }
+                if (wr.bottom + 6 + dh > window.innerHeight - 8) {
+                    widget.classList.add('ph-up');
+                }
             }
 
             function closeMenu() {
@@ -18915,18 +19246,23 @@
         }
     </script>
 
+    <!-- Сетка свободного хода: видна только при перетаскивании -->
+    <div id="layoutGrid" aria-hidden="true"><div id="layoutGridBox"></div></div>
+
     <!-- Layout editor floating toolbar -->
     <div class="layout-float-bar" id="layoutFloatBar" style="display:none;">
-        <span class="layout-float-title">Режим редактирования</span>
+        <span class="layout-float-title">Раскладка</span>
         <div class="layout-float-zones">
-            <button class="layout-zone-btn" data-zone="left" onclick="setLayoutEditZone('left')">Лево</button>
-            <button class="layout-zone-btn active" data-zone="center" onclick="setLayoutEditZone('center')">Центр</button>
-            <button class="layout-zone-btn" data-zone="right" onclick="setLayoutEditZone('right')">Право</button>
+            <button class="layout-zone-btn" data-preset="classic" onclick="applyLayoutPreset('classic')">Классика</button>
+            <button class="layout-zone-btn" data-preset="compact" onclick="applyLayoutPreset('compact')">Компакт</button>
+            <button class="layout-zone-btn" data-preset="minimal" onclick="applyLayoutPreset('minimal')">Минимал</button>
         </div>
+        <span class="layout-float-target" id="layoutFloatTarget"></span>
+        <button class="s-btn layout-float-reset" onclick="resetLayoutDraft()">Сбросить</button>
         <button class="s-btn layout-float-apply" onclick="applyLayoutEdit()">
             <i data-lucide="check" style="width:14px;height:14px;"></i> Применить
         </button>
-        <button class="s-btn layout-float-cancel" onclick="cancelLayoutEdit()">
+        <button class="s-btn layout-float-cancel" onclick="cancelLayoutEdit()" title="Отменить">
             <i data-lucide="x" style="width:14px;height:14px;"></i>
         </button>
     </div>
@@ -19013,122 +19349,546 @@
             });
         }
 
-        /* ── Layout editor (inline mode) ── */
-        let _layoutPosition = 'center';
-        let _layoutEditPrevPos = 'center';
-        let _layoutFlipTimer = null;
-
-        function startLayoutEdit() {
-            // Закрываем настройки той же анимацией, что и обычный крестик
-            // («уход вглубь»: рост + размытие + затухание), а не мгновенно.
-            // closeSettings внутри сразу показывает главный экран и возвращает
-            // язычок новостей (_showMainInterface снимает news-away), а через
-            // 300мс прячет панель и сбрасывает wp-mode.
-            closeSettings();
-            // Show float bar
-            const bar = document.getElementById('layoutFloatBar');
-            if (bar) bar.style.display = 'flex';
-            if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
-            // Add edit mode class
-            document.body.classList.add('layout-edit-mode');
-            // Save current position
-            _layoutEditPrevPos = _layoutPosition;
-            // Load saved
-            if (window.pywebview && window.pywebview.api.get_layout_order) {
-                window.pywebview.api.get_layout_order().then(order => {
-                    if (order && order.length) {
-                        _layoutPosition = order[0];
-                        setLayoutEditZone(_layoutPosition);
-                    }
-                });
+        /* ══════════════════════════════════════════════
+           Layout editor v2 (P1): свободное положение меню и
+           кнопки профилей. Позиции хранятся в процентах
+           свободного хода: 0 = левый/верхний край, 100 =
+           правый/нижний. Так раскладка не зависит от размера
+           окна, а элемент всегда остаётся целиком видимым.
+           ══════════════════════════════════════════════ */
+        const LAYOUT_VERSION = 2;
+        const LAYOUT_SNAP_PX = 18;
+        const LAYOUT_SNAP_POINTS = [0, 25, 50, 75, 100];
+        const LAYOUT_PRESETS = {
+            classic: {
+                label: 'Классика',
+                menu: { x: 50, y: 50 }, profiles: { x: 50, y: 0 },
+                compactMenu: false, profilesCompact: false
+            },
+            compact: {
+                label: 'Компакт',
+                menu: { x: 0, y: 50 }, profiles: { x: 100, y: 0 },
+                compactMenu: true, profilesCompact: true
+            },
+            minimal: {
+                label: 'Минимал',
+                menu: { x: 0, y: 100 }, profiles: { x: 100, y: 0 },
+                compactMenu: true, profilesCompact: true
             }
+        };
+
+        let _layoutGlobal = null;
+        let _layoutDraft = null;
+        let _layoutEditActive = false;
+        let _layoutEditStart = null;
+        let _layoutDrag = null;
+        let _layoutReady = false;
+        let _layoutResizeTimer = null;
+
+        function _layoutDefault() {
+            return {
+                v: LAYOUT_VERSION,
+                menu: { x: 50, y: 50 },
+                profiles: { x: 50, y: 0 }
+            };
         }
 
-        function setLayoutEditZone(zone) {
-            _layoutPosition = zone;
-            const container = document.querySelector('.left-panel');
-            if (!container) return;
-            // Плавный переезд главного меню: margin 0 ↔ auto не интерполируется
-            // (браузер прыгает мгновенно), поэтому новые отступы ставим сразу,
-            // а фактический сдвиг проигрываем через transform (FLIP).
-            const before = container.getBoundingClientRect().left;
-            container.style.transition = 'none';
-            container.style.transform = '';
-            if (zone === 'left') {
-                container.style.marginLeft = '0';
-                container.style.marginRight = 'auto';
-            } else if (zone === 'right') {
-                container.style.marginLeft = 'auto';
-                container.style.marginRight = '0';
-            } else {
-                container.style.marginLeft = '';
-                container.style.marginRight = '';
-            }
-            const after = container.getBoundingClientRect().left;
-            const dx = before - after;
-            if (dx) {
-                container.style.transform = `translateX(${dx}px)`;  // старт с прежнего места
-                void container.offsetWidth;                         // reflow: зафиксировать сдвиг
-                container.style.transition = 'transform 0.35s cubic-bezier(0.4, 0, 0.2, 1)';
-                container.style.transform = '';                     // едем к новому месту
-                if (_layoutFlipTimer) clearTimeout(_layoutFlipTimer);
-                _layoutFlipTimer = setTimeout(() => {
-                    container.style.transition = '';
-                    container.style.transform = '';
-                    _layoutFlipTimer = null;
-                }, 400);
-            } else {
-                container.style.transition = '';
-            }
-            document.querySelectorAll('#layoutFloatBar .layout-zone-btn').forEach(b => {
-                b.classList.toggle('active', b.dataset.zone === zone);
+        function _layoutClone(layout) {
+            return JSON.parse(JSON.stringify(layout));
+        }
+
+        function _layoutNum(value, fallback) {
+            const n = Number(value);
+            return Number.isFinite(n) ? Math.max(0, Math.min(100, n)) : fallback;
+        }
+
+        function _layoutNormalize(raw) {
+            const base = _layoutDefault();
+            if (!raw || typeof raw !== 'object') return base;
+            const menu = (raw.menu && typeof raw.menu === 'object') ? raw.menu : {};
+            const prof = (raw.profiles && typeof raw.profiles === 'object') ? raw.profiles : {};
+            return {
+                v: LAYOUT_VERSION,
+                menu: {
+                    x: _layoutNum(menu.x, base.menu.x),
+                    y: _layoutNum(menu.y, base.menu.y)
+                },
+                profiles: {
+                    x: _layoutNum(prof.x, base.profiles.x),
+                    y: _layoutNum(prof.y, base.profiles.y)
+                }
+            };
+        }
+
+        /** Старый layout_order: left/center/right → проценты. */
+        function _layoutFromLegacy(order) {
+            const layout = _layoutDefault();
+            const pos = Array.isArray(order) ? String(order[0] || 'center') : 'center';
+            if (pos === 'left') { layout.menu.x = 0; layout.menu.y = 50; }
+            else if (pos === 'right') { layout.menu.x = 100; layout.menu.y = 50; }
+            return layout;
+        }
+
+        function _activeProfile() {
+            return (_profiles || []).find(p => p.id === _activeProfileId) || null;
+        }
+
+        function _effectiveLayout() {
+            const p = _activeProfile();
+            if (p && p.layout) return _layoutNormalize(p.layout);
+            return _layoutNormalize(_layoutGlobal || launcherSettings.layout);
+        }
+
+        /** Отступы, которые нельзя перекрывать: строка статуса. */
+        function _layoutInsets() {
+            // 20px — как padding .interface: классическая раскладка не
+            // должна визуально прилипать к краям сильнее прежнего.
+            const ins = { top: 20, right: 20, bottom: 20, left: 20 };
+            if (!launcherSettings.status_bar) return ins;
+            const bar = document.getElementById('statusBar');
+            if (!bar || bar.offsetParent === null) return ins;
+            const pos = launcherSettings.status_bar_pos || 'bottom';
+            const h = bar.offsetHeight || 34;
+            const w = bar.offsetWidth || 40;
+            if (pos === 'top') ins.top = h + 10;
+            else if (pos === 'bottom') ins.bottom = h + 10;
+            else if (pos === 'left') ins.left = w + 10;
+            else if (pos === 'right') ins.right = w + 10;
+            return ins;
+        }
+
+        function _layoutSetPos(el, pos) {
+            if (!el) return;
+            const w = el.offsetWidth;
+            const h = el.offsetHeight;
+            if (!w || !h) return;   // скрытый виджет — поставим при показе
+            const ins = _layoutInsets();
+            const freeW = Math.max(1, window.innerWidth - w - ins.left - ins.right);
+            const freeH = Math.max(1, window.innerHeight - h - ins.top - ins.bottom);
+            el.style.left = Math.round(ins.left + freeW * _layoutNum(pos.x, 50) / 100) + 'px';
+            el.style.top = Math.round(ins.top + freeH * _layoutNum(pos.y, 50) / 100) + 'px';
+            el.style.right = 'auto';
+            el.style.bottom = 'auto';
+        }
+
+        /** Меню у правого края перекрывает язычок новостей — уводим
+            новости влево, как это делал старый редактор зон. Условие
+            считается от края окна, а не от текущего положения язычка,
+            иначе панели будут перекидываться туда-сюда. */
+        function _layoutSyncNewsSide() {
+            const menu = document.querySelector('.left-panel');
+            const prof = document.getElementById('profilesHoverWidget');
+            if (!menu) return;
+            const centerY = window.innerHeight / 2;
+            // Перекрытие именно язычка новостей (он по центру правого края),
+            // а не «вообще правой трети» — иначе панели перекидывались бы
+            // от любого блока у края.
+            const overlapsHandle = el => {
+                if (!el) return false;
+                const r = el.getBoundingClientRect();
+                return r.width > 0 && r.height > 0 &&
+                    r.right > window.innerWidth - 60 &&
+                    r.top < centerY + 90 && r.bottom > centerY - 90;
+            };
+            const overlaps = overlapsHandle(menu) || overlapsHandle(prof);
+            updateRightPanelPosition(overlaps ? 'right' : 'center');
+        }
+
+        function _layoutApplyToDom(layout, syncNews) {
+            const menu = document.querySelector('.left-panel');
+            const prof = document.getElementById('profilesHoverWidget');
+            document.body.classList.add('layout-positioned');
+            _layoutSetPos(menu, layout.menu);
+            _layoutSetPos(prof, layout.profiles);
+            if (syncNews !== false) _layoutSyncNewsSide();
+        }
+
+        /** FLIP-переезд для пресетов/смены профиля. */
+        function _layoutApplyAnimated(layout) {
+            const menu = document.querySelector('.left-panel');
+            const prof = document.getElementById('profilesHoverWidget');
+            const before = {
+                menu: menu ? menu.getBoundingClientRect() : null,
+                prof: prof ? prof.getBoundingClientRect() : null
+            };
+            _layoutApplyToDom(layout, true);
+            [[menu, before.menu], [prof, before.prof]].forEach(([el, oldRect]) => {
+                if (!el || !oldRect) return;
+                const now = el.getBoundingClientRect();
+                const dx = oldRect.left - now.left;
+                const dy = oldRect.top - now.top;
+                if (!dx && !dy) return;
+                if (el._layoutFlipTimer) clearTimeout(el._layoutFlipTimer);
+                el.style.transition = 'none';
+                el.style.transform = `translate(${dx}px, ${dy}px)`;
+                void el.offsetWidth;
+                el.style.transition = 'transform 0.35s cubic-bezier(0.4, 0, 0.2, 1)';
+                el.style.transform = '';
+                el._layoutFlipTimer = setTimeout(() => {
+                    el.style.transition = '';
+                    el.style.transform = '';
+                    el._layoutFlipTimer = null;
+                }, 380);
             });
-            updateRightPanelPosition(zone);
+        }
+
+        function _layoutRepositionCurrent() {
+            if (!_layoutReady || _layoutDrag) return;
+            const layout = _layoutDraft || _effectiveLayout();
+            // Синхронизируем новости: размер меню мог измениться (компактность,
+            // прогресс), и оно могло перестать/начать перекрывать правый край.
+            _layoutApplyToDom(layout, true);
+        }
+
+        /** Загрузка при старте: v2 из launcher_settings.layout либо
+            миграция старого layout_order (left/center/right). */
+        async function initLauncherLayout() {
+            try {
+                if (window.pywebview && window.pywebview.api.get_profiles) {
+                    await _loadProfiles();
+                }
+            } catch (e) {
+                console.warn('layout: profiles', e);
+            }
+
+            if (launcherSettings.layout && typeof launcherSettings.layout === 'object') {
+                _layoutGlobal = _layoutNormalize(launcherSettings.layout);
+            } else {
+                let order = launcherSettings.layout_order;
+                if (!Array.isArray(order) && window.pywebview && window.pywebview.api.get_layout_order) {
+                    try { order = await window.pywebview.api.get_layout_order(); } catch (e) {}
+                }
+                _layoutGlobal = _layoutFromLegacy(order);
+                // Сохранится при следующей записи настроек; старый layout_order
+                // не удаляем — откат на прошлую версию продолжит работать.
+                launcherSettings.layout = _layoutClone(_layoutGlobal);
+            }
+
+            _layoutReady = true;
+            if (!_layoutEditActive) _layoutApplyToDom(_effectiveLayout(), true);
+            requestAnimationFrame(() => {
+                if (_layoutReady && !_layoutDrag && !_layoutEditActive) _layoutRepositionCurrent();
+            });
+        }
+
+        function _layoutTargetLabel() {
+            const el = document.getElementById('layoutFloatTarget');
+            if (!el) return;
+            const p = _activeProfile();
+            el.textContent = p ? '→ профиль «' + p.name + '»' : '→ для всех';
+            el.title = p
+                ? 'Раскладка сохранится в профиль «' + p.name + '»'
+                : 'Раскладка сохранится как общая';
+        }
+
+        function _layoutPresetToDraft(name, applyNow) {
+            const preset = LAYOUT_PRESETS[name];
+            if (!preset || !_layoutDraft) return;
+            _layoutDraft.menu = { x: preset.menu.x, y: preset.menu.y };
+            _layoutDraft.profiles = { x: preset.profiles.x, y: preset.profiles.y };
+            // Компактность меняет высоту/ширину блоков — пересчитываем
+            // позиции уже после смены классов.
+            setCompactMenu(preset.compactMenu);
+            setProfilesCompact(preset.profilesCompact, false);
+            if (applyNow) _layoutApplyAnimated(_layoutDraft);
+            _layoutRefreshPresetButtons();
+            _layoutTargetLabel();
+        }
+
+        function _layoutRefreshPresetButtons() {
+            if (!_layoutDraft) return;
+            document.querySelectorAll('#layoutFloatBar .layout-zone-btn').forEach(btn => {
+                const p = LAYOUT_PRESETS[btn.dataset.preset];
+                const active = !!p &&
+                    Math.abs(p.menu.x - _layoutDraft.menu.x) < 0.5 &&
+                    Math.abs(p.menu.y - _layoutDraft.menu.y) < 0.5 &&
+                    Math.abs(p.profiles.x - _layoutDraft.profiles.x) < 0.5 &&
+                    Math.abs(p.profiles.y - _layoutDraft.profiles.y) < 0.5;
+                btn.classList.toggle('active', active);
+            });
+        }
+
+        function startLayoutEdit(presetName) {
+            if (_layoutEditActive) {
+                if (presetName) applyLayoutPreset(presetName);
+                return;
+            }
+            // Настройки закрываем той же анимацией, что крестик.
+            closeSettings();
+            if (typeof _newsPanelOpen !== 'undefined' && _newsPanelOpen) toggleNewsPanel();
+
+            _layoutEditActive = true;
+            _layoutEditStart = {
+                layout: _layoutClone(_effectiveLayout()),
+                compactMenu: document.documentElement.classList.contains('compact-menu'),
+                profilesCompact: !!launcherSettings.profiles_compact
+            };
+            _layoutDraft = _layoutClone(_layoutEditStart.layout);
+            if (presetName) _layoutPresetToDraft(presetName, false);
+
+            // Даём панели настроек уйти (0.26s анимация + запас), чтобы
+            // тулбар не висел поверх её закрытия.
+            setTimeout(() => {
+                if (!_layoutEditActive) return;
+                document.body.classList.add('layout-edit-mode');
+                const bar = document.getElementById('layoutFloatBar');
+                if (bar) bar.style.display = 'flex';
+                _layoutApplyToDom(_layoutDraft, true);
+                _layoutRefreshPresetButtons();
+                _layoutTargetLabel();
+                if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
+                showNotification('Двигайте меню и кнопку профилей. Изменения — «Применить».', 'info');
+            }, 330);
+        }
+
+        function applyLayoutPreset(name) {
+            if (!_layoutEditActive || !_layoutDraft) return;
+            _layoutPresetToDraft(name, true);
+        }
+
+        function resetLayoutDraft() {
+            if (!_layoutEditActive) return;
+            _layoutPresetToDraft('classic', true);
+            showNotification('Раскладка сброшена к классической', 'info');
         }
 
         function applyLayoutEdit() {
-            document.body.classList.remove('layout-edit-mode');
-            const bar = document.getElementById('layoutFloatBar');
-            if (bar) bar.style.display = 'none';
-            if (window.pywebview && window.pywebview.api.save_layout_order) {
-                window.pywebview.api.save_layout_order([_layoutPosition]);
+            if (!_layoutEditActive) return;
+            const draft = _layoutClone(_layoutDraft);
+            const profile = _activeProfile();
+
+            if (profile) {
+                // Одна модель данных: у профиля свой layout поверх общего.
+                profile.layout = draft;
+                _saveProfiles();
+            } else {
+                _layoutGlobal = draft;
+                launcherSettings.layout = _layoutClone(draft);
             }
-            showNotification('Положение панели сохранено', 'success');
+            // profiles_compact — глобальный флаг; сохраняем его всегда.
+            persistLauncherSettings();
+            _finishLayoutEdit();
+            showNotification(profile
+                ? 'Раскладка сохранена в профиль «' + profile.name + '»'
+                : 'Раскладка сохранена', 'success');
         }
 
         function cancelLayoutEdit() {
-            document.body.classList.remove('layout-edit-mode');
-            const bar = document.getElementById('layoutFloatBar');
-            if (bar) bar.style.display = 'none';
-            setLayoutEditZone(_layoutEditPrevPos);
+            if (!_layoutEditActive) return;
+            const start = _layoutEditStart || { layout: _layoutDefault() };
+            setCompactMenu(!!start.compactMenu);
+            setProfilesCompact(!!start.profilesCompact, false);
+            const menu = document.querySelector('.left-panel');
+            const prof = document.getElementById('profilesHoverWidget');
+            [menu, prof].forEach(el => {
+                if (!el) return;
+                if (el._layoutFlipTimer) { clearTimeout(el._layoutFlipTimer); el._layoutFlipTimer = null; }
+                el.style.transition = 'none';
+                el.style.transform = '';
+            });
+            _layoutApplyToDom(start.layout, true);
+            _finishLayoutEdit();
+            requestAnimationFrame(() => {
+                if (menu) menu.style.transition = '';
+                if (prof) prof.style.transition = '';
+            });
         }
 
-        function loadLayoutOrder() {
-            if (window.pywebview && window.pywebview.api.get_layout_order) {
-                window.pywebview.api.get_layout_order().then(order => {
-                    if (!order || !order.length) return;
-                    const pos = order[0] || 'center';
-                    _layoutPosition = pos;
-                    const container = document.querySelector('.left-panel');
-                    if (!container) return;
-                    // Apply WITHOUT transition to avoid visual jump on startup
-                    container.style.transition = 'none';
-                    if (pos === 'left') {
-                        container.style.marginLeft = '0';
-                        container.style.marginRight = 'auto';
-                    } else if (pos === 'right') {
-                        container.style.marginLeft = 'auto';
-                        container.style.marginRight = '0';
-                    }
-                    // Re-enable transitions after a frame
-                    requestAnimationFrame(() => {
-                        container.style.transition = '';
-                    });
-                    // Also swap right panel if needed
-                    updateRightPanelPosition(pos);
-                });
-            }
+        function _finishLayoutEdit() {
+            _layoutEditActive = false;
+            _layoutDraft = null;
+            _layoutEditStart = null;
+            _layoutDrag = null;
+            document.body.classList.remove('layout-edit-mode', 'layout-dragging');
+            const bar = document.getElementById('layoutFloatBar');
+            if (bar) bar.style.display = 'none';
+            _layoutSyncNewsSide();
         }
+
+        /** Общая раскладка/раскладка активного профиля (после смены профиля). */
+        function _applyEffectiveLayout(animate) {
+            if (!_layoutReady) return;
+            if (_layoutEditActive) _finishLayoutEdit();
+            const layout = _effectiveLayout();
+            if (animate) _layoutApplyAnimated(layout);
+            else _layoutApplyToDom(layout, true);
+        }
+
+        /* ── Перетаскивание ── */
+
+        function _layoutSnap(value, freeSize) {
+            if (freeSize <= 0) return value;
+            const threshold = (LAYOUT_SNAP_PX / freeSize) * 100;
+            let best = value;
+            let bestDist = threshold + 0.001;
+            LAYOUT_SNAP_POINTS.forEach(point => {
+                const d = Math.abs(value - point);
+                if (d <= threshold && d < bestDist) {
+                    best = point;
+                    bestDist = d;
+                }
+            });
+            return best;
+        }
+
+        function _layoutGridShow(el) {
+            const box = document.getElementById('layoutGridBox');
+            if (!box) return;
+            const ins = _layoutInsets();
+            box.style.left = ins.left + 'px';
+            box.style.top = ins.top + 'px';
+            box.style.width = Math.max(1, window.innerWidth - el.offsetWidth - ins.left - ins.right) + 'px';
+            box.style.height = Math.max(1, window.innerHeight - el.offsetHeight - ins.top - ins.bottom) + 'px';
+        }
+
+        function _layoutDragStart(e, kind) {
+            if (!_layoutEditActive || e.button !== 0 || _layoutDrag) return;
+            const el = kind === 'menu'
+                ? document.querySelector('.left-panel')
+                : document.getElementById('profilesHoverWidget');
+            if (!el || !_layoutDraft) return;
+            e.preventDefault();
+            e.stopPropagation();
+
+            const ins = _layoutInsets();
+            _layoutDrag = {
+                kind,
+                el,
+                pointerId: e.pointerId,
+                startX: e.clientX,
+                startY: e.clientY,
+                start: { x: _layoutDraft[kind].x, y: _layoutDraft[kind].y },
+                freeW: Math.max(1, window.innerWidth - el.offsetWidth - ins.left - ins.right),
+                freeH: Math.max(1, window.innerHeight - el.offsetHeight - ins.top - ins.bottom)
+            };
+            el.classList.add('dragging');
+            document.body.classList.add('layout-dragging');
+            _layoutGridShow(el);
+            try { el.setPointerCapture(e.pointerId); } catch (err) {}
+            if (kind === 'profiles') el.dispatchEvent(new Event('mouseleave'));
+        }
+
+        function _layoutDragMove(e) {
+            const drag = _layoutDrag;
+            if (!drag || e.pointerId !== drag.pointerId) return;
+            e.preventDefault();
+            let x = drag.start.x + (e.clientX - drag.startX) / drag.freeW * 100;
+            let y = drag.start.y + (e.clientY - drag.startY) / drag.freeH * 100;
+            x = _layoutSnap(Math.max(0, Math.min(100, x)), drag.freeW);
+            y = _layoutSnap(Math.max(0, Math.min(100, y)), drag.freeH);
+            _layoutDraft[drag.kind] = { x, y };
+            _layoutSetPos(drag.el, _layoutDraft[drag.kind]);
+        }
+
+        function _layoutDragEnd(e) {
+            const drag = _layoutDrag;
+            if (!drag || (e.pointerId !== undefined && e.pointerId !== drag.pointerId)) return;
+            drag.el.classList.remove('dragging');
+            document.body.classList.remove('layout-dragging');
+            try { drag.el.releasePointerCapture(drag.pointerId); } catch (err) {}
+            _layoutDrag = null;
+            _layoutRefreshPresetButtons();
+            _layoutApplyToDom(_layoutDraft, true);
+        }
+
+        document.addEventListener('pointerdown', function (e) {
+            if (!_layoutEditActive || e.button !== 0) return;
+            if (!document.body.classList.contains('layout-edit-mode')) return;
+            if (e.target.closest && e.target.closest('.layout-float-bar')) return;
+            if (e.target.closest && e.target.closest('.left-panel')) {
+                _layoutDragStart(e, 'menu');
+                return;
+            }
+            if (e.target.closest && e.target.closest('#profilesHoverWidget')) {
+                _layoutDragStart(e, 'profiles');
+            }
+        });
+        document.addEventListener('pointermove', _layoutDragMove);
+        document.addEventListener('pointerup', _layoutDragEnd);
+        document.addEventListener('pointercancel', _layoutDragEnd);
+
+        document.addEventListener('keydown', function (e) {
+            if (e.key !== 'Escape' || !_layoutEditActive) return;
+            e.preventDefault();
+            cancelLayoutEdit();
+        });
+
+        window.addEventListener('resize', function () {
+            clearTimeout(_layoutResizeTimer);
+            _layoutResizeTimer = setTimeout(function () {
+                if (!_layoutReady || _layoutDrag) return;
+                if (_layoutEditActive && _layoutDraft) _layoutApplyToDom(_layoutDraft, true);
+                else _layoutApplyToDom(_effectiveLayout(), true);
+            }, 120);
+        });
+
+        // Меню меняет высоту (компактность, прогресс) — держим позицию
+        // в допустимых границах. Размер блока при этом не меняется, так
+        // что обратной связи с left/top нет.
+        if (typeof ResizeObserver !== 'undefined') {
+            const _layoutRO = new ResizeObserver(function () {
+                if (_layoutDrag) return;
+                _layoutRepositionCurrent();
+            });
+            const menuEl = document.querySelector('.left-panel');
+            const profEl = document.getElementById('profilesHoverWidget');
+            if (menuEl) _layoutRO.observe(menuEl);
+            if (profEl) _layoutRO.observe(profEl);
+        }
+
+        /* ── Ширина панели настроек ── */
+        function _clampSettingsWidth(value) {
+            const vw = window.innerWidth || 1280;
+            const min = Math.min(720, Math.floor(vw * 0.9));
+            const max = Math.max(min, Math.min(1400, Math.floor(vw * 0.95)));
+            const n = parseInt(value, 10);
+            return Math.max(min, Math.min(max, Number.isFinite(n) ? n : 940));
+        }
+
+        function applySettingsWidth() {
+            const panel = document.getElementById('settingsPanel');
+            if (!panel) return;
+            panel.style.setProperty('--settings-w',
+                _clampSettingsWidth(launcherSettings.settings_width || 940) + 'px');
+        }
+
+        (function initSettingsResize() {
+            const panel = document.getElementById('settingsPanel');
+            const handle = document.getElementById('settingsResizeHandle');
+            if (!panel || !handle) return;
+            let state = null;
+
+            function finish(e) {
+                if (!state) return;
+                if (e && e.pointerId !== undefined) {
+                    try { handle.releasePointerCapture(e.pointerId); } catch (err) {}
+                }
+                state = null;
+                panel.classList.remove('resizing');
+                launcherSettings.settings_width = _clampSettingsWidth(panel.getBoundingClientRect().width);
+                persistLauncherSettings();
+            }
+
+            handle.addEventListener('pointerdown', function (e) {
+                if (panel.classList.contains('wp-mode') || e.button !== 0) return;
+                state = { x: e.clientX, w: panel.getBoundingClientRect().width };
+                panel.classList.add('resizing');
+                try { handle.setPointerCapture(e.pointerId); } catch (err) {}
+                e.preventDefault();
+                e.stopPropagation();
+            });
+
+            handle.addEventListener('pointermove', function (e) {
+                if (!state) return;
+                // Панель центрирована: чтобы правый край шёл за курсором,
+                // ширина меняется на 2*dx (левый край симметрично уходит).
+                const width = _clampSettingsWidth(state.w + (e.clientX - state.x) * 2);
+                panel.style.setProperty('--settings-w', width + 'px');
+            });
+
+            handle.addEventListener('pointerup', finish);
+            handle.addEventListener('pointercancel', finish);
+        })();
 
         function updateRightPanelPosition(leftPanelPos) {
             const rightPanel = document.querySelector('.right-panel');
