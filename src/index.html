@@ -3149,6 +3149,74 @@
             margin-bottom: 14px;
             flex-shrink: 0;
         }
+
+        /* Вкл/выкл плагина: выключение переименовывает DLL в .disabled */
+        .plugin-switch-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 12px;
+            margin-bottom: 12px;
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 10px;
+            background: rgba(255,255,255,0.03);
+            flex-shrink: 0;
+            transition: border-color 0.2s, background 0.2s;
+        }
+        .plugin-switch-row.off {
+            border-color: rgba(255,170,80,0.28);
+            background: rgba(255,170,80,0.05);
+        }
+        .plugin-switch-text { flex: 1; min-width: 0; }
+        .plugin-switch-title {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-family: 'Montserrat Alternates', sans-serif;
+            font-size: 13px;
+            font-weight: 600;
+            color: rgba(255,255,255,0.9);
+        }
+        .plugin-switch-title > i,
+        .plugin-switch-title > svg {
+            width: 14px; height: 14px;
+            color: rgba(var(--accent2-rgb), 0.9);
+            flex-shrink: 0;
+        }
+        .plugin-switch-desc {
+            margin-top: 2px;
+            font-family: 'Montserrat Alternates', sans-serif;
+            font-size: 11px;
+            line-height: 1.4;
+            color: rgba(255,255,255,0.5);
+        }
+        .plugin-switch-row.off .plugin-switch-desc { color: rgba(255,185,110,0.85); }
+        .plugin-switch-toggle {
+            position: relative;
+            display: flex;
+            align-items: center;
+            flex-shrink: 0;
+            cursor: pointer;
+        }
+        .plugin-switch-toggle input {
+            position: absolute;
+            width: 0; height: 0;
+            opacity: 0;
+            pointer-events: none;
+        }
+        .plugin-switch-toggle input:checked ~ .s-toggle {
+            background: rgba(var(--accent2-rgb), 0.55);
+            border-color: rgba(var(--accent2-rgb), 0.44);
+        }
+        .plugin-switch-toggle input:checked ~ .s-toggle::after {
+            transform: translateX(16px);
+            background: white;
+        }
+        .plugin-switch-toggle input:disabled ~ .s-toggle {
+            opacity: 0.45;
+            cursor: default;
+        }
+
         .patches-search-wrap {
             position: relative;
             display: flex;
@@ -8152,6 +8220,17 @@
                         </div>
                     </div>
                     <div id="checkboxGroup">
+                        <!-- Вкл/выкл плагина: выкл переименовывает DLL в .disabled -->
+                        <div class="plugin-switch-row" id="pluginSwitchRow">
+                            <div class="plugin-switch-text">
+                                <div class="plugin-switch-title"><i data-lucide="puzzle"></i> Плагин Arizona Patches</div>
+                                <div class="plugin-switch-desc" id="pluginSwitchDesc">Включён — DLL загружается при запуске игры</div>
+                            </div>
+                            <label class="plugin-switch-toggle" title="Включить или выключить плагин">
+                                <input type="checkbox" id="pluginEnabledCheck" checked onchange="togglePluginEnabled()">
+                                <div class="s-toggle"></div>
+                            </label>
+                        </div>
                         <!-- Тулбар: поиск + чипы категорий -->
                         <div class="patches-toolbar">
                             <div class="patches-search-wrap" id="patchesSearchWrap">
@@ -13779,6 +13858,52 @@
 
         // ===== Patches Status UI =====
 
+        /** Синхронизирует переключатель плагина с реальным состоянием DLL. */
+        function syncPluginToggle(enabled) {
+            var chk = document.getElementById('pluginEnabledCheck');
+            var row = document.getElementById('pluginSwitchRow');
+            var desc = document.getElementById('pluginSwitchDesc');
+            if (!chk) return;
+            chk.checked = !!enabled;
+            if (row) row.classList.toggle('off', !enabled);
+            if (desc) {
+                desc.textContent = enabled
+                    ? 'Включён — DLL загружается при запуске игры'
+                    : 'Выключен — файл переименован в .disabled, игра идёт без патчей';
+            }
+        }
+
+        /** Вкл/выкл плагина: выкл переименовывает DLL в `<файл>.disabled`. */
+        async function togglePluginEnabled() {
+            var chk = document.getElementById('pluginEnabledCheck');
+            if (!chk || chk.disabled) return;
+            var want = chk.checked;
+
+            // Оптимистично показываем новое состояние; при ошибке откатываем.
+            syncPluginToggle(want);
+            chk.disabled = true;
+            try {
+                var api = window.pywebview && window.pywebview.api;
+                if (!api || !api.set_plugin_enabled) throw new Error('API недоступно');
+                var r = await api.set_plugin_enabled(want);
+                if (!r || !r.success) {
+                    syncPluginToggle(!want);
+                    showNotification((r && r.message) || 'Не удалось переключить плагин', 'error');
+                    return;
+                }
+                syncPluginToggle(!!r.enabled);
+                showNotification(r.enabled ? 'Плагин включён' : 'Плагин выключен',
+                    r.enabled ? 'success' : 'info');
+                checkPatchesStatus();
+            } catch (e) {
+                syncPluginToggle(!want);
+                console.error('set_plugin_enabled failed:', e);
+                showNotification('Не удалось переключить плагин', 'error');
+            } finally {
+                chk.disabled = false;
+            }
+        }
+
         /** Баннер статуса патчей. Настройки редактируются всегда: патчи v2
             ещё не вышли, а конфиг — заготовка, которая применится после
             установки. Скачивание/обновление из UI намеренно недоступно
@@ -13792,6 +13917,11 @@
                 var group = document.getElementById('checkboxGroup');
                 // Настройки не прячем ни при native, ни при отсутствии патчей.
                 if (group) group.style.display = 'flex';
+
+                // Переключатель всегда показывает реальное состояние файла.
+                if (status && typeof status.enabled === 'boolean') {
+                    syncPluginToggle(status.enabled);
+                }
 
                 var kind, title, detail;
                 if (method !== 'air') {
@@ -13809,11 +13939,9 @@
                 } else if (status.status === 'current') {
                     // Всё готово: баннер не показываем.
                     kind = null;
-                } else if (status.status === 'outdated_dll_v1') {
-                    kind   = 'outdated';
-                    title  = 'Старый DLL патчей отключён';
-                    detail = 'ArizonaPatches.dll 1.0.0.0 вызывал краши игры и был отключён. '
-                           + 'Настройки можно менять — они применятся после выхода v2.';
+                } else if (status.status === 'disabled') {
+                    // Плагин выключен вручную — это видно на переключателе выше.
+                    kind = null;
                 } else if (status.status === 'outdated_v1') {
                     kind   = 'outdated';
                     title  = 'Установлена старая версия патчей';

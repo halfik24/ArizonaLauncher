@@ -19,6 +19,10 @@ pub const DEFAULT_NAME: &str = "Arizona Patches";
 pub const DEFAULT_SETTINGS_FILE: &str = "#ArizonaPatches.json";
 pub const DEFAULT_DLL_FILE: &str = "#ArizonaPatches.dll";
 
+/// Суффикс выключенного плагина: `<dll>.disabled`. Игра не грузит такой файл,
+/// вернуть плагин — переименовать обратно.
+pub const DLL_DISABLED_SUFFIX: &str = ".disabled";
+
 /// Разобранный `plugin.json` с подставленными значениями по умолчанию.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct PluginDescriptor {
@@ -61,6 +65,16 @@ impl PluginDescriptor {
     /// Путь к DLL внутри папки плагина.
     pub fn dll_path(&self, plugins_dir: &Path) -> PathBuf {
         plugins_dir.join(&self.dll_file)
+    }
+
+    /// Путь к выключенному DLL (`<файл>.disabled`).
+    pub fn dll_disabled_path(&self, plugins_dir: &Path) -> PathBuf {
+        plugins_dir.join(format!("{}{}", self.dll_file, DLL_DISABLED_SUFFIX))
+    }
+
+    /// Выключен ли плагин: есть `.disabled`-файл.
+    pub fn is_disabled(&self, plugins_dir: &Path) -> bool {
+        self.dll_disabled_path(plugins_dir).is_file()
     }
 }
 
@@ -323,6 +337,7 @@ mod tests {
         };
         assert_eq!(d.settings_path(dir), dir.join("s.json"));
         assert_eq!(d.dll_path(dir), dir.join("p.dll"));
+        assert_eq!(d.dll_disabled_path(dir), dir.join("p.dll.disabled"));
     }
 
     #[test]

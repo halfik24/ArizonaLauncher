@@ -46,6 +46,7 @@
   "check_patches_available": ["version"],
   "install_patch_preset": ["url"],
   "fetch_patches_schema": ["schemaUrl"],
+  "set_plugin_enabled": ["enabled"],
   "export_patches": ["data"],
   "install_patches_file": ["filename", "contentB64"],
   "install_game_api": ["future"],

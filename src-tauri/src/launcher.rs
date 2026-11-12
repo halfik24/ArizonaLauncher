@@ -2478,19 +2478,20 @@ pub fn get_plugin_descriptor(state: State<'_, AppState>) -> Result<serde_json::V
     }
     let (desc, warning) = crate::plugin::load(&dir);
     let dll_path = desc.dll_path(&dir);
-    // Если файла из дескриптора нет — проверяем основной v1-DLL, чтобы не
-    // показывать «версия не совпала» из-за переименования.
-    let dll_version = get_dll_version(&dll_path).or_else(|| {
-        get_dll_version(
-            &dir.join(crate::plugin::DEFAULT_DLL_FILE),
-        )
-    });
+    // Ищем версию и у выключенного плагина (`.disabled`) и у основного
+    // v1-DLL: иначе панель не отрисуется, пока плагин выключен, или после
+    // ручного переименования файла.
+    let disabled_path = desc.dll_disabled_path(&dir);
+    let dll_version = get_dll_version(&dll_path)
+        .or_else(|| get_dll_version(&disabled_path))
+        .or_else(|| get_dll_version(&dir.join(crate::plugin::DEFAULT_DLL_FILE)));
     let matches = crate::plugin::version_matches(desc.plugin_version.as_deref(), dll_version.as_deref());
     Ok(serde_json::json!({
         "success": true,
         "descriptor": desc,
         "dll_version": dll_version,
         "version_match": matches,
+        "enabled": !disabled_path.is_file(),
         "warning": warning,
         "plugins_dir": dir.to_string_lossy()
     }))
@@ -2681,7 +2682,25 @@ pub fn check_patches_status(state: State<'_, AppState>) -> Result<serde_json::Va
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
 
-    // 1. Missing: нет json ИЛИ нет dll
+    // 1. Плагин отключён вручную (DLL переименован в `.disabled`).
+    let dll_disabled = files
+        .get("dll_disabled")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    if dll_disabled {
+        return Ok(serde_json::json!({
+            "status": "disabled",
+            "version": serde_json::Value::Null,
+            "message": "Плагин отключён",
+            "message_detail": "DLL переименован в .disabled — игра запускается без патчей. Включите плагин переключателем выше.",
+            "can_update": false,
+            "download_url": serde_json::Value::Null,
+            "installed_version": installed_version,
+            "enabled": false
+        }));
+    }
+
+    // 2. Missing: нет json ИЛИ нет dll
     if !both_exist {
         let plugins = plugins_dir(&state);
         let desc = plugin_descriptor(&state);
@@ -2699,31 +2718,16 @@ pub fn check_patches_status(state: State<'_, AppState>) -> Result<serde_json::Va
             "message_detail": "Файлы патчей не найдены в папке preloading_plugins. Необходимо скачать патчи.",
             "can_update": true,
             "download_url": url_v2,
-            "installed_version": serde_json::Value::Null
+            "installed_version": serde_json::Value::Null,
+            "enabled": true
         }));
     }
 
-    // 2. Версия DLL 1.0.0.0 — блокируем настройки и отключаем старый DLL
+    // 3. Версия не задана, но файлы на месте
     let dll_version = files
         .get("dll_version")
         .and_then(|v| v.as_str())
         .map(|s| s.to_string());
-    if dll_version.as_deref() == Some("1.0.0.0") {
-        if let Some(dll_path) = files.get("dll_path").and_then(|v| v.as_str()) {
-            disable_old_dll(std::path::Path::new(dll_path));
-        }
-        return Ok(serde_json::json!({
-            "status": "outdated_dll_v1",
-            "version": "1.0.0.0",
-            "message": "Патчи недоступны: устаревший ArizonaPatches.dll (1.0.0.0)",
-            "message_detail": "Установлен старый ArizonaPatches.dll (1.0.0.0), он вызывает краши игры. Ждите выхода v2 от EIR — тогда кнопка «Скачать» станет активной.",
-            "can_update": false,
-            "download_url": serde_json::Value::Null,
-            "installed_version": "1.0.0.0"
-        }));
-    }
-
-    // 4. Версия не задана, но файлы на месте и DLL не 1.0.0.0
     if installed_version.is_none() {
         if dll_version.is_some() {
             return Ok(serde_json::json!({
@@ -2733,7 +2737,8 @@ pub fn check_patches_status(state: State<'_, AppState>) -> Result<serde_json::Va
                 "message_detail": "Патчи установлены и работают корректно.",
                 "can_update": false,
                 "download_url": serde_json::Value::Null,
-                "installed_version": "v2"
+                "installed_version": "v2",
+                "enabled": true
             }));
         }
         return Ok(serde_json::json!({
@@ -2743,13 +2748,14 @@ pub fn check_patches_status(state: State<'_, AppState>) -> Result<serde_json::Va
             "message_detail": "Патчи не были установлены через лаунчер. Необходимо скачать и установить патчи.",
             "can_update": true,
             "download_url": url_v2,
-            "installed_version": serde_json::Value::Null
+            "installed_version": serde_json::Value::Null,
+            "enabled": true
         }));
     }
 
     let installed = installed_version.unwrap();
 
-    // 5. outdated_v1
+    // 4. outdated_v1
     if installed == "v1" {
         return Ok(serde_json::json!({
             "status": "outdated_v1",
@@ -2758,7 +2764,8 @@ pub fn check_patches_status(state: State<'_, AppState>) -> Result<serde_json::Va
             "message_detail": "У вас установлены патчи v1 — они не работают после глобальной обновы игры (февраль 2026). EIR выпустил исправленную версию v2.",
             "can_update": true,
             "download_url": url_v2,
-            "installed_version": "v1"
+            "installed_version": "v1",
+            "enabled": true
         }));
     }
 
@@ -2770,28 +2777,74 @@ pub fn check_patches_status(state: State<'_, AppState>) -> Result<serde_json::Va
         "message_detail": "Патчи v2 установлены и работают корректно.",
         "can_update": false,
         "download_url": serde_json::Value::Null,
-        "installed_version": installed
+        "installed_version": installed,
+        "enabled": true
     }))
 }
 
-/// Python: _disable_old_dll — переименовывает старый DLL в .dll1.
-fn disable_old_dll(dll_path: &std::path::Path) -> Option<PathBuf> {
-    let s = dll_path.to_string_lossy().to_string();
-    // Уже переименован? (.1, .1.1, .1.2, ...)
-    let re = regex::Regex::new(r"\.1(\.\d+)?$").ok()?;
-    if re.is_match(&s) {
-        return None;
+/// Включает/выключает плагин: выключение переименовывает DLL в
+/// `<файл>.disabled`, включение — обратно. Игра видит только активный файл.
+#[tauri::command(async)]
+pub fn set_plugin_enabled(state: State<'_, AppState>, enabled: bool) -> Result<serde_json::Value, String> {
+    if util::game_dir(&state).is_none() {
+        return Ok(serde_json::json!({
+            "success": false,
+            "enabled": !enabled,
+            "message": "Путь к игре не установлен"
+        }));
     }
-    if !dll_path.exists() {
-        return None;
+    let plugins = plugins_dir(&state);
+    let desc = plugin_descriptor(&state);
+    let active = desc.dll_path(&plugins);
+    let disabled = desc.dll_disabled_path(&plugins);
+
+    let result = if enabled {
+        if active.is_file() {
+            Ok(())
+        } else if disabled.is_file() {
+            std::fs::rename(&disabled, &active)
+        } else {
+            return Ok(serde_json::json!({
+                "success": false,
+                "enabled": false,
+                "message": format!("Файл {} не найден", desc.dll_file)
+            }));
+        }
+    } else if disabled.is_file() {
+        Ok(())
+    } else if active.is_file() {
+        std::fs::rename(&active, &disabled)
+    } else {
+        return Ok(serde_json::json!({
+            "success": false,
+            "enabled": false,
+            "message": format!("Файл {} не найден", desc.dll_file)
+        }));
+    };
+
+    match result {
+        Ok(()) => {
+            log::info!(
+                "Плагин {}: {}",
+                desc.id,
+                if enabled { "включён" } else { "выключен" }
+            );
+            Ok(serde_json::json!({
+                "success": true,
+                "enabled": enabled,
+                "file": if enabled { desc.dll_file.clone() } else { format!("{}{}", desc.dll_file, crate::plugin::DLL_DISABLED_SUFFIX) },
+                "message": if enabled { "Плагин включён" } else { "Плагин выключен" }
+            }))
+        }
+        Err(e) => Ok(serde_json::json!({
+            "success": false,
+            "enabled": !enabled,
+            "message": format!(
+                "Не удалось {} плагин: {e}",
+                if enabled { "включить" } else { "выключить" }
+            )
+        })),
     }
-    let backup = std::path::PathBuf::from(format!("{}.1", s));
-    if backup.exists() {
-        std::fs::remove_file(&backup).ok();
-    }
-    std::fs::rename(dll_path, &backup).ok()?;
-    log::info!("Old DLL renamed to .1: {}", backup.display());
-    Some(backup)
 }
 
 fn patches_download_url(version: &str) -> String {
@@ -2831,6 +2884,7 @@ fn check_patches_files_inner(state: &AppState) -> serde_json::Value {
     if util::game_path(state).is_empty() {
         return serde_json::json!({
             "json_exists": false, "dll_exists": false, "dll_version": serde_json::Value::Null,
+            "dll_disabled": false, "enabled": true,
             "message": "game_path не установлен", "both_exist": false
         });
     }
@@ -2838,6 +2892,7 @@ fn check_patches_files_inner(state: &AppState) -> serde_json::Value {
     if !plugins.is_dir() {
         return serde_json::json!({
             "json_exists": false, "dll_exists": false, "dll_version": serde_json::Value::Null,
+            "dll_disabled": false, "enabled": true,
             "message": "preloading_plugins не найдена", "both_exist": false
         });
     }
@@ -2846,8 +2901,10 @@ fn check_patches_files_inner(state: &AppState) -> serde_json::Value {
     let json_path = desc.settings_path(&plugins);
     let dll_path = desc.dll_path(&plugins);
     let json_exists = json_path.exists();
+    let dll_disabled = desc.is_disabled(&plugins);
 
-    // Ищем DLL: основной файл или любой бэкап (.1, .1.1, .1.2, etc.)
+    // Ищем DLL: основной файл или любой бэкап (.1, .1.1, .1.2, etc.).
+    // `.disabled` — выключенный плагин, его за установленный не считаем.
     let mut dll_candidates: Vec<PathBuf> = Vec::new();
     if dll_path.exists() {
         dll_candidates.push(dll_path.clone());
@@ -2855,7 +2912,10 @@ fn check_patches_files_inner(state: &AppState) -> serde_json::Value {
     if let Ok(rd) = std::fs::read_dir(&plugins) {
         for e in rd.flatten() {
             let name = e.file_name().to_string_lossy().to_string();
-            if name.starts_with(&desc.dll_file) && name != desc.dll_file {
+            if name.starts_with(&desc.dll_file)
+                && name != desc.dll_file
+                && !name.ends_with(crate::plugin::DLL_DISABLED_SUFFIX)
+            {
                 dll_candidates.push(e.path());
             }
         }
@@ -2877,6 +2937,8 @@ fn check_patches_files_inner(state: &AppState) -> serde_json::Value {
         "json_exists": json_exists,
         "dll_exists": dll_exists,
         "dll_version": dll_version,
+        "dll_disabled": dll_disabled,
+        "enabled": !dll_disabled,
         "json_path": if json_exists { serde_json::json!(json_path.to_string_lossy()) } else { serde_json::Value::Null },
         "dll_path": dll_path_checked.map(|p| serde_json::json!(p.to_string_lossy())).unwrap_or(serde_json::Value::Null),
         "plugins_dir": dll_path.parent().map(|p| serde_json::json!(p.to_string_lossy())).unwrap_or(serde_json::Value::Null),
@@ -3369,12 +3431,18 @@ pub async fn download_and_install_patches(
         }
     }
 
-    // 3. Удаляем старый отключенный DLL (.1), если есть (Python _remove_disabled_dll)
-    let dll = plugins.join("#ArizonaPatches.dll");
-    let backup = std::path::PathBuf::from(format!("{}.1", dll.to_string_lossy()));
-    if backup.exists() {
-        std::fs::remove_file(&backup).ok();
-        log::info!("Removed old disabled DLL: {}", backup.display());
+    // 3. Убираем старые копии DLL: `.1` (легаси-переименование) и `.disabled`
+    //    (выключенный плагин) — установлена свежая версия, она активна.
+    let desc = plugin_descriptor(&state);
+    let dll = desc.dll_path(&plugins);
+    for stale in [
+        std::path::PathBuf::from(format!("{}.1", dll.to_string_lossy())),
+        desc.dll_disabled_path(&plugins),
+    ] {
+        if stale.exists() {
+            std::fs::remove_file(&stale).ok();
+            log::info!("Removed old disabled DLL: {}", stale.display());
+        }
     }
 
     // 4. Версия в конфиг

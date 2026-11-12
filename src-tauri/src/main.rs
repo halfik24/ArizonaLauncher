@@ -198,6 +198,7 @@ fn main() {
             launcher::install_patch_preset,
             launcher::fetch_patches_schema,
             launcher::get_plugin_descriptor,
+            launcher::set_plugin_enabled,
             launcher::export_patches,
             launcher::import_patches,
             launcher::install_patches_file,
