@@ -15,11 +15,15 @@
         (function () {
             var MODES = ['fade', 'pop', 'smooth', 'full'];
             var BLURS = [8, 12, 16, 24, 32];
+            var SPEEDS = ['slow', 'normal', 'fast', 'off'];
             var m = null, b = null, c = null, sn = null, vg = null, fr = null;
+            var asp = null, perfLow = false;
             try {
                 m = localStorage.getItem('airAnimMode');
                 b = parseInt(localStorage.getItem('airBlur'), 10);
                 c = localStorage.getItem('arp_compactMenu');
+                asp = localStorage.getItem('arp_animSpeed');
+                perfLow = localStorage.getItem('arp_perfLow') === '1';
                 // Зимние эффекты (вкладка Лаунчер → «Зимние эффекты»). Три состояния:
                 // '1' — явно включены (работают всегда), '0' — явно выключены
                 // (не включает даже сезон), null — сезон решает сам:
@@ -30,8 +34,13 @@
             } catch (e) {}
             if (MODES.indexOf(m) < 0) m = 'full';
             if (BLURS.indexOf(b) < 0) b = 24;
+            if (SPEEDS.indexOf(asp) < 0) asp = 'normal';
+            var speedRate = asp === 'slow' ? 0.6 : asp === 'fast' ? 1.7 : asp === 'off' ? 0 : 1;
             document.documentElement.className += ' anim-' + m;
+            document.documentElement.className += ' anim-speed-' + asp;
+            if (perfLow) document.documentElement.className += ' perf-low';
             document.documentElement.style.setProperty('--frost-blur', b + 'px');
+            document.documentElement.style.setProperty('--anim-speed', String(speedRate));
             // Компактное меню (вкладка Лаунчер → «Компактность меню»), см.
             // setCompactMenu; класс до первой отрисовки
             if (c === '1') document.documentElement.className += ' compact-menu';
@@ -70,9 +79,13 @@
                     if (fr === '1') fr = null;
                 }
             }
-            if (winterOn(sn, now)) document.documentElement.className += ' winter-snow';
-            if (winterOn(vg, now)) document.documentElement.className += ' winter-vignette';
-            if (winterOn(fr, now)) document.documentElement.className += ' winter-frost';
+            // Пресет «слабый ПК» не даёт зимним эффектам включиться самим:
+            // он живёт до явного выключения в настройках.
+            if (!perfLow) {
+                if (winterOn(sn, now)) document.documentElement.className += ' winter-snow';
+                if (winterOn(vg, now)) document.documentElement.className += ' winter-vignette';
+                if (winterOn(fr, now)) document.documentElement.className += ' winter-frost';
+            }
         })();
     </script>
     <style>
@@ -146,6 +159,46 @@
                Навигация внутри панели всегда вдвое слабее. */
             --frost-blur: 24px;
             --frost-blur-nav: calc(var(--frost-blur) / 2);
+            /* Множитель скорости анимаций: 0.6 / 1 / 1.7 / 0 (Выкл).
+               Ставится скриптом в <head> из localStorage arp_animSpeed. */
+            --anim-speed: 1;
+        }
+
+        /* ── Скорость анимаций и режим слабого ПК ───────────────────────
+           «Выкл» и системное уменьшение движения гасят CSS-переходы и
+           keyframes. Обычные скорости (Медленно/Быстро) масштабируются в JS
+           через Animation.playbackRate — так не нужно переписывать сотни
+           transition-объявлений по всему файлу. */
+        html.anim-speed-off *,
+        html.anim-speed-off *::before,
+        html.anim-speed-off *::after {
+            animation-duration: 0.001ms !important;
+            animation-delay: 0ms !important;
+            animation-iteration-count: 1 !important;
+            transition-duration: 0.001ms !important;
+            transition-delay: 0ms !important;
+            scroll-behavior: auto !important;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.001ms !important;
+                animation-delay: 0ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.001ms !important;
+                transition-delay: 0ms !important;
+                scroll-behavior: auto !important;
+            }
+        }
+
+        /* Пресет «слабый ПК»: никакого стеклянного размытия во всём UI.
+           !important нужен, потому что сила блюра панели задаётся inline. */
+        html.perf-low { --frost-blur: 0px !important; --frost-blur-nav: 0px !important; }
+        html.perf-low *,
+        html.perf-low *::before,
+        html.perf-low *::after {
+            backdrop-filter: none !important;
+            -webkit-backdrop-filter: none !important;
         }
 
         /* Lucide icons base styles */
@@ -886,39 +939,87 @@
 
         /* right-panel slide-out is handled by the drawer system — see .right-panel.open */
 
-        /* ── Launch overlay ── */
+        /* ── Launch overlay ──
+           Непрозрачный слой поверх главного меню: затемнение + blur,
+           лого, сервер, прогресс и явные состояния
+           data-state="prep | launch | done | error". */
         .launch-screen {
             position: absolute;
             inset: 0;
             display: flex;
-            flex-direction: column;
             align-items: center;
             justify-content: center;
-            gap: 20px;
+            padding: 24px;
             opacity: 0;
+            visibility: hidden;
             pointer-events: none;
-            transition: opacity 0.4s ease;
+            background:
+                radial-gradient(900px 520px at 50% 42%, rgba(54, 78, 136, 0.20), transparent 68%),
+                rgba(6, 8, 16, 0.94);
+            backdrop-filter: blur(18px) saturate(1.15);
+            -webkit-backdrop-filter: blur(18px) saturate(1.15);
+            transition: opacity 0.4s ease, visibility 0.4s ease;
             z-index: 10;
         }
 
         .launch-screen.visible {
             opacity: 1;
+            visibility: visible;
             pointer-events: all;
         }
 
+        .launch-screen-panel {
+            width: min(430px, 88vw);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 15px;
+            padding: 32px 34px 28px;
+            border-radius: 22px;
+            background: linear-gradient(180deg, rgba(28, 32, 48, 0.94), rgba(15, 17, 27, 0.97));
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            box-shadow: 0 24px 90px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.07);
+            transform: translateY(10px) scale(0.985);
+            transition: transform 0.45s cubic-bezier(0.22, 0.61, 0.36, 1);
+        }
+
+        .launch-screen.visible .launch-screen-panel {
+            transform: translateY(0) scale(1);
+        }
+
+        .launch-screen-logo {
+            width: 72px;
+            height: 72px;
+            border-radius: 18px;
+            object-fit: cover;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.1);
+        }
+
         .launch-screen-title {
+            display: flex;
+            align-items: center;
             font-family: 'Montserrat Alternates', sans-serif;
-            font-size: clamp(28px, 3.5vw, 42px);
+            font-size: clamp(24px, 3vw, 32px);
             font-weight: 700;
             color: #fff;
-            letter-spacing: 1px;
-            text-shadow: 0 0 30px rgba(255,255,255,0.25);
+            letter-spacing: 0.6px;
+            text-align: center;
+            text-shadow: 0 0 30px rgba(255, 255, 255, 0.22);
+        }
+
+        .launch-screen-server {
+            font-family: 'Montserrat Alternates', sans-serif;
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.42);
+            letter-spacing: 0.4px;
+            text-align: center;
+            min-height: 16px;
         }
 
         .launch-screen-dots {
             display: inline-flex;
             gap: 6px;
-            margin-left: 4px;
+            margin-left: 8px;
         }
 
         .launch-screen-dots span {
@@ -937,28 +1038,31 @@
             40% { transform: scale(1); opacity: 1; }
         }
 
-        .launch-screen-status {
-            font-size: 14px;
-            color: rgba(255,255,255,0.45);
-            letter-spacing: 0.5px;
-            min-height: 20px;
-            transition: opacity 0.3s ease;
+        .launch-screen[data-state="done"] .launch-screen-dots,
+        .launch-screen[data-state="error"] .launch-screen-dots {
+            display: none;
         }
 
         .launch-screen-bar-wrap {
-            width: clamp(200px, 30vw, 320px);
-            height: 3px;
+            width: 100%;
+            height: 5px;
             background: rgba(255,255,255,0.08);
-            border-radius: 2px;
+            border-radius: 999px;
             overflow: hidden;
         }
 
         .launch-screen-bar {
             height: 100%;
             width: 0%;
-            background: linear-gradient(90deg, rgba(255,255,255,0.4), rgba(255,255,255,0.8));
-            border-radius: 2px;
-            transition: width 0.6s ease;
+            background: linear-gradient(90deg, rgba(130, 170, 255, 0.75), rgba(220, 232, 255, 0.95));
+            border-radius: 999px;
+            transition: width 0.6s ease, background 0.3s ease;
+        }
+        .launch-screen[data-state="done"] .launch-screen-bar {
+            background: linear-gradient(90deg, rgba(72, 210, 125, 0.8), rgba(160, 255, 195, 0.95));
+        }
+        .launch-screen[data-state="error"] .launch-screen-bar {
+            background: linear-gradient(90deg, rgba(255, 90, 90, 0.85), rgba(255, 150, 150, 0.95));
         }
         .launch-screen.visible .launch-screen-bar {
             animation: bar-shimmer 2s ease infinite;
@@ -968,6 +1072,58 @@
             0% { filter: brightness(1); }
             50% { filter: brightness(1.4); }
             100% { filter: brightness(1); }
+        }
+
+        .launch-screen-status {
+            font-size: 14px;
+            color: rgba(255,255,255,0.55);
+            letter-spacing: 0.4px;
+            text-align: center;
+            min-height: 20px;
+            transition: opacity 0.3s ease;
+        }
+
+        .launch-screen-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            padding: 5px 11px;
+            border-radius: 999px;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.10);
+            font-family: 'Montserrat Alternates', sans-serif;
+            font-size: 10px;
+            font-weight: 600;
+            letter-spacing: 0.8px;
+            text-transform: uppercase;
+            color: rgba(255,255,255,0.55);
+            transition: color 0.3s ease, border-color 0.3s ease, background 0.3s ease;
+        }
+
+        .launch-screen-badge::before {
+            content: '';
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: currentColor;
+        }
+
+        .launch-screen[data-state="launch"] .launch-screen-badge {
+            color: rgba(150, 185, 255, 0.95);
+            border-color: rgba(120, 160, 255, 0.32);
+            background: rgba(90, 130, 230, 0.12);
+        }
+
+        .launch-screen[data-state="done"] .launch-screen-badge {
+            color: rgba(110, 235, 155, 0.95);
+            border-color: rgba(80, 220, 130, 0.32);
+            background: rgba(60, 190, 105, 0.12);
+        }
+
+        .launch-screen[data-state="error"] .launch-screen-badge {
+            color: rgba(255, 125, 125, 0.95);
+            border-color: rgba(255, 90, 90, 0.35);
+            background: rgba(220, 60, 60, 0.13);
         }
 
         /* ── Хедер панели: тихая шапка (unslop: хедер обязан быть тихим,
@@ -7874,17 +8030,22 @@
             </div>
 
             <!-- Экран запуска игры -->
-            <div class="launch-screen" id="launchScreen">
-                <div class="launch-screen-title">
-                    Запуск игры
-                    <span class="launch-screen-dots">
-                        <span></span><span></span><span></span>
-                    </span>
+            <div class="launch-screen" id="launchScreen" data-state="prep" aria-live="polite" aria-busy="true">
+                <div class="launch-screen-panel">
+                    <img class="launch-screen-logo" src="app-icon.png" alt="Arizona RP Launcher">
+                    <div class="launch-screen-title">
+                        Запуск игры
+                        <span class="launch-screen-dots">
+                            <span></span><span></span><span></span>
+                        </span>
+                    </div>
+                    <div class="launch-screen-server" id="launchServer"></div>
+                    <div class="launch-screen-bar-wrap">
+                        <div class="launch-screen-bar" id="launchBar"></div>
+                    </div>
+                    <div class="launch-screen-status" id="launchStatus">Подготовка...</div>
+                    <div class="launch-screen-badge" id="launchStateLabel">Подготовка</div>
                 </div>
-                <div class="launch-screen-bar-wrap">
-                    <div class="launch-screen-bar" id="launchBar"></div>
-                </div>
-                <div class="launch-screen-status" id="launchStatus">Подготовка...</div>
             </div>
 
             <div class="right-panel">
@@ -8663,6 +8824,80 @@
                                 сильнее сезона. Снег падает поверх интерфейса, виньетка темнит края с ледяным отливом,
                                 иней покрывает кнопки при наведении. Частицы при клике — белые искры из точки клика,
                                 работают и без снега.
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="s-section">
+                        <div class="s-section-head">
+                            <span class="s-section-head-icon"><i data-lucide="sparkles"></i></span>
+                            <span class="s-section-title">Анимации</span>
+                        </div>
+                        <div class="s-section-body">
+                            <div class="sb-pos-wrap">
+                                <div class="sb-pos-label">Скорость анимаций</div>
+                                <div class="sb-pos-row" id="animSpeedRow">
+                                    <button class="sb-pos-btn" data-speed="slow" onclick="setAnimSpeed('slow')">Медленно</button>
+                                    <button class="sb-pos-btn active" data-speed="normal" onclick="setAnimSpeed('normal')">Норма</button>
+                                    <button class="sb-pos-btn" data-speed="fast" onclick="setAnimSpeed('fast')">Быстро</button>
+                                    <button class="sb-pos-btn" data-speed="off" onclick="setAnimSpeed('off')">Выкл</button>
+                                </div>
+                            </div>
+                            <label class="launch-item" style="margin:0 16px 8px; width:fit-content; min-width:300px;"
+                                   onclick="event.preventDefault(); setWeakPcMode(!document.getElementById('weakPcCheck').checked)">
+                                <input type="checkbox" id="weakPcCheck">
+                                <div class="s-toggle"></div>
+                                <div class="launch-item-text">
+                                    <span class="launch-item-name">Пресет «слабый ПК»</span>
+                                </div>
+                            </label>
+                            <div class="layout-settings-hint">
+                                «Выкл» делает переходы мгновенными. Пресет убирает размытие, снег, иней и частицы
+                                и ускоряет анимации — для слабой видеокарты. Системное «уменьшение движения»
+                                в Windows учитывается автоматически.
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="s-section">
+                        <div class="s-section-head">
+                            <span class="s-section-head-icon"><i data-lucide="volume-2"></i></span>
+                            <span class="s-section-title">Звук интерфейса</span>
+                        </div>
+                        <div class="s-section-body">
+                            <label class="launch-item" style="margin:8px 16px; width:fit-content; min-width:300px;"
+                                   onclick="event.preventDefault(); toggleSfx()">
+                                <input type="checkbox" id="sfxEnabledCheck">
+                                <div class="s-toggle"></div>
+                                <div class="launch-item-text">
+                                    <span class="launch-item-name">Звуки интерфейса</span>
+                                </div>
+                            </label>
+                            <div class="s-input-row" style="padding:0 16px 8px;">
+                                <span class="s-input-label" style="flex:none; font-size:11px; color:rgba(255,255,255,0.55);">Громкость</span>
+                                <input type="range" id="sfxVolumeRange" class="s-range" min="0" max="100" step="5" value="40"
+                                       oninput="setSfxVolume(this.value)">
+                                <span id="sfxVolumeVal" style="flex:none; width:32px; text-align:right; font-family:'Montserrat Alternates', sans-serif; font-size:12px; font-weight:600; color:rgba(255,255,255,0.75);">40</span>
+                            </div>
+                            <label class="launch-item" style="margin:0 16px 8px; width:fit-content; min-width:300px;"
+                                   onclick="event.preventDefault(); toggleSfxClicks()">
+                                <input type="checkbox" id="sfxClicksCheck" checked>
+                                <div class="s-toggle"></div>
+                                <div class="launch-item-text">
+                                    <span class="launch-item-name">Клики</span>
+                                </div>
+                            </label>
+                            <label class="launch-item" style="margin:0 16px 8px; width:fit-content; min-width:300px;"
+                                   onclick="event.preventDefault(); toggleSfxNotifications()">
+                                <input type="checkbox" id="sfxNotificationsCheck" checked>
+                                <div class="s-toggle"></div>
+                                <div class="launch-item-text">
+                                    <span class="launch-item-name">Уведомления</span>
+                                </div>
+                            </label>
+                            <div class="layout-settings-hint">
+                                По умолчанию выключено. Звуки синтезируются на лету через WebAudio — без
+                                аудиофайлов. Клики и уведомления настраиваются отдельно.
                             </div>
                         </div>
                     </div>
@@ -11295,13 +11530,13 @@
 
                 try {
                     if (window.pywebview && window.pywebview.api.start_game) {
-                        setLaunchStatus('Запуск лаунчера...', 30);
+                        setLaunchStatus('Запуск лаунчера...', 30, 'launch');
                         const result = await window.pywebview.api.start_game(nickname, serverData, null);
                         if (result.success) {
-                            setLaunchStatus('Загрузка игры...', 65);
+                            setLaunchStatus('Загрузка игры...', 65, 'launch');
                             // Ждём пока gta_sa.exe запустится (~3с) и сворачиваем
                             await new Promise(resolve => setTimeout(resolve, 3000));
-                            setLaunchStatus('Игра запущена! Сворачивание...', 95);
+                            setLaunchStatus('Игра запущена! Сворачивание...', 95, 'done');
                             await new Promise(resolve => setTimeout(resolve, 600));
                             if (window.pywebview.api.minimize_to_tray) {
                                 window.pywebview.api.minimize_to_tray();
@@ -11317,7 +11552,7 @@
                             // Пункт 3: быстрый чек перед spawn нашёл нехватку
                             // файлов — без вопросов запускаем авто-починку.
                             const n = (result.missing || []).length;
-                            setLaunchStatus('Не хватает файлов (' + n + ') — авто-починка...', 0);
+                            setLaunchStatus('Не хватает файлов (' + n + ') — авто-починка...', 0, 'error');
                             await new Promise(resolve => setTimeout(resolve, 1800));
                             hideLaunchScreen();
                             try {
@@ -11340,7 +11575,7 @@
                                 showNotification('Не хватает файлов игры — починка не запустилась', 'error');
                             }
                         } else {
-                            setLaunchStatus('Ошибка: ' + startErrorMessage(result), 0);
+                            setLaunchStatus('Ошибка: ' + startErrorMessage(result), 0, 'error');
                             await new Promise(resolve => setTimeout(resolve, 1800));
                             hideLaunchScreen();
                             showNotification('Ошибка: ' + startErrorMessage(result), 'error');
@@ -11348,20 +11583,20 @@
                     } else {
                         // Демо-режим (только браузер без Tauri)
                         demoGuard('start_game');
-                        setLaunchStatus('Завершение предыдущих процессов...', 15);
+                        setLaunchStatus('Завершение предыдущих процессов...', 15, 'launch');
                         await new Promise(resolve => setTimeout(resolve, 700));
-                        setLaunchStatus('Запуск лаунчера...', 40);
+                        setLaunchStatus('Запуск лаунчера...', 40, 'launch');
                         await new Promise(resolve => setTimeout(resolve, 800));
-                        setLaunchStatus('Загрузка игры...', 70);
+                        setLaunchStatus('Загрузка игры...', 70, 'launch');
                         await new Promise(resolve => setTimeout(resolve, 900));
-                        setLaunchStatus('Игра запущена! Сворачивание...', 95);
+                        setLaunchStatus('Игра запущена! Сворачивание...', 95, 'done');
                         await new Promise(resolve => setTimeout(resolve, 600));
                         hideLaunchScreen();
                         showNotification('Игра запущена (демо режим)', 'success');
                     }
                 } catch (error) {
                     console.error('Ошибка запуска игры:', error);
-                    setLaunchStatus('Ошибка запуска', 0);
+                    setLaunchStatus('Ошибка запуска', 0, 'error');
                     await new Promise(resolve => setTimeout(resolve, 1500));
                     hideLaunchScreen();
                     showNotification('Ошибка запуска игры', 'error');
@@ -11375,22 +11610,57 @@
             }
         }
 
+        // ── Экран запуска: стадии prep / launch / done / error ─────────
+        const LAUNCH_STATES = {
+            prep:   'Подготовка',
+            launch: 'Запуск',
+            done:   'Готово',
+            error:  'Ошибка',
+        };
+
+        function _launchSetState(state) {
+            const screen = document.getElementById('launchScreen');
+            if (!screen) return;
+            if (!LAUNCH_STATES[state]) state = 'prep';
+            screen.dataset.state = state;
+            screen.setAttribute('aria-busy',
+                (state === 'prep' || state === 'launch') ? 'true' : 'false');
+            const label = document.getElementById('launchStateLabel');
+            if (label) label.textContent = LAUNCH_STATES[state];
+            if (state === 'done') {
+                const bar = document.getElementById('launchBar');
+                if (bar) bar.style.width = '100%';
+            }
+        }
+
         function showLaunchScreen(serverData) {
             const leftPanel  = document.querySelector('.left-panel');
             const rightPanel = document.querySelector('.right-panel');
             const phTrigger  = document.getElementById('phTrigger');
             const screen     = document.getElementById('launchScreen');
+            const serverEl   = document.getElementById('launchServer');
+            const barEl      = document.getElementById('launchBar');
 
-            setLaunchStatus('Подготовка...', 5);
-            leftPanel.classList.add('slide-out');
-            
+            if (serverEl) {
+                if (serverData) {
+                    serverEl.textContent = 'Сервер ' + serverData.number +
+                        (serverData.name ? ' · ' + serverData.name : '');
+                } else {
+                    serverEl.textContent = '';
+                }
+            }
+            if (barEl) barEl.style.width = '0%';
+            _launchSetState('prep');
+            setLaunchStatus('Подготовка...', 5, 'prep');
+            if (leftPanel) leftPanel.classList.add('slide-out');
+
             // Скрываем панель новостей и кнопку профилей
             if (rightPanel) rightPanel.style.display = 'none';
             if (phTrigger) phTrigger.style.display = 'none';
 
             // Показываем оверлей чуть позже чтобы анимация началась красиво
             setTimeout(() => {
-                screen.classList.add('visible');
+                if (screen) screen.classList.add('visible');
             }, 200);
         }
 
@@ -11400,24 +11670,37 @@
             const phTrigger  = document.getElementById('phTrigger');
             const screen     = document.getElementById('launchScreen');
 
-            screen.classList.remove('visible');
+            if (screen) screen.classList.remove('visible');
             setTimeout(() => {
-                leftPanel.classList.remove('slide-out');
-                
+                if (leftPanel) leftPanel.classList.remove('slide-out');
+
                 // Возвращаем панель новостей и кнопку профилей
                 if (rightPanel) rightPanel.style.display = 'flex';
                 if (phTrigger) phTrigger.style.display = 'flex';
-                
-                startBtn.disabled = false;
-                startBtn.classList.remove('start-btn-loading');
+
+                if (startBtn) {
+                    startBtn.disabled = false;
+                    startBtn.classList.remove('start-btn-loading');
+                }
+                const bar = document.getElementById('launchBar');
+                if (bar) bar.style.width = '0%';
+                setLaunchStatus('Подготовка...', 0, 'prep');
+                if (screen) screen.setAttribute('aria-busy', 'false');
             }, 300);
         }
 
-        function setLaunchStatus(text, progress) {
+        function setLaunchStatus(text, progress, state) {
             const statusEl = document.getElementById('launchStatus');
             const barEl    = document.getElementById('launchBar');
             if (statusEl) statusEl.textContent = text;
             if (barEl && progress > 0) barEl.style.width = progress + '%';
+            if (state) {
+                _launchSetState(state);
+            } else if (progress === 0 && /Ошибка|Не хватает/i.test(text || '')) {
+                _launchSetState('error');
+            } else if (progress >= 100) {
+                _launchSetState('done');
+            }
         }
 
         // ── Универсальный хелпер закрытия с анимацией ──
@@ -14440,6 +14723,180 @@
                 closeNotification,
                 duration > 0 ? duration : (type === 'error' ? 6000 : 3000)
             );
+
+            _sfxPlay(type === 'error' ? 'error' : type === 'success' ? 'success' : 'info');
+        }
+
+        // ── Звуки интерфейса (WebAudio-синтез, без аудиофайлов) ──────────
+        // Вкладка Лаунчер → «Звук интерфейса». По умолчанию выключено.
+        // localStorage: arp_sfxEnabled ('1'/'0'), arp_sfxVolume (0–100),
+        // arp_sfxClicks / arp_sfxNotifications ('0' — выключить).
+        // var, а не const: showNotification может сработать раньше этой
+        // строки при старте — тогда _sfxPlay просто тихо выйдет.
+        var SFX = {
+            enabled: false,
+            volume: 0.4,
+            clicks: true,
+            notifications: true,
+            ctx: null,
+            master: null,
+            lastClick: 0,
+        };
+        let _sfxGestureSeen = false;
+
+        function _sfxRead() {
+            if (!SFX) return;
+            try {
+                SFX.enabled = localStorage.getItem('arp_sfxEnabled') === '1';
+                const v = parseInt(localStorage.getItem('arp_sfxVolume'), 10);
+                SFX.volume = (v >= 0 && v <= 100) ? v / 100 : 0.4;
+                SFX.clicks = localStorage.getItem('arp_sfxClicks') !== '0';
+                SFX.notifications = localStorage.getItem('arp_sfxNotifications') !== '0';
+            } catch (e) {}
+        }
+        _sfxRead();
+
+        function sfxEnabled() { _sfxRead(); return !!(SFX && SFX.enabled); }
+        function sfxClicksEnabled() { _sfxRead(); return !!(SFX && SFX.clicks); }
+        function sfxNotificationsEnabled() { _sfxRead(); return !!(SFX && SFX.notifications); }
+
+        function _sfxUnlock() {
+            if (!SFX || !sfxEnabled()) return null;
+            // Не создаём AudioContext до первого жеста: иначе стартовые
+            // уведомления поставят в очередь тоны в suspended-контексте.
+            if (!SFX.ctx && !_sfxGestureSeen) return null;
+            const Ctx = window.AudioContext || window.webkitAudioContext;
+            if (!Ctx) return null;
+            try {
+                if (!SFX.ctx) {
+                    SFX.ctx = new Ctx();
+                    SFX.master = SFX.ctx.createGain();
+                    SFX.master.connect(SFX.ctx.destination);
+                }
+                if (SFX.ctx.state === 'suspended') SFX.ctx.resume();
+                return SFX.ctx;
+            } catch (e) {
+                return null;
+            }
+        }
+
+        function _sfxTone(ctx, freq, at, dur, type, peak, slideTo) {
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            const t0 = ctx.currentTime + at;
+            osc.type = type || 'sine';
+            osc.frequency.setValueAtTime(freq, t0);
+            if (slideTo) {
+                osc.frequency.exponentialRampToValueAtTime(Math.max(30, slideTo), t0 + dur);
+            }
+            const vol = Math.max(0.0001, peak);
+            gain.gain.setValueAtTime(0.0001, t0);
+            gain.gain.exponentialRampToValueAtTime(vol, t0 + 0.012);
+            gain.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+            osc.connect(gain);
+            gain.connect(SFX.master);
+            osc.start(t0);
+            osc.stop(t0 + dur + 0.03);
+        }
+
+        function _sfxPlay(kind) {
+            _sfxRead();
+            if (!SFX || !SFX.enabled || SFX.volume <= 0) return;
+            if (kind === 'click' && !SFX.clicks) return;
+            if (kind !== 'click' && !SFX.notifications) return;
+            if (kind === 'click') {
+                const now = Date.now();
+                if (now - SFX.lastClick < 35) return;   // защита от дребезга
+                SFX.lastClick = now;
+            }
+            const ctx = _sfxUnlock();
+            if (!ctx) return;
+            const v = Math.pow(SFX.volume, 1.4) * 0.22;
+            try {
+                if (kind === 'click') {
+                    _sfxTone(ctx, 760, 0, 0.05, 'triangle', v * 0.8, 560);
+                } else if (kind === 'success') {
+                    _sfxTone(ctx, 660, 0, 0.12, 'sine', v);
+                    _sfxTone(ctx, 880, 0.09, 0.14, 'sine', v);
+                    _sfxTone(ctx, 1320, 0.18, 0.18, 'sine', v * 0.7);
+                } else if (kind === 'error') {
+                    _sfxTone(ctx, 260, 0, 0.22, 'sawtooth', v * 0.7, 130);
+                    _sfxTone(ctx, 180, 0.10, 0.24, 'square', v * 0.35, 110);
+                } else {
+                    _sfxTone(ctx, 620, 0, 0.10, 'sine', v * 0.8);
+                    _sfxTone(ctx, 820, 0.08, 0.12, 'sine', v * 0.7);
+                }
+            } catch (e) {}
+        }
+
+        // Делегированный клик в capture-фазе: срабатывает, даже если
+        // обработчик кнопки остановил всплытие.
+        document.addEventListener('click', (e) => {
+            const t = (e.target && e.target.closest)
+                ? e.target.closest('button, [role="button"], .launch-item, .news-tab, ' +
+                    '.settings-nav-item, .server-card, .profile-card, .wp-card, .s-btn')
+                : null;
+            if (!t || t.disabled) return;
+            _sfxPlay('click');
+        }, true);
+
+        // Первый жест разблокирует AudioContext (политика автозапуска WebView2).
+        document.addEventListener('pointerdown', () => {
+            _sfxGestureSeen = true;
+            _sfxUnlock();
+        }, { passive: true });
+        document.addEventListener('keydown', () => {
+            _sfxGestureSeen = true;
+            _sfxUnlock();
+        }, true);
+
+        function toggleSfx() {
+            try {
+                localStorage.setItem('arp_sfxEnabled', sfxEnabled() ? '0' : '1');
+            } catch (e) {}
+            _syncSfxUI();
+            if (sfxEnabled()) _sfxPlay('success');
+        }
+
+        function setSfxVolume(raw) {
+            let v = parseInt(raw, 10);
+            if (isNaN(v)) return;
+            v = Math.max(0, Math.min(100, v));
+            try { localStorage.setItem('arp_sfxVolume', String(v)); } catch (e) {}
+            _syncSfxUI();
+            _sfxPlay('click');
+        }
+
+        function toggleSfxClicks() {
+            try {
+                localStorage.setItem('arp_sfxClicks', sfxClicksEnabled() ? '0' : '1');
+            } catch (e) {}
+            _syncSfxUI();
+            _sfxPlay('click');
+        }
+
+        function toggleSfxNotifications() {
+            try {
+                localStorage.setItem('arp_sfxNotifications',
+                    sfxNotificationsEnabled() ? '0' : '1');
+            } catch (e) {}
+            _syncSfxUI();
+            _sfxPlay('info');
+        }
+
+        function _syncSfxUI() {
+            _sfxRead();
+            if (!SFX) return;
+            const on = document.getElementById('sfxEnabledCheck');
+            if (on) on.checked = SFX.enabled;
+            const vol = document.getElementById('sfxVolumeRange');
+            if (vol) vol.value = Math.round(SFX.volume * 100);
+            const val = document.getElementById('sfxVolumeVal');
+            if (val) val.textContent = Math.round(SFX.volume * 100);
+            const clicks = document.getElementById('sfxClicksCheck');
+            if (clicks) clicks.checked = SFX.clicks;
+            const notes = document.getElementById('sfxNotificationsCheck');
+            if (notes) notes.checked = SFX.notifications;
         }
 
         // Плашка «Доступно обновление патчей» удалена: скачивание отключено до
@@ -14483,7 +14940,7 @@
                 if (tabName === 'debug')  loadDebugInfo();
                 if (tabName === 'patches') checkPatchesStatus();
                 if (tabName === 'about')  _renderAboutBug();
-                if (tabName === 'launcher') { applyGameUpdateFuture(); _syncWinterUI(); _syncCompactUI(); _syncBurstUI(); _syncSnowAmountUI(); }
+                if (tabName === 'launcher') { applyGameUpdateFuture(); _syncWinterUI(); _syncCompactUI(); _syncBurstUI(); _syncSnowAmountUI(); _syncAnimSpeedUI(); _syncWeakPcUI(); _syncSfxUI(); }
             }
         }
 
@@ -17775,6 +18232,171 @@
             if (v) _applyAnimFps(v);
         })();
 
+        // ── Скорость анимаций (вкладка Лаунчер → «Анимации») ─────────────
+        // localStorage arp_animSpeed: slow | normal | fast | off. CSS-переменная
+        // --anim-speed выставлена ещё в <head>; здесь масштабируем уже
+        // существующие CSS-анимации и переходы через Animation.playbackRate,
+        // чтобы не переписывать сотни transition-объявлений вручную.
+        const ANIM_SPEEDS = {
+            slow:   { rate: 0.6 },
+            normal: { rate: 1 },
+            fast:   { rate: 1.7 },
+            off:    { rate: 0 },
+        };
+        let _animSpeed = 'normal';
+
+        function motionReduced() {
+            try {
+                return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+            } catch (e) {
+                return false;
+            }
+        }
+
+        function animSpeedKey() {
+            let v = null;
+            try { v = localStorage.getItem('arp_animSpeed'); } catch (e) {}
+            return ANIM_SPEEDS[v] ? v : 'normal';
+        }
+
+        function _animSpeedRate() {
+            if (motionReduced()) return 1000;   // системное уменьшение движения
+            return ANIM_SPEEDS[_animSpeed] ? ANIM_SPEEDS[_animSpeed].rate : 1;
+        }
+
+        let _animRateRaf = 0;
+
+        function _animApplyPlaybackRate() {
+            if (typeof document.getAnimations !== 'function') return;
+            const rate = _animSpeedRate();
+            const applied = rate === 0 ? 1000 : rate;
+            for (const a of document.getAnimations()) {
+                try { a.playbackRate = applied; } catch (e) {}
+            }
+            // Новые переходы появляются после смены стиля. В WebView2
+            // transitionrun не приходит, поэтому на Медленно/Быстро держим
+            // лёгкий rAF-скан (как губернатор FPS) и догоняем новые анимации.
+            const modeRate = ANIM_SPEEDS[_animSpeed] ? ANIM_SPEEDS[_animSpeed].rate : 1;
+            if (modeRate !== 1 && modeRate !== 0 && !motionReduced()) {
+                _animStartRateLoop();
+            } else {
+                _animStopRateLoop();
+            }
+        }
+
+        function _animRateLoop() {
+            _animRateRaf = requestAnimationFrame(_animRateLoop);
+            const rate = _animSpeedRate();
+            if (rate === 1 || rate === 1000) return;
+            for (const a of document.getAnimations()) {
+                if (a.playbackRate !== rate) {
+                    try { a.playbackRate = rate; } catch (e) {}
+                }
+            }
+        }
+
+        function _animStartRateLoop() {
+            if (_animRateRaf) return;
+            _animRateRaf = requestAnimationFrame(_animRateLoop);
+        }
+
+        function _animStopRateLoop() {
+            if (_animRateRaf) {
+                cancelAnimationFrame(_animRateRaf);
+                _animRateRaf = 0;
+            }
+        }
+
+        function setAnimSpeed(mode) {
+            if (!ANIM_SPEEDS[mode]) mode = 'normal';
+            _animSpeed = mode;
+            try { localStorage.setItem('arp_animSpeed', mode); } catch (e) {}
+            const de = document.documentElement;
+            for (const k in ANIM_SPEEDS) de.classList.remove('anim-speed-' + k);
+            de.classList.add('anim-speed-' + mode);
+            de.style.setProperty('--anim-speed', String(ANIM_SPEEDS[mode].rate));
+            _animApplyPlaybackRate();
+            _syncAnimSpeedUI();
+        }
+
+        function _syncAnimSpeedUI() {
+            const row = document.getElementById('animSpeedRow');
+            if (row) row.querySelectorAll('button[data-speed]').forEach(b =>
+                b.classList.toggle('active', b.dataset.speed === _animSpeed));
+        }
+
+        // Новые переходы/анимации подхватываем на старте и сразу ставим им
+        // выбранную скорость: иначе настройка влияла бы только на уже живые.
+        function _animAdopt(e) {
+            const rate = _animSpeedRate();
+            if (rate === 1) return;
+            const el = e && e.target;
+            if (!el || typeof el.getAnimations !== 'function') return;
+            const applied = rate === 0 ? 1000 : rate;
+            try {
+                el.getAnimations().forEach(a => { a.playbackRate = applied; });
+            } catch (err) {}
+        }
+        document.addEventListener('transitionrun', _animAdopt, true);
+        document.addEventListener('animationstart', _animAdopt, true);
+
+        // Страховка для WebView2, где transitionrun может не приходить:
+        // любое изменение class/style заставляет пересчитать живые анимации.
+        let _animMutObs = null;
+        if (typeof MutationObserver !== 'undefined') {
+            _animMutObs = new MutationObserver(() => {
+                const modeRate = ANIM_SPEEDS[_animSpeed] ? ANIM_SPEEDS[_animSpeed].rate : 1;
+                if (modeRate === 1 || modeRate === 0) return;
+                void document.documentElement.offsetWidth;   // форсируем style flush
+                _animApplyPlaybackRate();
+            });
+            _animMutObs.observe(document.documentElement, {
+                attributes: true,
+                subtree: true,
+                attributeFilter: ['class', 'style'],
+            });
+        }
+
+        (function initAnimSpeed() {
+            _animSpeed = animSpeedKey();
+            document.documentElement.classList.add('anim-speed-' + _animSpeed);
+            document.documentElement.style.setProperty(
+                '--anim-speed', String(ANIM_SPEEDS[_animSpeed].rate));
+            _animApplyPlaybackRate();
+        })();
+
+        // ── Пресет «слабый ПК» (вкладка Лаунчер → «Анимации») ────────────
+        // localStorage arp_perfLow: без стеклянного blur, снега, инея,
+        // виньетки и частиц; анимации ускорены. Класс perf-low ставится
+        // ещё в <head>, чтобы не мигнуть тяжёлым фоном при старте.
+        function perfLowEnabled() {
+            return document.documentElement.classList.contains('perf-low');
+        }
+
+        function setWeakPcMode(on) {
+            on = !!on;
+            try { localStorage.setItem('arp_perfLow', on ? '1' : '0'); } catch (e) {}
+            document.documentElement.classList.toggle('perf-low', on);
+            if (on) {
+                setAnimSpeed('fast');
+                ['snow', 'vignette', 'frost'].forEach(k => setWinterFx(k, false));
+                try { localStorage.setItem('airClickBurst', '0'); } catch (e) {}
+            } else {
+                setAnimSpeed('normal');
+                try { localStorage.setItem('airClickBurst', '1'); } catch (e) {}
+            }
+            _syncBurstUI();
+            _syncWeakPcUI();
+            showNotification(on
+                ? 'Пресет «слабый ПК» включён: без размытия, снега и частиц'
+                : 'Пресет «слабый ПК» выключен', 'info');
+        }
+
+        function _syncWeakPcUI() {
+            const cb = document.getElementById('weakPcCheck');
+            if (cb) cb.checked = perfLowEnabled();
+        }
+
         // ── Зимние эффекты (вкладка Лаунчер → «Зимние эффекты») ───────────
         // Три независимых флага: класс winter-* на <html> (ставит скрипт в
         // <head> до отрисовки), localStorage airSnow/airVignette/airFrost
@@ -17806,6 +18428,7 @@
         // Выкл = _spawnBurst не спавним; работает и без снега (живёт
         // всегда — просто по флагу). Дефолт включён.
         function clickBurstEnabled() {
+            if (perfLowEnabled() || motionReduced()) return false;
             return localStorage.getItem('airClickBurst') !== '0';
         }
 
@@ -18083,7 +18706,8 @@
 
         // Снег был включён в прошлой сессии — стартуем сразу при загрузке
         // (класс winter-snow уже стоит, разметка canvas выше по документу)
-        if (document.documentElement.classList.contains('winter-snow')) _snowStart();
+        if (!perfLowEnabled() && !motionReduced()
+            && document.documentElement.classList.contains('winter-snow')) _snowStart();
 
         // ── Демо-прогресс обновления лаунчера (вкладка Debug, только графика) ──
         // Шлёт фейковые события в общий хаб _onLauncherInstallProgress: открывает
