@@ -8754,13 +8754,14 @@
 
                     <!-- Перенесено из дебага (09.11): компактность меню и
                          зимние эффекты — постоянные настройки лаунчера -->
+                    <div class="lt-grid">
                     <div class="s-section">
                         <div class="s-section-head">
                             <span class="s-section-head-icon"><i data-lucide="menu"></i></span>
                             <span class="s-section-title">Компактность меню</span>
                         </div>
                         <div class="s-section-body">
-                            <label class="launch-item" style="margin:8px 16px; width:fit-content; min-width:300px;"
+                            <label class="launch-item" style="margin:8px 16px;"
                                    onclick="event.preventDefault(); setCompactMenu(!document.getElementById('compactMenuCheck').checked)">
                                 <input type="checkbox" id="compactMenuCheck">
                                 <div class="s-toggle"></div>
@@ -8781,7 +8782,7 @@
                             <span class="s-section-title">Зимние эффекты</span>
                         </div>
                         <div class="s-section-body">
-                            <label class="launch-item" style="margin:8px 16px; width:fit-content; min-width:300px;"
+                            <label class="launch-item" style="margin:8px 16px;"
                                    onclick="event.preventDefault(); setWinterFx('snow', !document.getElementById('winterSnowCheck').checked)">
                                 <input type="checkbox" id="winterSnowCheck">
                                 <div class="s-toggle"></div>
@@ -8795,7 +8796,7 @@
                                        oninput="setSnowAmount(this.value)">
                                 <span id="snowAmountVal" style="flex:none; width:32px; text-align:right; font-family:'Montserrat Alternates', sans-serif; font-size:12px; font-weight:600; color:rgba(255,255,255,0.75);">90</span>
                             </div>
-                            <label class="launch-item" style="margin:0 16px 8px; width:fit-content; min-width:300px;"
+                            <label class="launch-item" style="margin:0 16px 8px;"
                                    onclick="event.preventDefault(); setWinterFx('vignette', !document.getElementById('winterVignetteCheck').checked)">
                                 <input type="checkbox" id="winterVignetteCheck">
                                 <div class="s-toggle"></div>
@@ -8803,7 +8804,7 @@
                                     <span class="launch-item-name">Морозная виньетка</span>
                                 </div>
                             </label>
-                            <label class="launch-item" style="margin:0 16px 8px; width:fit-content; min-width:300px;"
+                            <label class="launch-item" style="margin:0 16px 8px;"
                                    onclick="event.preventDefault(); setWinterFx('frost', !document.getElementById('winterFrostCheck').checked)">
                                 <input type="checkbox" id="winterFrostCheck">
                                 <div class="s-toggle"></div>
@@ -8811,7 +8812,7 @@
                                     <span class="launch-item-name">Иней на кнопках</span>
                                 </div>
                             </label>
-                            <label class="launch-item" style="margin:0 16px 8px; width:fit-content; min-width:300px;"
+                            <label class="launch-item" style="margin:0 16px 8px;"
                                    onclick="event.preventDefault(); toggleClickBurst()">
                                 <input type="checkbox" id="clickBurstCheck">
                                 <div class="s-toggle"></div>
@@ -8827,6 +8828,8 @@
                             </div>
                         </div>
                     </div>
+
+                    </div><!-- /.lt-grid: Компактность меню + Зимние эффекты -->
 
                     <div class="lt-grid">
                     <div class="s-section">
