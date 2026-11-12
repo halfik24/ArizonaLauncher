@@ -1,0 +1,356 @@
+{
+  "_comment": "Дескриптор плагина Arizona Patches v1. Кладётся рядом с #ArizonaPatches.dll и #ArizonaPatches.json в preloading_plugins. Лаунчер читает его при открытии вкладки «Патчи»: имена файлов, версию и UI-панель. Меняется вместе с плагином — пересобирать лаунчер не нужно. Формат ui совпадает со схемой: categories + settings.",
+  "id": "ArizonaPatches",
+  "name": "Arizona Patches",
+  "plugin_version": "1.0.0.0",
+  "settings_file": "#ArizonaPatches.json",
+  "dll_file": "#ArizonaPatches.dll",
+
+  "ui": {
+    "version": 1,
+    "categories": [
+      { "id": "camera", "name": "Камера", "icon": "camera", "order": 1 },
+      { "id": "render", "name": "Графика", "icon": "image", "order": 2 },
+      { "id": "interface", "name": "Интерфейс", "icon": "monitor", "order": 3 },
+      { "id": "gameplay", "name": "Геймплей", "icon": "gamepad-2", "order": 4 },
+      { "id": "objects", "name": "Объекты", "icon": "package", "order": 5 }
+    ],
+    "settings": [
+      {
+        "id": "CCamInteriorFix",
+        "title": "Коррекция камеры в интерьере",
+        "description": "Исправляет поведение камеры в замкнутых пространствах.",
+        "category": "camera",
+        "type": "bool",
+        "default": true
+      },
+      {
+        "id": "DontUseFirstPerson",
+        "title": "Отключить вид от первого лица",
+        "description": "Убирает переключение в вид от первого лица.",
+        "category": "camera",
+        "type": "bool",
+        "default": true
+      },
+
+      {
+        "id": "UseCustomRenderEffects",
+        "title": "Кастомные эффекты рендера",
+        "description": "Включает набор эффектов рендера. Маска выбирается ниже.",
+        "category": "render",
+        "type": "bool",
+        "default": false
+      },
+      {
+        "id": "CustomRenderEffects",
+        "title": "Маска эффектов рендера",
+        "description": "Каждый бит включает отдельный эффект.",
+        "category": "render",
+        "type": "bits",
+        "default": 63,
+        "bits_options": [
+          { "bit": 0, "label": "Эффект 1" },
+          { "bit": 1, "label": "Эффект 2" },
+          { "bit": 2, "label": "Эффект 3" },
+          { "bit": 3, "label": "Эффект 4" },
+          { "bit": 4, "label": "Эффект 5" },
+          { "bit": 5, "label": "Эффект 6" }
+        ]
+      },
+      {
+        "id": "COcclusionFix",
+        "title": "Коррекция центра карты",
+        "description": "Включает исправление окклюзии — корректный центр карты.",
+        "category": "render",
+        "type": "bool",
+        "default": true
+      },
+      {
+        "id": "DontUseCustomCarRender",
+        "title": "Стандартный рендер машин",
+        "description": "Отключает кастомный рендер транспорта.",
+        "category": "render",
+        "type": "bool",
+        "default": true
+      },
+      {
+        "id": "DontUseCustomShadow",
+        "title": "Стандартные тени",
+        "description": "Отключает кастомные тени.",
+        "category": "render",
+        "type": "bool",
+        "default": true
+      },
+      {
+        "id": "DontUseCustomVehicleLightsColor",
+        "title": "Стандартный свет фар",
+        "description": "Отключает кастомный цвет света фар.",
+        "category": "render",
+        "type": "bool",
+        "default": true
+      },
+      {
+        "id": "DontUseCustomNumberPlate",
+        "title": "Стандартные номерные знаки",
+        "description": "Отключает кастомные номера на машинах.",
+        "category": "render",
+        "type": "bool",
+        "default": true
+      },
+      {
+        "id": "DontUseCustomMarker",
+        "title": "Без 3D-иконок",
+        "description": "Отключает отрисовку 3D-иконок над объектами.",
+        "category": "render",
+        "type": "bool",
+        "default": true
+      },
+      {
+        "id": "DontUseScaleRadarMapIcons",
+        "title": "Стандартные иконки радара",
+        "description": "Отключает увеличенные иконки на радаре.",
+        "category": "render",
+        "type": "bool",
+        "default": true
+      },
+      {
+        "id": "DontUseFadeScreen",
+        "title": "Без затемнения экрана",
+        "description": "Отключает затемнение экрана (fade).",
+        "category": "render",
+        "type": "bool",
+        "default": true
+      },
+
+      {
+        "id": "DontUseCustomChat",
+        "title": "Стандартный чат и 3D-текст",
+        "description": "Отключает кастомный чат и 3D-текст.",
+        "category": "interface",
+        "type": "bool",
+        "default": true
+      },
+      {
+        "id": "DontDefaultWindowMode",
+        "title": "Не включать оконный режим принудительно",
+        "description": "Плагин не будет принудительно ставить оконный режим.",
+        "category": "interface",
+        "type": "bool",
+        "default": true
+      },
+      {
+        "id": "DontUseVoiceChat",
+        "title": "Без голосового чата",
+        "description": "Отключает голосовой чат.",
+        "category": "interface",
+        "type": "bool",
+        "default": false
+      },
+      {
+        "id": "DontUseSoundSystem",
+        "title": "Без окружающих звуков",
+        "description": "Отключает звуковую систему окружения.",
+        "category": "interface",
+        "type": "bool",
+        "default": true
+      },
+
+      {
+        "id": "DontUseGreenZone",
+        "title": "Отключить зелёную зону",
+        "description": "Убирает отображение зелёной зоны безопасного района.",
+        "category": "gameplay",
+        "type": "bool",
+        "default": true
+      },
+      {
+        "id": "DontUseCustomSync",
+        "title": "Стандартная синхронизация SAMP",
+        "description": "Отключает кастомную синхронизацию.",
+        "category": "gameplay",
+        "type": "bool",
+        "default": true
+      },
+      {
+        "id": "DontUseCustomFastConnect",
+        "title": "Без быстрого подключения",
+        "description": "Убирает правки памяти для fastconnect.",
+        "category": "gameplay",
+        "type": "bool",
+        "default": true
+      },
+      {
+        "id": "DontUseCustomAttachObject",
+        "title": "Стандартное прикрепление объектов",
+        "description": "Возвращает штатное поведение attach-объектов у игрока и транспорта.",
+        "category": "gameplay",
+        "type": "bool",
+        "default": true
+      },
+      {
+        "id": "DontInterfereAntiAFK",
+        "title": "Не мешать анти-AFK",
+        "description": "Убирает правки памяти, мешающие работе анти-AFK.",
+        "category": "gameplay",
+        "type": "bool",
+        "default": false
+      },
+      {
+        "id": "DontPressWOnBike",
+        "title": "Не жать W на байке",
+        "description": "Отключает автоматическое нажатие W на мотоцикле.",
+        "category": "gameplay",
+        "type": "bool",
+        "default": false
+      },
+
+      {
+        "id": "CustomObjectScaleDistance",
+        "title": "Дистанция масштабирования объектов",
+        "description": "Расстояние, на котором объекты начинают масштабироваться.",
+        "category": "objects",
+        "type": "slider",
+        "default": 80.0,
+        "min": 0,
+        "max": 500,
+        "step": 1
+      },
+      {
+        "id": "CustomObjectMinimumDistance",
+        "title": "Минимальная дистанция объектов",
+        "description": "Ближе этого расстояния объекты не отрисовываются.",
+        "category": "objects",
+        "type": "slider",
+        "default": 95.0,
+        "min": 0,
+        "max": 500,
+        "step": 1
+      },
+      {
+        "id": "CustomObjectMaximumDistance",
+        "title": "Максимальная дистанция объектов",
+        "description": "Дальше этого расстояния объекты не отрисовываются.",
+        "category": "objects",
+        "type": "slider",
+        "default": 225.0,
+        "min": 0,
+        "max": 1000,
+        "step": 5
+      },
+      {
+        "id": "CustomObjectForceDistance",
+        "title": "Форсировать объекты",
+        "description": "Принудительно показывать объекты на заданной дистанции.",
+        "category": "objects",
+        "type": "bool",
+        "default": false
+      },
+      {
+        "id": "CustomStaticObjects",
+        "title": "Кастомные статические объекты",
+        "description": "Список объектов с принудительным размещением.",
+        "category": "objects",
+        "type": "cso",
+        "default": []
+      },
+      {
+        "id": "ServerObjectScaleDistance",
+        "title": "Дистанция масштабирования серверных объектов",
+        "description": "Расстояние, на котором начинают масштабироваться серверные объекты.",
+        "category": "objects",
+        "type": "slider",
+        "default": 70.0,
+        "min": 0,
+        "max": 500,
+        "step": 1
+      },
+      {
+        "id": "ServerObjectMinimumDistance",
+        "title": "Минимальная дистанция серверных объектов",
+        "description": "Ближе этого расстояния серверные объекты не видны.",
+        "category": "objects",
+        "type": "slider",
+        "default": 60.0,
+        "min": 0,
+        "max": 500,
+        "step": 1
+      },
+      {
+        "id": "ServerObjectMaximumDistance",
+        "title": "Максимальная дистанция серверных объектов",
+        "description": "Дальше этого расстояния серверные объекты не видны.",
+        "category": "objects",
+        "type": "slider",
+        "default": 75.0,
+        "min": 0,
+        "max": 1000,
+        "step": 5
+      },
+      {
+        "id": "ServerObjectForceDistance",
+        "title": "Форсировать серверные объекты",
+        "description": "Принудительно показывать серверные объекты.",
+        "category": "objects",
+        "type": "bool",
+        "default": false
+      },
+      {
+        "id": "ServerStaticObjects",
+        "title": "Статические серверные объекты",
+        "description": "Список серверных объектов с принудительным размещением (правится в файле настроек).",
+        "category": "objects",
+        "type": "objects",
+        "default": []
+      },
+      {
+        "id": "ServerAttachObjectScaleDistance",
+        "title": "Масштабирование прикреплённых объектов",
+        "description": "Дистанция масштабирования прикреплённых к игроку объектов.",
+        "category": "objects",
+        "type": "slider",
+        "default": 5.0,
+        "min": 0,
+        "max": 50,
+        "step": 0.5
+      },
+      {
+        "id": "ServerAttachObjectMinimumDistance",
+        "title": "Минимальная дистанция прикреплённых объектов",
+        "description": "Ближе этого расстояния прикреплённые объекты не видны.",
+        "category": "objects",
+        "type": "slider",
+        "default": 2.0,
+        "min": 0,
+        "max": 50,
+        "step": 0.5
+      },
+      {
+        "id": "ServerAttachObjectMaximumDistance",
+        "title": "Максимальная дистанция прикреплённых объектов",
+        "description": "Дальше этого расстояния прикреплённые объекты не видны.",
+        "category": "objects",
+        "type": "slider",
+        "default": 10.0,
+        "min": 0,
+        "max": 100,
+        "step": 0.5
+      },
+      {
+        "id": "ServerAttachObjectForceDistance",
+        "title": "Форсировать прикреплённые объекты",
+        "description": "Принудительно показывать прикреплённые объекты.",
+        "category": "objects",
+        "type": "bool",
+        "default": false
+      },
+      {
+        "id": "ServerStaticAttachObjects",
+        "title": "Статические прикреплённые объекты",
+        "description": "Список прикреплённых объектов (правится в файле настроек).",
+        "category": "objects",
+        "type": "objects",
+        "default": []
+      }
+    ]
+  }
+}

@@ -16654,9 +16654,27 @@
         /** Загружает схему: пробует backend (GitHub), при ошибке — fallback. */
         async function loadPatchesSchema() {
             if (_patchesSchema) return _patchesSchema;
+
+            // 1. Дескриптор плагина (plugin.json) рядом с его файлами. Если он
+            //    описывает UI и версия совпала с DLL — рисуем панель по нему:
+            //    плагин может обновляться без пересборки лаунчера.
+            const desc = await loadPluginDescriptor();
+            if (desc && desc.version_match && desc.descriptor && desc.descriptor.ui) {
+                _patchesSchema = desc.descriptor.ui;
+                console.info('[plugin] панель из plugin.json, версия ' +
+                    (desc.descriptor.plugin_version || 'не указана'));
+                return _patchesSchema;
+            }
+            if (desc && desc.version_match === false) {
+                console.warn('[plugin] plugin.json от другой версии:',
+                    desc.descriptor && desc.descriptor.plugin_version,
+                    'DLL:', desc.dll_version, '— берём схему по умолчанию');
+            }
+
             try {
                 if (window.pywebview?.api?.fetch_patches_schema) {
-                    const r = await window.pywebview.api.fetch_patches_schema();
+                    const schemaUrl = desc && desc.descriptor ? desc.descriptor.schema_url : null;
+                    const r = await window.pywebview.api.fetch_patches_schema(schemaUrl || null);
                     if (r.success && r.data) {
                         _patchesSchema = r.data;
                         return _patchesSchema;
@@ -16668,6 +16686,27 @@
             }
             _patchesSchema = FALLBACK_PATCHES_SCHEMA;
             return _patchesSchema;
+        }
+
+        let _pluginDescriptor = null;
+        let _pluginDescriptorLoaded = false;
+
+        /** Читает plugin.json через бэкенд (один раз за сессию). */
+        async function loadPluginDescriptor() {
+            if (_pluginDescriptorLoaded) return _pluginDescriptor;
+            _pluginDescriptorLoaded = true;
+            try {
+                if (window.pywebview?.api?.get_plugin_descriptor) {
+                    const r = await window.pywebview.api.get_plugin_descriptor();
+                    if (r && r.success) {
+                        _pluginDescriptor = r;
+                        if (r.warning) console.warn('[plugin]', r.warning);
+                    }
+                }
+            } catch (e) {
+                console.warn('[plugin] дескриптор недоступен:', e);
+            }
+            return _pluginDescriptor;
         }
 
         function renderCheckboxes() {
@@ -16917,13 +16956,25 @@
                     control.appendChild(btn);
                     break;
                 }
+                case 'objects': {
+                    // Массив объектов без визуального редактора: показываем
+                    // только количество, значения правятся в файле настроек.
+                    const span = document.createElement('span');
+                    span.className = 'patch-row-code';
+                    const count = Array.isArray(val) ? val.length : 0;
+                    span.textContent = count + ' шт.';
+                    control.appendChild(span);
+                    break;
+                }
                 default: {
-                    // Неизвестный тип — простое текстовое поле (на вырост)
+                    // Неизвестный тип — простое текстовое поле (на вырост).
+                    // Объекты/массивы в него не кладём: иначе виден "[object Object]".
                     const inp = document.createElement('input');
                     inp.type = 'text';
                     inp.className = 'patch-number-input';
                     inp.id = 'patch_' + s.id;
-                    inp.value = val ?? s.default ?? '';
+                    const shown = (val === null || val === undefined) ? (s.default ?? '') : val;
+                    inp.value = (typeof shown === 'object') ? JSON.stringify(shown) : shown;
                     inp.onchange = () => { patchesData[s.id] = inp.value; };
                     control.appendChild(inp);
                 }

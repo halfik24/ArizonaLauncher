@@ -2448,8 +2448,52 @@ fn plugins_dir(state: &AppState) -> PathBuf {
         .unwrap_or_default()
 }
 
+/// Дескриптор плагина (`plugin.json`) или значения v1 по умолчанию.
+fn plugin_descriptor(state: &AppState) -> crate::plugin::PluginDescriptor {
+    let dir = plugins_dir(state);
+    if dir.as_os_str().is_empty() {
+        return crate::plugin::PluginDescriptor::default();
+    }
+    let (desc, warning) = crate::plugin::load(&dir);
+    if let Some(w) = warning {
+        log::warn!("plugin.json: {w}");
+    }
+    desc
+}
+
 fn patches_json_path(state: &AppState) -> PathBuf {
-    plugins_dir(state).join("#ArizonaPatches.json")
+    plugin_descriptor(state).settings_path(&plugins_dir(state))
+}
+
+/// Дескриптор плагина для фронта: как рисовать панель и совпадает ли
+/// `plugin.json` с реально установленной версией DLL.
+#[tauri::command(async)]
+pub fn get_plugin_descriptor(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
+    let dir = plugins_dir(&state);
+    if dir.as_os_str().is_empty() {
+        return Ok(serde_json::json!({
+            "success": false,
+            "message": "Путь к игре не установлен"
+        }));
+    }
+    let (desc, warning) = crate::plugin::load(&dir);
+    let dll_path = desc.dll_path(&dir);
+    // Если файла из дескриптора нет — проверяем основной v1-DLL, чтобы не
+    // показывать «версия не совпала» из-за переименования.
+    let dll_version = get_dll_version(&dll_path).or_else(|| {
+        get_dll_version(
+            &dir.join(crate::plugin::DEFAULT_DLL_FILE),
+        )
+    });
+    let matches = crate::plugin::version_matches(desc.plugin_version.as_deref(), dll_version.as_deref());
+    Ok(serde_json::json!({
+        "success": true,
+        "descriptor": desc,
+        "dll_version": dll_version,
+        "version_match": matches,
+        "warning": warning,
+        "plugins_dir": dir.to_string_lossy()
+    }))
 }
 
 /// Python: версия DLL через win32api.GetFileVersionInfo → "1.0.0.0" | None.
@@ -2640,12 +2684,13 @@ pub fn check_patches_status(state: State<'_, AppState>) -> Result<serde_json::Va
     // 1. Missing: нет json ИЛИ нет dll
     if !both_exist {
         let plugins = plugins_dir(&state);
-        let mut missing: Vec<&str> = Vec::new();
-        if !plugins.join("#ArizonaPatches.json").exists() {
-            missing.push("#ArizonaPatches.json");
+        let desc = plugin_descriptor(&state);
+        let mut missing: Vec<String> = Vec::new();
+        if !desc.settings_path(&plugins).exists() {
+            missing.push(desc.settings_file.clone());
         }
-        if !plugins.join("#ArizonaPatches.dll").exists() {
-            missing.push("#ArizonaPatches.dll");
+        if !desc.dll_path(&plugins).exists() {
+            missing.push(desc.dll_file.clone());
         }
         return Ok(serde_json::json!({
             "status": "missing",
@@ -2797,8 +2842,9 @@ fn check_patches_files_inner(state: &AppState) -> serde_json::Value {
         });
     }
 
-    let json_path = plugins.join("#ArizonaPatches.json");
-    let dll_path = plugins.join("#ArizonaPatches.dll");
+    let desc = plugin_descriptor(state);
+    let json_path = desc.settings_path(&plugins);
+    let dll_path = desc.dll_path(&plugins);
     let json_exists = json_path.exists();
 
     // Ищем DLL: основной файл или любой бэкап (.1, .1.1, .1.2, etc.)
@@ -2809,7 +2855,7 @@ fn check_patches_files_inner(state: &AppState) -> serde_json::Value {
     if let Ok(rd) = std::fs::read_dir(&plugins) {
         for e in rd.flatten() {
             let name = e.file_name().to_string_lossy().to_string();
-            if name.starts_with("#ArizonaPatches.dll") && name != "#ArizonaPatches.dll" {
+            if name.starts_with(&desc.dll_file) && name != desc.dll_file {
                 dll_candidates.push(e.path());
             }
         }
@@ -2854,7 +2900,7 @@ pub fn read_patches(state: State<'_, AppState>) -> Result<serde_json::Value, Str
             "path": ""
         }));
     };
-    let path = game_dir.join("preloading_plugins").join("#ArizonaPatches.json");
+    let path = plugin_descriptor(&state).settings_path(&game_dir.join("preloading_plugins"));
     let path_str = path.to_string_lossy().to_string();
     if !path.exists() {
         // Конфига ещё нет — пока v2 не установлены, это нормальное состояние:
@@ -2997,7 +3043,7 @@ fn write_patches_inner(state: &AppState, data: &serde_json::Value) -> serde_json
     let Some(game_dir) = util::game_dir(state) else {
         return serde_json::json!({"success": false, "message": "Путь к игре не установлен"});
     };
-    let path = game_dir.join("preloading_plugins").join("#ArizonaPatches.json");
+    let path = plugin_descriptor(state).settings_path(&game_dir.join("preloading_plugins"));
     // Бэкап обязателен: если он не создался (файл залочен), старый конфиг
     // не затираем — пользователь не теряет настройки из-за транзиентного сбоя
     if path.exists() {
@@ -3781,19 +3827,29 @@ static PATCHES_SCHEMA_CACHE: std::sync::Mutex<Option<serde_json::Value>> =
 
 /// Схема патчей V2 с GitHub (categories/settings); при ошибке фронт падает
 /// на зашитый FALLBACK_PATCHES_SCHEMA.
+///
+/// `schema_url` — необязательный адрес из `plugin.json`: плагин может
+/// обновлять свою панель отдельно от лаунчера. Если он не задан или битый —
+/// используются прежние адреса.
 #[tauri::command]
-pub async fn fetch_patches_schema() -> Result<serde_json::Value, String> {
+pub async fn fetch_patches_schema(schema_url: Option<String>) -> Result<serde_json::Value, String> {
     if let Ok(cache) = PATCHES_SCHEMA_CACHE.lock() {
         if let Some(data) = cache.as_ref() {
             return Ok(serde_json::json!({"success": true, "data": data, "cached": true}));
         }
     }
-    let urls = [
-        "https://raw.githubusercontent.com/halfik24/ArzLaunchRepo/main/patches_schema.json",
-        "https://raw.githubusercontent.com/halfik24/ArizonaLauncher/main/patches_schema.json",
-    ];
+    let mut urls: Vec<String> = Vec::new();
+    if let Some(url) = schema_url {
+        let url = url.trim();
+        if url.starts_with("https://") && url.len() <= 2048 {
+            urls.push(url.to_string());
+        }
+    }
+    urls.push("https://raw.githubusercontent.com/halfik24/ArzLaunchRepo/main/patches_schema.json".to_string());
+    urls.push("https://raw.githubusercontent.com/halfik24/ArizonaLauncher/main/patches_schema.json".to_string());
     let mut last_err = "Неизвестная ошибка".to_string();
     for url in urls {
+        let url = url.as_str();
         let mut headers = reqwest::header::HeaderMap::new();
         headers.insert(
             reqwest::header::CACHE_CONTROL,

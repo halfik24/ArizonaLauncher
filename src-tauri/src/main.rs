@@ -3,6 +3,7 @@
 mod config;
 mod game_update;
 mod launcher;
+mod plugin;
 mod util;
 
 use config::AppState;
@@ -196,6 +197,7 @@ fn main() {
             launcher::fetch_patch_presets,
             launcher::install_patch_preset,
             launcher::fetch_patches_schema,
+            launcher::get_plugin_descriptor,
             launcher::export_patches,
             launcher::import_patches,
             launcher::install_patches_file,
