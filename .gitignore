@@ -3,6 +3,10 @@ src-tauri/target/
 src-tauri/gen/
 *.log
 
+# отдельные каталоги сборки (CARGO_TARGET_DIR)
+target-build/
+target-build-separate/
+
 # рабочая папка агента (скрипты проверок, скриншоты)
 .agent/
 
