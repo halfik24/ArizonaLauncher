@@ -2590,10 +2590,22 @@
         }
         /* Своя рамка: панель кроет всё окно, но её содержимое начинается под
            тайтлбаром (42px) — плашка с названием и кнопки окна остаются видны
-           и не перекрываются. */
+           и не перекрываются. Левый сайдбар тянется до самого верха и получает
+           скругление, а его контент отступает от плашки названия. */
         body.frame-custom .settings-panel.full-window {
             top: 50%;
             height: 100vh;
+            padding-top: 0;
+        }
+        body.frame-custom .settings-panel.full-window #mainSettingsNav {
+            padding-top: 42px;
+        }
+        /* Сайдбар в полноэкранном режиме скруглён сверху слева — как у панели
+           в оконном режиме; в своей рамке он ещё и тянется до верха окна. */
+        .settings-panel.full-window #mainSettingsNav {
+            border-top-left-radius: 18px;
+        }
+        body.frame-custom .settings-panel.full-window .settings-body {
             padding-top: 42px;
         }
         body.frame-custom .settings-panel.full-window.wp-mode #wallpaperNav {
