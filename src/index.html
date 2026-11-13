@@ -543,19 +543,31 @@
         /* Низ (по умолчанию) */
         .status-bar.sb-pos-bottom,
         .status-bar:not([class*="sb-pos-"]) {
-            left: 0; right: 0; bottom: 0;
+            left: 50%; right: auto; bottom: 0;
+            transform: translateX(-50%);
+            width: max-content;
+            max-width: calc(100% - 24px);
             height: 34px;
             align-items: center;
-            padding: 0 16px;
-            border-top: 1px solid rgba(255,255,255,0.07);
+            justify-content: center;
+            padding: 0 18px;
+            border: 1px solid rgba(255,255,255,0.07);
+            border-bottom: none;
+            border-radius: 14px 14px 0 0;
         }
         /* Верх */
         .status-bar.sb-pos-top {
-            left: 0; right: 0; top: 0;
+            left: 50%; right: auto; top: 0;
+            transform: translateX(-50%);
+            width: max-content;
+            max-width: calc(100% - 24px);
             height: 34px;
             align-items: center;
-            padding: 0 16px;
-            border-bottom: 1px solid rgba(255,255,255,0.07);
+            justify-content: center;
+            padding: 0 18px;
+            border: 1px solid rgba(255,255,255,0.07);
+            border-top: none;
+            border-radius: 0 0 14px 14px;
         }
         /* Лево */
         .status-bar.sb-pos-left {
@@ -655,6 +667,24 @@
         .sb-chip svg { width: 13px; height: 13px; opacity: 0.7; }
         .sb-key { color: rgba(255,255,255,0.4); letter-spacing: 0.3px; }
         .sb-val { color: rgba(255,255,255,0.78); font-weight: 600; }
+        /* Имя профиля: в горизонтальной строке обрезаем длинные названия,
+           в боковых — максимум 3 строки, чтобы чип не растягивал колонку. */
+        #sbProfileVal {
+            max-width: 170px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .sb-pos-left #sbProfileVal,
+        .sb-pos-right #sbProfileVal {
+            max-width: 38px;
+            white-space: normal;
+            display: -webkit-box;
+            -webkit-line-clamp: 3;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            word-break: break-all;
+        }
         .sb-dot {
             width: 7px; height: 7px;
             border-radius: 50%;
@@ -8189,6 +8219,11 @@
 
             <!-- Статус-строка главного экрана (вкл/выкл: Настройки → Лаунчер) -->
             <div class="status-bar" id="statusBar" style="display:none;">
+                <div class="sb-chip" id="sbProfile" title="Активный профиль">
+                    <i data-lucide="user"></i>
+                    <span class="sb-key">Профиль</span>
+                    <span class="sb-val" id="sbProfileVal">—</span>
+                </div>
                 <div class="sb-chip" title="Общее время в игре">
                     <i data-lucide="clock"></i>
                     <span class="sb-key">Наиграно</span>
@@ -10313,6 +10348,7 @@
                     if (res && res.success) {
                         _profiles = res.profiles || [];
                         _activeProfileId = res.active_id || null;
+                        if (typeof _sbRenderProfile === 'function') _sbRenderProfile();
                         return;
                     }
                 }
@@ -10324,6 +10360,7 @@
                 _profiles = JSON.parse(localStorage.getItem('arp_profiles') || '[]');
                 _activeProfileId = localStorage.getItem('arp_active_profile') || null;
             } catch { _profiles = []; }
+            if (typeof _sbRenderProfile === 'function') _sbRenderProfile();
         }
 
         async function _saveProfiles() {
@@ -10363,6 +10400,8 @@
         }
 
         function _renderProfiles() {
+            // Активный профиль мог измениться — сразу обновляем статус-строку
+            if (typeof _sbRenderProfile === 'function') _sbRenderProfile();
             const list = document.getElementById('profilesList');
             list.innerHTML = '';
 
@@ -16743,6 +16782,20 @@
             if (el) el.textContent = _sbFormatTime(_ptTotal);
         }
 
+        // Чип «Профиль»: имя активного профиля. Доступность _activeProfile()
+        // проверяем на всякий случай — статус-строка стартует раньше профилей.
+        function _sbRenderProfile() {
+            const chip = document.getElementById('sbProfile');
+            const val = document.getElementById('sbProfileVal');
+            if (!chip || !val) return;
+            const p = (typeof _activeProfile === 'function') ? _activeProfile() : null;
+            const name = (p && p.name) ? p.name : 'Без профиля';
+            val.textContent = name;
+            chip.title = (p && p.name)
+                ? 'Активный профиль: ' + p.name
+                : 'Активный профиль не выбран — действуют глобальные настройки';
+        }
+
         async function _sbRefreshScripts() {
             const chip = document.getElementById('sbScripts');
             const val = document.getElementById('sbScriptsVal');
@@ -16784,6 +16837,8 @@
             }
             const ig = document.getElementById('sbInGame');
             if (ig) ig.style.display = running ? '' : 'none';
+            // Профиль мог смениться из виджета — держим чип в актуальном виде
+            _sbRenderProfile();
             // Счётчики скриптов — раз в 12 тиков (~60 с)
             if (++_sbTickNo >= 12) { _sbTickNo = 0; _sbRefreshScripts(); }
         }
@@ -16794,6 +16849,7 @@
             bar.style.display = '';
             _ptWasRunning = false;
             _sbRenderPlaytime();
+            _sbRenderProfile();
             _sbRefreshScripts();
             if (_sbInterval) return;
             _ptLastTs = Date.now();
