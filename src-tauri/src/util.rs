@@ -54,8 +54,13 @@ pub fn ok_true() -> Result<serde_json::Value, String> {
 }
 
 /// `Ok({"success": false, "message": ...})` — бизнес-ошибка без `Err`.
+/// Каждая такая ошибка пишется в лог: раньше сообщение уходило только
+/// фронту, и по launcher.log было не понять, почему у пользователя
+/// «ничего не работает».
 pub fn fail_message(msg: impl Into<String>) -> Result<serde_json::Value, String> {
-    Ok(serde_json::json!({"success": false, "message": msg.into()}))
+    let msg = msg.into();
+    log::warn!("fail: {msg}");
+    Ok(serde_json::json!({"success": false, "message": msg}))
 }
 
 /// Путь к диагностическому лог-файлу: `<Documents>/ArizonaLauncher/launcher.log`.

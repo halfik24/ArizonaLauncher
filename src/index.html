@@ -7,6 +7,49 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Arizona RP Launcher</title>
     <script>
+        /* ── Диагностика: ошибки фронта → launcher.log ──
+           В релизе devtools никто не открывает: uncaught-ошибки и молчаливые
+           catch-блоки терялись бесследно, по логу было не понять «что и как».
+           Через команду log_event они попадают в общий лог бэкенда; в браузере
+           (нет Tauri) остаётся только консоль. Повторы (поллинг статус-строки
+           и т.п.) троттлятся — одинаковый заголовок не чаще раза в минуту. */
+        (function () {
+            var _seen = {};
+            function _frontLog(level, scope, msg) {
+                try {
+                    var text = (msg instanceof Error)
+                        ? (msg.stack || (msg.name + ': ' + msg.message))
+                        : String(msg == null ? '' : msg);
+                    if (!text) return;
+                    var fn = level === 'error' ? console.error
+                           : level === 'info' ? console.info : console.warn;
+                    fn('[front:' + scope + ']', text);
+                    var key = level + '|' + scope + '|' + text.split('\n')[0];
+                    var now = Date.now();
+                    if (_seen[key] && now - _seen[key] < 60000) return;
+                    _seen[key] = now;
+                    if (window.pywebview && window.pywebview.api.log_event) {
+                        Promise.resolve(
+                            window.pywebview.api.log_event(level, scope, text)
+                        ).catch(function () {});
+                    }
+                } catch (e) { /* сам лог не должен ломать основной поток */ }
+            }
+            window._frontLog = _frontLog;
+
+            // Глобальная сеть: непойманные ошибки и rejected-промисы раньше
+            // исчезали вместе с devtools. Ловим и первое, и второе.
+            window.addEventListener('error', function (e) {
+                var where = e.filename
+                    ? (String(e.filename).split('/').pop() + ':' + (e.lineno || 0))
+                    : '';
+                _frontLog('error', 'js', (e.message || 'ошибка script') + (where ? ' @ ' + where : ''));
+            });
+            window.addEventListener('unhandledrejection', function (e) {
+                _frontLog('error', 'promise', (e.reason instanceof Error) ? e.reason : String(e.reason));
+            });
+        })();
+
         /* Режим анимации открытия/закрытия настроек: класс на <html> ДО первой
            отрисовки, чтобы не мигал стартовый вариант. Выбор — на вкладке
            Отладка (кнопки setAnimMode), хранится в localStorage 'airAnimMode'.
@@ -10354,6 +10397,7 @@
                 }
             } catch (e) {
                 console.warn('get_profiles, беру localStorage-fallback:', e);
+                _frontLog('warn', 'profiles', 'get_profiles упал, беру localStorage-fallback: ' + e);
             }
             // localStorage fallback
             try {
@@ -10371,6 +10415,8 @@
                         // Бэк не записал — дублируем в localStorage, иначе
                         // профили терялись молча (return до fallback)
                         console.warn('save_profiles отклонён бэком:', res.message);
+                        _frontLog('warn', 'profiles', 'save_profiles отклонён бэком: '
+                            + ((res && res.message) || 'без сообщения'));
                         try {
                             localStorage.setItem('arp_profiles', JSON.stringify(_profiles));
                             localStorage.setItem('arp_active_profile', _activeProfileId || '');
@@ -10380,6 +10426,7 @@
                 }
             } catch (e) {
                 console.warn('save_profiles:', e);
+                _frontLog('warn', 'profiles', 'save_profiles: ' + e);
             }
             try {
                 localStorage.setItem('arp_profiles', JSON.stringify(_profiles));
@@ -10608,7 +10655,7 @@
                         }
                     }
                 }
-            } catch (e) { console.error('applyProfile error:', e); errors.push(String(e)); }
+            } catch (e) { console.error('applyProfile error:', e); errors.push(String(e)); _frontLog('error', 'profiles', 'applyProfile: ' + e); }
 
             _activeProfileId = id;
             // Раскладка профиля поверх глобальной (P1). Если у старого
@@ -15939,6 +15986,7 @@
                 }
             } catch(e) {
                 console.warn('save_launcher_settings:', e);
+                _frontLog('warn', 'settings', 'save_launcher_settings (applyLauncherSettings): ' + e);
             }
         }
 
@@ -15961,6 +16009,7 @@
                 }
             } catch(e) {
                 showNotification('Ошибка выбора картинки', 'error');
+                _frontLog('error', 'wallpaper', 'select_bg_image: ' + e);
             }
         }
 
@@ -15992,6 +16041,7 @@
                     }
                 } catch(e) {
                     console.warn('get_wallpapers:', e);
+                    _frontLog('warn', 'wallpaper', 'get_wallpapers: ' + e);
                 }
             }
             renderWallpaperGrid();
@@ -16519,6 +16569,7 @@
                 }
             } catch (e) {
                 console.warn('save_launcher_settings:', e);
+                _frontLog('warn', 'settings', 'save_launcher_settings (persistLauncherSettings): ' + e);
             }
         }
 
@@ -16811,7 +16862,10 @@
                 if (installed === 0) { chip.style.display = 'none'; return; }
                 val.textContent = installed + '/' + enabled + ' вкл.';
                 chip.style.display = '';
-            } catch (e) { chip.style.display = 'none'; }
+            } catch (e) {
+                chip.style.display = 'none';
+                _frontLog('warn', 'status-bar', 'get_moonloader_scripts: ' + e);
+            }
         }
 
         async function _sbTick() {
@@ -16824,7 +16878,7 @@
                     const res = await window.pywebview.api.is_gta_running(false);
                     running = !!(res && res.running);
                 }
-            } catch (e) {}
+            } catch (e) { _frontLog('warn', 'status-bar', 'is_gta_running: ' + e); }
             if (running) {
                 if (!_ptWasRunning) { _ptLastTs = now; _ptWasRunning = true; }
                 _ptTotal += Math.max(0, Math.round((now - _ptLastTs) / 1000));
@@ -17503,6 +17557,8 @@
                 patchesData = patchesResult.data;
             } else if (patchesResult && patchesResult.message) {
                 console.warn('read_patches:', patchesResult.message);
+                _frontLog('warn', 'patches', 'read_patches: ' + patchesResult.message
+                    + ' — сохранение патчей заблокировано');
                 // Уведомление при открытии настроек скрыто по запросу (06.11.2026):
                 // панель «нет конфига патчера» мигала каждый раз. Блокировка
                 // сохранения/экспорта по _patchesReadFailed работает по-прежнему.

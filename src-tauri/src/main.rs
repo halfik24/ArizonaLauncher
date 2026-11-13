@@ -162,6 +162,7 @@ fn main() {
             launcher::open_game_folder,
             launcher::open_data_folder,
             launcher::open_log_file,
+            launcher::log_event,
             launcher::is_gta_running,
             launcher::get_wallpapers,
             launcher::get_wallpaper_thumb,

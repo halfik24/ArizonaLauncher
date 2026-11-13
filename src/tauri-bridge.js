@@ -29,6 +29,7 @@
   "get_install_action_api": ["folderPath"],
   "check_patches_available_api": ["version"],
   "fetch_image_as_base64": ["url"],
+  "log_event": ["level", "scope", "message"],
   "is_gta_running": ["consumeExit"],
   "get_wallpaper_thumb": ["filename"],
   "get_wallpaper_full": ["filename"],

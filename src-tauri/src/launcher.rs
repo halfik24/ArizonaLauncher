@@ -2169,6 +2169,31 @@ pub fn open_log_file() -> Result<serde_json::Value, String> {
     util::ok_true()
 }
 
+/// Диагностика из фронтенда: uncaught-ошибки JS и проглоченные catch-блоки
+/// попадают в общий launcher.log. В релизе devtools никто не открывает —
+/// без этой команды ошибки фронта были невидимы. Фронт троттлит повторы
+/// сам (поллинг статус-строки и т.п.), здесь только защита от засорения
+/// лога: срез по символам, не байтам (чтобы не порвать UTF-8 посередине).
+/// `level`: "info" | "warn" | "error" (иное — warn), `scope` — источник.
+#[tauri::command]
+pub async fn log_event(
+    level: Option<String>,
+    scope: Option<String>,
+    message: String,
+) -> Result<serde_json::Value, String> {
+    let text: String = message.chars().take(4000).collect();
+    let tag = match scope.as_deref() {
+        Some(s) if !s.is_empty() => format!("[front:{s}]"),
+        _ => "[front]".to_string(),
+    };
+    match level.as_deref().unwrap_or("warn") {
+        "error" => log::error!("{tag} {text}"),
+        "info" => log::info!("{tag} {text}"),
+        _ => log::warn!("{tag} {text}"),
+    }
+    util::ok_true()
+}
+
 /// Открыть ссылку во внешнем браузере (новости, релизы, Telegram).
 /// WebView2 не даёт фронту `window.open`, поэтому это делает бэкенд.
 #[tauri::command]
