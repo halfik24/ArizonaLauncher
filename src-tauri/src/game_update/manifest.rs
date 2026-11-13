@@ -35,6 +35,8 @@ pub enum Kind {
 pub struct Entry {
     /// Относительный путь, разделитель `/`
     pub rel: String,
+    /// Имя файла на CDN; может отличаться от `rel` для variant-файлов.
+    pub source_rel: String,
     pub kind: Kind,
     pub size: u64,
     pub hash: String,
@@ -59,7 +61,7 @@ pub struct Flat {
 pub fn flatten(root: &Root, future: bool) -> Flat {
     let want = if future { "future" } else { "default" };
     let mut out = Flat::default();
-    walk(&root.data, "", want, false, &mut out);
+    walk(&root.data, "", "", want, false, &mut out);
     for e in &out.entries {
         if e.res {
             out.res_entries += 1;
@@ -82,7 +84,7 @@ fn join(prefix: &str, name: &str) -> String {
     }
 }
 
-fn walk(nodes: &[Node], prefix: &str, want: &str, in_res: bool, out: &mut Flat) {
+fn walk(nodes: &[Node], prefix: &str, source_prefix: &str, want: &str, in_res: bool, out: &mut Flat) {
     for n in nodes {
         // variant_tag: при включённой «новой графике» берём future, иначе default
         if let Some(v) = &n.variant_tag {
@@ -97,16 +99,19 @@ fn walk(nodes: &[Node], prefix: &str, want: &str, in_res: bool, out: &mut Flat) 
             Some(nm) => join(prefix, nm),
             None => prefix.to_string(),
         };
+        let source_name = n.name.as_deref().or(n.install_as.as_deref());
+        let source_rel = source_name.map(|nm| join(source_prefix, nm)).unwrap_or_else(|| source_prefix.to_string());
         match n.kind.as_deref() {
             // узла без type может быть data (просто контейнер)
             None => {
                 if let Some(d) = &n.data {
-                    walk(d, prefix, want, is_res, out);
+                    walk(d, prefix, source_prefix, want, is_res, out);
                 }
             }
             Some("dir") => {
                 out.entries.push(Entry {
                     rel: rel.clone(),
+                    source_rel: source_rel.clone(),
                     kind: Kind::Dir,
                     size: 0,
                     hash: String::new(),
@@ -114,11 +119,12 @@ fn walk(nodes: &[Node], prefix: &str, want: &str, in_res: bool, out: &mut Flat) 
                     res: is_res,
                 });
                 if let Some(d) = &n.data {
-                    walk(d, &rel, want, is_res, out);
+                    walk(d, &rel, &source_rel, want, is_res, out);
                 }
             }
             Some("delete") => out.entries.push(Entry {
                 rel,
+                source_rel,
                 kind: Kind::Delete,
                 size: 0,
                 hash: String::new(),
@@ -129,6 +135,7 @@ fn walk(nodes: &[Node], prefix: &str, want: &str, in_res: bool, out: &mut Flat) 
                 let kind = if k == "check" { Kind::Check } else { Kind::File };
                 out.entries.push(Entry {
                     rel: rel.clone(),
+                    source_rel: source_rel.clone(),
                     kind,
                     size: n.size.unwrap_or(0),
                     hash: n.hash.clone().unwrap_or_default(),
@@ -136,7 +143,7 @@ fn walk(nodes: &[Node], prefix: &str, want: &str, in_res: bool, out: &mut Flat) 
                     res: is_res,
                 });
                 if let Some(d) = &n.data {
-                    walk(d, &rel, want, is_res, out);
+                    walk(d, &rel, &source_rel, want, is_res, out);
                 }
             }
         }

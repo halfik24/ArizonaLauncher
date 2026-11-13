@@ -13,6 +13,33 @@ use super::manifest;
 use super::state;
 use super::verify::{self, Action, Plan};
 
+/// Commit a downloaded file only after its integrity check passed. Keep the
+/// previous destination recoverable if replacing it fails (Windows cannot
+/// rename over an existing file).
+fn commit_download(staged: &Path, dest: &Path) -> anyhow::Result<()> {
+    let backup = dest.with_file_name(format!(
+        "{}.previous-download",
+        dest.file_name().and_then(|n| n.to_str()).unwrap_or("download")
+    ));
+    if backup.exists() {
+        fs::remove_file(&backup).with_context(|| format!("удаление старой копии {}", backup.display()))?;
+    }
+    let had_destination = dest.exists();
+    if had_destination {
+        fs::rename(dest, &backup).with_context(|| format!("сохранение прежнего файла {}", dest.display()))?;
+    }
+    if let Err(error) = fs::rename(staged, dest) {
+        if had_destination {
+            let _ = fs::rename(&backup, dest);
+        }
+        return Err(error).with_context(|| format!("переименование проверенной загрузки в {}", dest.display()));
+    }
+    if had_destination {
+        fs::remove_file(&backup).ok();
+    }
+    Ok(())
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Mode {
     Check,
@@ -283,12 +310,17 @@ pub async fn run(
                 // MD5-сверка. Битая качка (md5 мимо) НЕ убивает прогон: пробуем
                 // другой CDN, и только потом ошибка.
                 let mut via: Option<&'static str> = None;
+                let staged_path = path.with_file_name(format!(
+                    "{}.verified-download",
+                    path.file_name().and_then(|n| n.to_str()).unwrap_or("download")
+                ));
+                let mut cdn_results = Vec::new();
                 for (label, cdn) in [
                     ("основном", &job.cdn_main),
                     ("резервном", &job.cdn_reserve),
                 ] {
-                    let url = downloader::file_url(cdn, rel);
-                    let res = downloader::download_to(&http, &url, &path, job.speed_limit, cancel, pause, |file_bytes| {
+                    let url = downloader::file_url(cdn, &item.entry.source_rel);
+                    let res = downloader::download_to(&http, &url, &staged_path, job.speed_limit, cancel, pause, |file_bytes| {
                         let total = base + file_bytes;
                         if let Some(s) = speed.tick(total) {
                             on_event(Event::Progress {
@@ -308,21 +340,25 @@ pub async fn run(
                                 cancelled = true;
                                 break 'act;
                             }
+                            let result = format!("{label} CDN: {e:#}");
+                            cdn_results.push(result.clone());
                             log(format!("не взялось с {label} CDN ({rel}): {e:#}"));
                         }
-                        Ok(_n) => {
+                        Ok(downloaded_bytes) => {
                             if item.entry.hash.is_empty() {
+                                commit_download(&staged_path, &path)?;
                                 via = Some(label);
                                 break;
                             }
-                            let h = match downloader::md5_file(path.clone()).await {
+                            let h = match downloader::md5_file(staged_path.clone()).await {
                                 Ok(h) => h,
                                 Err(e) => {
                                     // Секундный лок файла антивирусом не должен
                                     // ронять часовую установку: считаем хэш
                                     // несовпавшим и пробуем другой CDN
                                     log(format!("md5 не прочитался после качки с {label} CDN: {rel}: {e:#}"));
-                                    fs::remove_file(&path).ok();
+                                    cdn_results.push(format!("{label} CDN: MD5 не прочитан ({e:#})"));
+                                    fs::remove_file(&staged_path).ok();
                                     continue;
                                 }
                             };
@@ -333,21 +369,22 @@ pub async fn run(
                                 cancelled = true;
                                 break 'act;
                             }
-                            if h == item.entry.hash {
+                            if h == item.entry.hash && downloaded_bytes == item.entry.size {
+                                commit_download(&staged_path, &path)?;
                                 via = Some(label);
                                 break;
                             }
+                            let result = format!("{label} CDN: размер {downloaded_bytes} из {} байт, MD5 {h} (ожидался {})", item.entry.size, item.entry.hash);
+                            cdn_results.push(result.clone());
                             log(format!(
-                                "md5 не совпал после качки с {label} CDN: {rel} — пробую другой CDN"
+                                "файл после качки не прошёл проверку ({rel}): {result} — пробую другой CDN"
                             ));
-                            // битый файл убираем: на месте папки verify бы
-                            // посчитал его «файлом не того размера»
-                            fs::remove_file(&path).ok();
+                            fs::remove_file(&staged_path).ok();
                         }
                     }
                 }
                 let Some(via) = via else {
-                    bail!("не удалось скачать {rel}: оба CDN не дали файл с верным md5");
+                    bail!("не удалось скачать {rel}: {}", if cdn_results.is_empty() { "оба CDN не смогли отдать файл".to_string() } else { cdn_results.join("; ") });
                 };
                 let _ = via;
 

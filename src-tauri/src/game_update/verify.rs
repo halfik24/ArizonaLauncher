@@ -342,6 +342,7 @@ mod tests {
     fn entry(rel: &str, size: u64, hash: &str, date: i64) -> Entry {
         Entry {
             rel: rel.into(),
+            source_rel: rel.into(),
             kind: Kind::File,
             size,
             hash: hash.into(),
