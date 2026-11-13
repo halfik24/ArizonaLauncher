@@ -9,8 +9,11 @@ const handlerBlock = main.match(/generate_handler!\[([\s\S]*?)\]/)[1];
 const registered = [...handlerBlock.matchAll(/launcher::(\w+)/g)].map(m => m[1]);
 
 // сигнатуры: (pub )?(async )?fn name(params) — params могут быть многострочными
+// [^{}] в параметрах: иначе `fn` без `->` (например `fn foo(x) {`) «съедает»
+// сигнатуру следующей функции, и та пропадает из таблицы (так терялись
+// get_window_frame и check_update_api).
 const sigs = {};
-const fnRe = /(?:pub\s+)?(?:async\s+)?fn\s+([A-Za-z0-9_]+)\s*\(([\s\S]*?)\)\s*->/g;
+const fnRe = /(?:pub\s+)?(?:async\s+)?fn\s+([A-Za-z0-9_]+)\s*\(([^{}]*?)\)\s*->/g;
 let m;
 while ((m = fnRe.exec(rs))) {
   const name = m[1];
@@ -137,13 +140,38 @@ ${table}
     if (window.__pywebviewReadyFired) return;
     window.__pywebviewReadyFired = true;
     console.log('[tauri-bridge] PyWebView готов (Tauri)');
-    try {
-      window.dispatchEvent(new Event('pywebviewready'));
-    } catch (e) {
-      var evt = document.createEvent('Event');
-      evt.initEvent('pywebviewready', false, false);
-      window.dispatchEvent(evt);
+    var ready = function () {
+      try {
+        window.dispatchEvent(new Event('pywebviewready'));
+      } catch (e) {
+        var evt = document.createEvent('Event');
+        evt.initEvent('pywebviewready', false, false);
+        window.dispatchEvent(evt);
+      }
+    };
+
+    // Сначала подписываем фронтенд на прогресс, затем запускаем init(): так
+    // ранние события не потеряются, а кнопки не останутся на 0%.
+    var eventApi = window.__TAURI__ && window.__TAURI__.event;
+    if (!eventApi || typeof eventApi.listen !== 'function') {
+      ready();
+      return;
     }
+    Promise.all([
+      eventApi.listen('launcher-install-progress', function (event) {
+        if (typeof window._onLauncherInstallProgress === 'function') {
+          window._onLauncherInstallProgress(event.payload);
+        }
+      }),
+      eventApi.listen('patches-install-progress', function (event) {
+        if (typeof window._onPatchesInstallProgress === 'function') {
+          window._onPatchesInstallProgress(event.payload);
+        }
+      })
+    ]).then(ready).catch(function (e) {
+      console.warn('[tauri-bridge] не удалось подписаться на прогресс:', e);
+      ready();
+    });
   }
 
   // Фронт регистрирует listener синхронно при разборе <body>, поэтому к

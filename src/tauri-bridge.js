@@ -49,6 +49,7 @@
   "set_plugin_enabled": ["enabled"],
   "export_patches": ["data"],
   "install_patches_file": ["filename", "contentB64"],
+  "check_update_api": ["gamePath"],
   "install_game_api": ["future"],
   "install_game_to_folder": ["folder", "future"],
   "repair_game_api": ["future"],

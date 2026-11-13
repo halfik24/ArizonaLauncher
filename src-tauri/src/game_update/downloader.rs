@@ -18,6 +18,11 @@ const CHUNK_TIMEOUT: Duration = Duration::from_secs(30);
 
 pub fn client() -> reqwest::Client {
     reqwest::Client::builder()
+        // Системный прокси (WinINET) не используем: VPN-клиенты часто
+        // оставляют «мёртвую» настройку (например http://[::1]:12334 при
+        // закрытом приложении), и тогда КАЖДЫЙ запрос падает с
+        // «tunnel error: failed to create». CDN игры доступен напрямую.
+        .no_proxy()
         .connect_timeout(Duration::from_secs(15))
         .user_agent(UA)
         .build()

@@ -1067,6 +1067,7 @@ async fn prefetch_icons(servers: Vec<serde_json::Value>) {
     // Таймауты обязательны: один зависший хост навсегда останавливал
     // последовательный prefetch — иконки остальных серверов не качались
     let client = match reqwest::Client::builder()
+        .no_proxy() // см. game_update::downloader::client
         .connect_timeout(std::time::Duration::from_secs(5))
         .timeout(std::time::Duration::from_secs(15))
         .build()
@@ -1906,6 +1907,7 @@ pub async fn fetch_image_as_base64(url: String) -> Result<serde_json::Value, Str
         return Ok(serde_json::json!({"success": false, "message": msg}));
     }
     let client = match reqwest::Client::builder()
+        .no_proxy() // см. game_update::downloader::client
         .timeout(std::time::Duration::from_secs(30))
         .build()
     {
@@ -3247,6 +3249,7 @@ async fn download_patches_zip(
     urls: &[String],
 ) -> Result<tempfile::NamedTempFile, String> {
     let client = reqwest::Client::builder()
+        .no_proxy() // см. game_update::downloader::client
         .connect_timeout(std::time::Duration::from_secs(15))
         .timeout(std::time::Duration::from_secs(600))
         .user_agent("Mozilla/5.0")
@@ -4565,6 +4568,7 @@ async fn download_to_temp(
     message: &str,
 ) -> Result<tempfile::NamedTempFile, String> {
     let client = reqwest::Client::builder()
+        .no_proxy() // см. game_update::downloader::client
         .connect_timeout(std::time::Duration::from_secs(15))
         .timeout(std::time::Duration::from_secs(600))
         .user_agent("Mozilla/5.0")
