@@ -2599,6 +2599,11 @@
         body.frame-custom .settings-panel.full-window.wp-mode #wallpaperNav {
             top: 42px;
         }
+        /* Верхняя полоса панели (42px) прозрачна для мыши: за ней тайтлбар,
+           так окно можно тянуть и в полноэкранных настройках. */
+        body.frame-custom .settings-panel.full-window { pointer-events: none; }
+        body.frame-custom .settings-panel.full-window > * { pointer-events: auto; }
+        body.frame-custom .settings-panel.full-window > #settingsBaked { pointer-events: none; }
         /* Пикер обоев внутри полноэкранной панели не уезжает влево */
         .settings-panel.full-window.wp-mode {
             transform: translate(-50%, -50%);
