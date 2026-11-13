@@ -4620,6 +4620,7 @@ async fn download_to_temp(
 }
 
 /// Что распаковывать из архива лаунчера.
+#[derive(Clone, Copy)]
 enum ZipExtractMode {
     /// Полная установка — все файлы.
     All,
@@ -4633,10 +4634,12 @@ enum ZipExtractMode {
 /// (для незашифрованных записей пароль игнорируется). Защита от zip-slip:
 /// в путях архива не бывает "..", итоговый путь обязан быть внутри folder.
 fn extract_launcher_zip(
+    app: &tauri::AppHandle,
     zip_path: &std::path::Path,
     folder: &std::path::Path,
     password: Option<&[u8]>,
     mode: ZipExtractMode,
+    progress: (u32, u32),
 ) -> Result<usize, String> {
     let file =
         std::fs::File::open(zip_path).map_err(|e| format!("Не удалось открыть архив: {e}"))?;
@@ -4652,12 +4655,35 @@ fn extract_launcher_zip(
         .canonicalize()
         .map_err(|e| format!("Папка игры недоступна: {e}"))?;
 
+    // Узнаём суммарный размер выбранных файлов, чтобы показывать живой
+    // прогресс, пока большой exe копируется из архива.
+    let mut total_bytes = 0u64;
+    for i in 0..archive.len() {
+        let f = archive
+            .by_index_raw(i)
+            .map_err(|e| format!("Не удалось прочитать запись архива: {e}"))?;
+        let norm = f.name().replace('\\', "/");
+        let selected = match mode {
+            ZipExtractMode::All => true,
+            ZipExtractMode::ExeOnly => norm.to_ascii_lowercase().ends_with(".exe"),
+            ZipExtractMode::PreloadingOnly => norm.contains("preloading_plugins"),
+        };
+        if !f.is_dir() && selected {
+            total_bytes = total_bytes.saturating_add(f.size());
+        }
+    }
+
     let mut extracted = 0usize;
+    let mut copied_total = 0u64;
+    let mut last_progress = std::time::Instant::now();
     for i in 0..archive.len() {
         // Имя/тип записи — в отдельном блоке, чтобы не держить мут-заем архива
         let (name, is_dir) = {
             let f = archive
-                .by_index(i)
+                // by_index пытается открыть запись без пароля и на ZipCrypto
+                // завершается PasswordRequiredToDecrypt ещё до вызова decrypt ниже.
+                // Для метаданных используем raw-доступ без распаковки.
+                .by_index_raw(i)
                 .map_err(|e| format!("Не удалось прочитать запись архива: {e}"))?;
             (f.name().to_string(), f.is_dir())
         };
@@ -4707,8 +4733,57 @@ fn extract_launcher_zip(
         };
         let mut dst =
             std::fs::File::create(&dest).map_err(|e| format!("Не удалось записать файл: {e}"))?;
-        std::io::copy(&mut src, &mut dst)
-            .map_err(|e| format!("Ошибка распаковки '{name}': {e}"))?;
+        let file_size = src.size();
+        let mut copied_file = 0u64;
+        let mut buffer = vec![0u8; 128 * 1024];
+        loop {
+            use std::io::{Read, Write};
+            let n = src
+                .read(&mut buffer)
+                .map_err(|e| format!("Ошибка чтения '{name}': {e}"))?;
+            if n == 0 {
+                break;
+            }
+            dst.write_all(&buffer[..n])
+                .map_err(|e| format!("Ошибка распаковки '{name}': {e}"))?;
+            copied_file += n as u64;
+            if last_progress.elapsed() >= std::time::Duration::from_millis(200) {
+                last_progress = std::time::Instant::now();
+                let (from, to) = progress;
+                let span = to.saturating_sub(from) as u64;
+                let done = copied_total.saturating_add(copied_file);
+                let pct = if total_bytes > 0 {
+                    (from + (done.saturating_mul(span) / total_bytes) as u32).min(to)
+                } else {
+                    from
+                };
+                let mb = done as f64 / 1_048_576.0;
+                let total_mb = total_bytes as f64 / 1_048_576.0;
+                emit_install_progress(
+                    app,
+                    "extract",
+                    pct,
+                    &format!("Распаковка: {mb:.0} из {total_mb:.0} МБ..."),
+                );
+            }
+        }
+        copied_total = copied_total.saturating_add(copied_file);
+        if file_size > 0 && copied_file < file_size {
+            return Err(format!("Файл '{name}' распакован не полностью"));
+        }
+        if last_progress.elapsed() >= std::time::Duration::from_millis(200)
+            || copied_total >= total_bytes
+        {
+            let (from, to) = progress;
+            let span = to.saturating_sub(from) as u64;
+            let pct = if total_bytes > 0 {
+                (from + (copied_total.saturating_mul(span) / total_bytes) as u32).min(to)
+            } else {
+                to
+            };
+            emit_install_progress(app, "extract", pct, "Распаковка архива...");
+            last_progress = std::time::Instant::now();
+        }
         log::info!("extract_launcher_zip: {}", dest.display());
         extracted += 1;
     }
@@ -4803,12 +4878,20 @@ async fn launcher_install_run(
         } else {
             ZipExtractMode::ExeOnly
         };
-        let extracted = extract_launcher_zip(
-            zip.path(),
-            folder,
-            Some(LAUNCHER_V8_ZIP_PASSWORD),
-            mode,
-        )?;
+        let app_owned = app.clone();
+        let folder_owned = folder.to_path_buf();
+        let extracted = tauri::async_runtime::spawn_blocking(move || {
+            extract_launcher_zip(
+                &app_owned,
+                zip.path(),
+                &folder_owned,
+                Some(LAUNCHER_V8_ZIP_PASSWORD),
+                mode,
+                (82, 84),
+            )
+        })
+        .await
+        .map_err(|e| e.to_string())??;
         log::info!("start_launcher_install: извлечено файлов лаунчера: {extracted}");
         if extracted == 0 {
             return Err("Исполняемый файл лаунчера не найден в архиве".to_string());
@@ -4822,8 +4905,20 @@ async fn launcher_install_run(
             download_to_temp(app, PRELOADING_ZIP_URL, 84, 92, "Скачивание preloading_plugins...")
                 .await?;
         emit_install_progress(app, "extract", 94, "Распаковка preloading_plugins...");
-        let extracted =
-            extract_launcher_zip(zip.path(), folder, None, ZipExtractMode::PreloadingOnly)?;
+        let app_owned = app.clone();
+        let folder_owned = folder.to_path_buf();
+        let extracted = tauri::async_runtime::spawn_blocking(move || {
+            extract_launcher_zip(
+                &app_owned,
+                zip.path(),
+                &folder_owned,
+                None,
+                ZipExtractMode::PreloadingOnly,
+                (94, 95),
+            )
+        })
+        .await
+        .map_err(|e| e.to_string())??;
         log::info!("start_launcher_install: извлечено файлов preloading: {extracted}");
         if extracted == 0 || !has_preloading_plugins(folder) {
             return Err("Папка preloading_plugins не найдена после распаковки".to_string());
