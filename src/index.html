@@ -10030,6 +10030,9 @@
          */
         function applySchemaDefaults(schema, data) {
             if (!schema || !schema.settings) return data;
+            // Конфиг мог не прийти (ошибка чтения/пустой ответ моста):
+            // панель настроек не должна падать из-за этого целиком.
+            if (!data || typeof data !== 'object') data = {};
             schema.settings.forEach(s => {
                 if (!(s.id in data) || data[s.id] === undefined || data[s.id] === null) {
                     data[s.id] = s.default;
