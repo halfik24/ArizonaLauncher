@@ -2521,7 +2521,10 @@
         /* ── Пикер обоев: панель уезжает в левый край окна (iOS-push) ── */
         .settings-panel {
             transition: transform 0.5s cubic-bezier(0.32, 0.72, 0, 1),
-                        width 0.5s cubic-bezier(0.32, 0.72, 0, 1);
+                        width 0.5s cubic-bezier(0.32, 0.72, 0, 1),
+                        height 0.35s ease,
+                        top 0.35s ease,
+                        border-radius 0.35s ease;
         }
 
         /* Ручка ширины настроек: тянем за правый край. Панель центрирована,
@@ -2573,6 +2576,27 @@
         .settings-panel.wp-mode {
             transform: translate(calc(12px - 50vw), -50%);
             width: min(430px, 92vw);
+        }
+
+        /* ── Настройки на всё окно: кнопка рядом с крестиком ── */
+        .settings-panel.full-window {
+            width: 100vw;
+            height: 100vh;
+            border-radius: 0;
+            border-color: transparent;
+        }
+        .settings-panel.full-window .settings-resize-handle {
+            display: none;
+        }
+        /* Кастомный тайтлбар (42px) остаётся сверху — панель под ним */
+        body.frame-custom .settings-panel.full-window {
+            top: calc(50% + 21px);
+            height: calc(100vh - 42px);
+        }
+        /* Пикер обоев внутри полноэкранной панели не уезжает влево */
+        .settings-panel.full-window.wp-mode {
+            transform: translate(-50%, -50%);
+            width: 100vw;
         }
 
         /* Настройки уезжают влево и гаснут... */
@@ -2808,6 +2832,47 @@
             background: rgba(255, 50, 50, 0.2);
             border-color: rgba(255,80,80,0.3);
             color: rgba(255, 150, 150, 0.9);
+        }
+
+        /* Кнопки в шапке настроек: «на всё окно» + закрыть */
+        .settings-head-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-shrink: 0;
+        }
+
+        .settings-icon-btn {
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.08);
+            color: rgba(255,255,255,0.6);
+            cursor: pointer;
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 8px;
+            padding: 0;
+            transition: background 0.18s, border-color 0.18s, color 0.18s;
+            flex-shrink: 0;
+        }
+
+        .settings-icon-btn:hover {
+            background: rgba(var(--accent-rgb), 0.16);
+            border-color: rgba(var(--accent-rgb), 0.35);
+            color: var(--text-color);
+        }
+
+        .settings-icon-btn[aria-pressed="true"] {
+            background: rgba(var(--accent-rgb), 0.22);
+            border-color: rgba(var(--accent-rgb), 0.45);
+            color: rgba(var(--accent-rgb), 1);
+        }
+
+        .settings-full-icon {
+            width: 15px;
+            height: 15px;
         }
 
         /* ── Tab контент ── */
@@ -8166,7 +8231,7 @@
                         <span class="snav-icon"><i data-lucide="arrow-left"></i></span> Настройки
                     </button>
                 </div>
-                <div class="wp-picker-hint">Нажми на обои — они применятся сразу, окно справа показывает фон вживую.</div>
+                <div class="wp-picker-hint">Нажми на обои — применятся сразу.</div>
                 <div class="wp-picker-list" id="wallpaperNavGrid"></div>
             </div>
 
@@ -8174,7 +8239,17 @@
             <div class="settings-body">
                 <div class="settings-header">
                     <div class="settings-title" id="settingsPanelTitle"><i data-lucide="shield"></i> ArizonaPatches</div>
-                    <button class="close-btn" onclick="closeSettings()" aria-label="Закрыть">×</button>
+                    <div class="settings-head-actions">
+                        <button class="settings-icon-btn" id="settingsExpandBtn" type="button"
+                                onclick="toggleSettingsFull()" title="На всё окно"
+                                aria-label="Развернуть настройки на всё окно" aria-pressed="false">
+                            <svg class="settings-full-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/>
+                            </svg>
+                        </button>
+                        <button class="close-btn" onclick="closeSettings()" aria-label="Закрыть">×</button>
+                    </div>
                 </div>
 
                 <!-- Патчи -->
@@ -8257,8 +8332,8 @@
                             </label>
 
                         </div>
-                        <div class="lm-hint">Нативный запускает gta_sa.exe напрямую, минуя лаунчер Air.
-                            Плагины из preloading_plugins при нативном запуске пока не внедряются.</div>
+                        <div class="lm-hint">Нативный запуск — напрямую через gta_sa.exe.
+                            Плагины из preloading_plugins работают только с Air.</div>
                     </section>
 
                     <!-- Установка Air: показывается только когда выбран Air,
@@ -8534,7 +8609,7 @@
                                 <input type="hidden" id="cdnInput" value="0,0,0">
                             </div>
                             <div class="cdn-hint">
-                                <b>0</b> основная, <b>1</b> резерв и вообще не ищите тут смысл.
+                                <b>0</b> — основной, <b>1</b> — резерв.
                             </div>
                         </div>
                     </div>
@@ -8649,7 +8724,7 @@
                                 </select>
                             </div>
                             <div style="padding:0 16px 2px; font-family:'Montserrat Alternates', sans-serif; font-size:10px; color:rgba(255,255,255,0.45); line-height:1.4;">
-                                0 — без ограничения. Нужен, если играешь или стримишь, пока идёт установка.
+                                0 — без ограничения.
                             </div>
                             <div style="padding:8px 16px 4px; display:flex; gap:8px; flex-wrap:wrap;">
                                 <button class="s-btn" id="gameCheckBtn" onclick="checkGameUpdate()"
@@ -8675,9 +8750,7 @@
                                 </div>
                             </div>
                             <div style="padding:4px 16px 10px;font-family:'Montserrat Alternates';font-size:10px;color:rgba(255,255,255,0.25);line-height:1.5;">
-                                «Новая графика» должна совпадать с тем, что стоит в игре: выберешь не тот вариант —
-                                файлы будут заново скачиваться. Починка проверяет MD5 всех файлов и заново ставит
-                                битые. Не запускай одновременно с официальным лаунчером.
+                                «Новая графика» должна совпадать с игрой. Починка сверяет MD5 и перекачивает битые файлы.
                             </div>
                         </div>
                     </div>
@@ -8697,7 +8770,7 @@
                                        onchange="saveWindowTitle(this.value)">
                             </div>
                             <div style="padding:0 16px 8px;font-family:'Montserrat Alternates';font-size:10px;color:rgba(255,255,255,0.25);">
-                                Кастомный заголовок окна лаунчера. Оставьте пустым для стандартного.
+                                Пусто — стандартный заголовок окна.
                             </div>
                         </div>
                     </div>
@@ -8715,7 +8788,7 @@
                                 </div>
                             </div>
                             <div style="padding:0 16px 8px;font-family:'Montserrat Alternates';font-size:10px;color:rgba(255,255,255,0.25);line-height:1.5;">
-                                Системная — стандартная рамка Windows. Наша — свой тайтлбар с кнопками (свернуть, развернуть, свернуть в трей) и скруглённые углы. Переключается сразу, без перезапуска.
+                                Переключается сразу, без перезапуска.
                             </div>
                         </div>
                     </div>
@@ -8737,8 +8810,7 @@
                                 </div>
                             </div>
                             <div class="layout-settings-hint">
-                                Откроется режим перетаскивания: двигайте меню и кнопку профилей, затем «Применить».<br>
-                                Ширину этой панели можно менять, потянув за правый край.
+                                Двигайте меню и кнопку профилей, затем «Применить».
                             </div>
                         </div>
                     </div>
@@ -8764,7 +8836,7 @@
                                 </div>
                             </label>
                             <div class="layout-settings-hint">
-                                Компактная кнопка — только иконка, без подписи «Профили».
+                                Компактная — только иконка, без подписи.
                             </div>
                         </div>
                     </div>
@@ -8856,10 +8928,7 @@
                                 </div>
                             </label>
                             <div style="padding:4px 16px 10px;font-family:'Montserrat Alternates';font-size:10px;color:rgba(255,255,255,0.25);line-height:1.5;">
-                                Сезон: с 1 декабря по 1 марта включаются сами (если явно не выключены) — явное «Выкл»
-                                сильнее сезона. Снег падает поверх интерфейса, виньетка темнит края с ледяным отливом,
-                                иней покрывает кнопки при наведении. Частицы при клике — белые искры из точки клика,
-                                работают и без снега.
+                                С 1 декабря по 1 марта включаются сами. Явное «Выкл» сильнее сезона.
                             </div>
                         </div>
                     </div>
@@ -8891,9 +8960,7 @@
                                 </div>
                             </label>
                             <div class="layout-settings-hint">
-                                «Выкл» делает переходы мгновенными. Пресет убирает размытие, снег, иней и частицы
-                                и ускоряет анимации — для слабой видеокарты. Системное «уменьшение движения»
-                                в Windows учитывается автоматически.
+                                Пресет убирает размытие, снег и частицы и ускоряет анимации.
                             </div>
                         </div>
                     </div>
@@ -8935,8 +9002,7 @@
                                 </div>
                             </label>
                             <div class="layout-settings-hint">
-                                По умолчанию выключено. Звуки синтезируются на лету через WebAudio — без
-                                аудиофайлов. Клики и уведомления настраиваются отдельно.
+                                Звуки синтезируются через WebAudio, без файлов.
                             </div>
                         </div>
                     </div>
@@ -15459,6 +15525,7 @@
             status_bar_pos: 'bottom',
             profiles_compact: false,
             settings_width: 940,
+            settings_full: false,
             layout: null
         };
 
@@ -16119,6 +16186,7 @@
             // После applyStatusBar: безопасные отступы зависят от строки.
             await initLauncherLayout();
             applySettingsWidth();
+            applySettingsFull();
 
             // «Старый стиль» обоев (сетка под кнопкой вместо пикера слева)
             let wpOldStyle = false;
@@ -20766,6 +20834,47 @@
             if (!panel) return;
             panel.style.setProperty('--settings-w',
                 _clampSettingsWidth(launcherSettings.settings_width || 940) + 'px');
+        }
+
+        /* ── Настройки на всё окно ──
+           Состояние живёт в launcherSettings.settings_full, чтобы панель
+           открывалась так же после перезапуска. Иконки — инлайн-SVG:
+           maximize-2 / minimize-2, чтобы не зависеть от набора lucide. */
+        const SETTINGS_ICON_EXPAND =
+            '<svg class="settings-full-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+            'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+            '<path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></svg>';
+        const SETTINGS_ICON_COLLAPSE =
+            '<svg class="settings-full-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+            'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+            '<path d="M4 14h6v6"/><path d="M20 10h-6V4"/><path d="M14 10l7-7"/><path d="M3 21l7-7"/></svg>';
+
+        function applySettingsFull() {
+            const panel = document.getElementById('settingsPanel');
+            const btn = document.getElementById('settingsExpandBtn');
+            if (!panel) return;
+            const on = !!launcherSettings.settings_full;
+            panel.classList.toggle('full-window', on);
+            if (btn) {
+                btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+                btn.title = on ? 'Свернуть до окна' : 'На всё окно';
+                btn.setAttribute('aria-label',
+                    on ? 'Свернуть настройки до окна' : 'Развернуть настройки на всё окно');
+                btn.innerHTML = on ? SETTINGS_ICON_COLLAPSE : SETTINGS_ICON_EXPAND;
+            }
+        }
+
+        function toggleSettingsFull() {
+            launcherSettings.settings_full = !launcherSettings.settings_full;
+            applySettingsFull();
+            persistLauncherSettings();
+            // Запечённый фон считается от rect панели — обновляем после анимации.
+            requestAnimationFrame(function () {
+                if (typeof _alignSettingsBaked === 'function') _alignSettingsBaked();
+            });
+            setTimeout(function () {
+                if (typeof _alignSettingsBaked === 'function') _alignSettingsBaked();
+            }, 380);
         }
 
         (function initSettingsResize() {
