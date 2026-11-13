@@ -2588,10 +2588,16 @@
         .settings-panel.full-window .settings-resize-handle {
             display: none;
         }
-        /* Кастомный тайтлбар (42px) остаётся сверху — панель под ним */
+        /* Своя рамка: панель кроет всё окно, но её содержимое начинается под
+           тайтлбаром (42px) — плашка с названием и кнопки окна остаются видны
+           и не перекрываются. */
         body.frame-custom .settings-panel.full-window {
-            top: calc(50% + 21px);
-            height: calc(100vh - 42px);
+            top: 50%;
+            height: 100vh;
+            padding-top: 42px;
+        }
+        body.frame-custom .settings-panel.full-window.wp-mode #wallpaperNav {
+            top: 42px;
         }
         /* Пикер обоев внутри полноэкранной панели не уезжает влево */
         .settings-panel.full-window.wp-mode {
@@ -5763,6 +5769,12 @@
                 width: 95%;
                 max-height: 90vh;
                 padding: 20px;
+            }
+
+            .settings-panel.full-window {
+                width: 100vw;
+                max-height: none;
+                padding: 0;
             }
 
             .settings-resize-handle {
