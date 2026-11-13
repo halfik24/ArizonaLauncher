@@ -6,9 +6,9 @@
 ## Что это
 
 Лаунчер для GTA San Andreas Multiplayer **Arizona RP** (СНГ-сервера). Текущая версия —
-**v2.0.0-rc1-new**, полностью переписанная на **Rust + Tauri 2** с Python-версии v1
-(исходники старой версии лежат в `old_python/`, там же оригинал README от worteng).
+**v2.0.0-beta**, полностью переписанная на **Rust + Tauri 2** с Python-версии v1.
 Платформа — только Windows 10/11 x64 (WebView2), установщик NSIS без прав админа.
+Активный план и статусы — в [handoff/BETA3-PLAN.md](handoff/BETA3-PLAN.md).
 
 ## Архитектура
 
@@ -21,7 +21,7 @@ src/                    фронтенд — ОДИН файл index.html (~16к
   └─ lucide.min.js      иконки
 src-tauri/src/
   ├─ main.rs            точка входа: логирование, tray, регистрирует ~95 команд
-  ├─ launcher.rs        ВСЯ бизнес-логика (~4700 строк): запуск игры, патчи,
+  ├─ launcher.rs        ВСЯ бизнес-логика (~5800 строк): запуск игры, патчи,
   │                     каталоги модов, серверы/новости, обои, профили, окно/трей...
   ├─ config.rs          LauncherConfig → <Documents>/ArizonaLauncher/config.json
   ├─ util.rs            пути, лог-файл
@@ -106,7 +106,7 @@ CDP-тесты UI: временно добавить `--remote-debugging-port=92
 - Стиль коммитов: `тип(область): суть` — напр.
   `game-update: докачка .part с места обрыва...`, `ui: ...`, `feat(onboarding): ...`.
 - Версия синхронизируется в `package.json`, `src-tauri/tauri.conf.json`,
-  `src-tauri/Cargo.toml` (сейчас 2.0.0-rc1-new).
+  `src-tauri/Cargo.toml` (сейчас 2.0.0-beta).
 - Секретов/переменных окружения в репе нет; внешние сервисы — только публичные CDN
   и GitHub-репо каталогов.
 
