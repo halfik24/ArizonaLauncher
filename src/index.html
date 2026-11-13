@@ -4356,6 +4356,45 @@
             flex-shrink: 0;
         }
 
+        /* ── «Установка игры»: ровные строки внутри карточки ── */
+        /* Пара «поле + единицы» в правой части строки */
+        .lt-limit {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-shrink: 0;
+        }
+        .lt-limit .s-select { margin-left: 0; }
+
+        /* Подпись с пояснением под ней (левая часть строки) */
+        .s-input-text {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            flex: 1 1 auto;
+            min-width: 0;
+        }
+        .s-input-text .s-input-label { flex: none; }
+        .s-input-sub {
+            font-family: 'Montserrat Alternates', sans-serif;
+            font-size: 10px;
+            line-height: 1.35;
+            color: rgba(255, 255, 255, 0.32);
+        }
+
+        /* Три кнопки одним рядом: равная ширина, перенос на узком окне */
+        #launcherTab .lt-actions {
+            padding: 8px 16px 8px;
+            flex-wrap: wrap;
+        }
+        #launcherTab .lt-actions .s-btn {
+            flex: 1 1 150px;
+            width: auto;
+            height: 34px;
+            padding: 0 12px;
+            font-size: 11px;
+        }
+
         .wp-section-title {
             font-family: 'Montserrat Alternates', sans-serif;
             font-size: 11px;
@@ -8731,45 +8770,47 @@
                                     </div>
                                 </label>
                             </div>
-                            <div class="s-input-row" style="justify-content:flex-start; gap:10px;">
-                                <span class="s-input-label" style="flex:none;">Лимит скорости</span>
-                                <input type="number" id="gameUpdateLimitInput" class="s-input" min="0" max="10000000" step="any"
-                                       style="width:80px; text-align:center;" onchange="applyGameUpdateLimit(this.value)">
-                                <!-- Единицы: кастомный селект (нативный <select> в
-                                     WebView2 даёт белый попап). Нативный рядом —
-                                     он и есть источник пунктов и хранилище значения -->
-                                <div class="s-select" id="limitUnitSelect" style="margin-left:0;">
-                                    <button class="s-select-btn" id="limitUnitBtn" type="button" aria-haspopup="listbox" aria-expanded="false" style="width:104px;">
-                                        <span class="s-select-val" id="limitUnitVal">МБ/с</span>
-                                        <svg class="s-select-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
-                                    </button>
-                                    <div class="s-select-pop" id="limitUnitPop" role="listbox"></div>
+                            <!-- Лимит скорости: подпись с пояснением слева,
+                                 поле и единицы — справа, как в остальных строках -->
+                            <div class="s-input-row">
+                                <div class="s-input-text">
+                                    <span class="s-input-label">Лимит скорости</span>
+                                    <span class="s-input-sub">0 — без ограничения</span>
                                 </div>
-                                <select id="gameUpdateLimitUnit" class="s-select-native">
-                                    <option value="kbit">Кбит/с</option>
-                                    <option value="kb">КБ/с</option>
-                                    <option value="mbit">Мбит/с</option>
-                                    <option value="mb" selected>МБ/с</option>
-                                </select>
+                                <div class="lt-limit">
+                                    <input type="number" id="gameUpdateLimitInput" class="s-input" min="0" max="10000000" step="any"
+                                           style="width:84px; text-align:center;" onchange="applyGameUpdateLimit(this.value)">
+                                    <!-- Единицы: кастомный селект (нативный <select> в
+                                         WebView2 даёт белый попап). Нативный рядом —
+                                         он и есть источник пунктов и хранилище значения -->
+                                    <div class="s-select" id="limitUnitSelect">
+                                        <button class="s-select-btn" id="limitUnitBtn" type="button" aria-haspopup="listbox" aria-expanded="false" style="width:108px;">
+                                            <span class="s-select-val" id="limitUnitVal">МБ/с</span>
+                                            <svg class="s-select-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+                                        </button>
+                                        <div class="s-select-pop" id="limitUnitPop" role="listbox"></div>
+                                    </div>
+                                    <select id="gameUpdateLimitUnit" class="s-select-native">
+                                        <option value="kbit">Кбит/с</option>
+                                        <option value="kb">КБ/с</option>
+                                        <option value="mbit">Мбит/с</option>
+                                        <option value="mb" selected>МБ/с</option>
+                                    </select>
+                                </div><!-- /.lt-limit -->
                             </div>
-                            <div style="padding:0 16px 2px; font-family:'Montserrat Alternates', sans-serif; font-size:10px; color:rgba(255,255,255,0.45); line-height:1.4;">
-                                0 — без ограничения.
-                            </div>
-                            <div style="padding:8px 16px 4px; display:flex; gap:8px; flex-wrap:wrap;">
-                                <button class="s-btn" id="gameCheckBtn" onclick="checkGameUpdate()"
-                                        style="width:auto; padding:0 14px; height:32px; font-size:11px;">
-                                    <i data-lucide="search" style="width:14px;height:14px;"></i> Проверить обновления
+                            <!-- Действия: три кнопки в один ровный ряд на всю ширину -->
+                            <div class="s-btn-row lt-actions">
+                                <button class="s-btn" id="gameCheckBtn" onclick="checkGameUpdate()">
+                                    <i data-lucide="search"></i> Проверить обновления
                                 </button>
-                                <button class="s-btn" id="gameRepairBtn" onclick="repairGame()"
-                                        style="width:auto; padding:0 14px; height:32px; font-size:11px;">
-                                    <i data-lucide="wrench" style="width:14px;height:14px;"></i> Починить игру
+                                <button class="s-btn" id="gameRepairBtn" onclick="repairGame()">
+                                    <i data-lucide="wrench"></i> Починить игру
                                 </button>
-                                <button class="s-btn" id="gameInstallBtn" onclick="installGame()"
-                                        style="width:auto; padding:0 14px; height:32px; font-size:11px;">
-                                    <i data-lucide="folder-down" style="width:14px;height:14px;"></i> Установить игру...
+                                <button class="s-btn" id="gameInstallBtn" onclick="installGame()">
+                                    <i data-lucide="folder-down"></i> Установить игру...
                                 </button>
                             </div>
-                            <div id="gameUpdateProgress" style="display:none; margin:8px 16px 4px;">
+                            <div id="gameUpdateProgress" style="display:none; margin:0 16px 8px;">
                                 <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
                                     <span id="gameUpdateProgressMsg" style="font-family:'Montserrat Alternates';font-size:11px;color:rgba(255,255,255,0.8);">...</span>
                                     <span id="gameUpdateProgressPct" style="font-family:'Montserrat Alternates';font-size:11px;font-weight:600;color:rgba(130,220,150,1);">0%</span>
@@ -8778,7 +8819,7 @@
                                     <div id="gameUpdateProgressBar" style="height:100%;width:0%;background:linear-gradient(90deg,rgba(130,220,150,0.65),rgba(130,220,150,1));border-radius:3px;transition:width .2s;"></div>
                                 </div>
                             </div>
-                            <div style="padding:4px 16px 10px;font-family:'Montserrat Alternates';font-size:10px;color:rgba(255,255,255,0.25);line-height:1.5;">
+                            <div class="layout-settings-hint">
                                 «Новая графика» должна совпадать с игрой. Починка сверяет MD5 и перекачивает битые файлы.
                             </div>
                         </div>
