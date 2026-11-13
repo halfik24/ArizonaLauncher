@@ -41,8 +41,7 @@
             if (perfLow) document.documentElement.className += ' perf-low';
             document.documentElement.style.setProperty('--frost-blur', b + 'px');
             document.documentElement.style.setProperty('--anim-speed', String(speedRate));
-            // Компактное меню (вкладка Лаунчер → «Компактность меню»), см.
-            // setCompactMenu; класс до первой отрисовки
+            // Плотность меню задаётся пресетами; класс применяем до первого кадра.
             if (c === '1') document.documentElement.className += ' compact-menu';
             // Зимний сезон 1 дек → 1 мар (включительно только до 1 мар:
             // getMonth() 11/0/1). __winterOn на window — его гоняет проба.
@@ -601,7 +600,7 @@
         /* Место под боковые полосы и под виджет «Профили» при верхней */
         body.sb-left .interface { padding-left: 48px; }
         body.sb-right .interface { padding-right: 48px; }
-        body.sb-top #profilesHoverWidget { top: 44px; }
+        body.sb-top #profilesHoverWidget { top: 64px; }
 
         /* Размеры строки состояния (толщина) */
         .status-bar.sb-size-md {
@@ -939,10 +938,7 @@
 
         /* right-panel slide-out is handled by the drawer system — see .right-panel.open */
 
-        /* ── Launch overlay ──
-           Непрозрачный слой поверх главного меню: затемнение + blur,
-           лого, сервер, прогресс и явные состояния
-           data-state="prep | launch | done | error". */
+        /* ── Launch overlay ── */
         .launch-screen {
             position: absolute;
             inset: 0;
@@ -953,12 +949,10 @@
             opacity: 0;
             visibility: hidden;
             pointer-events: none;
-            background:
-                radial-gradient(900px 520px at 50% 42%, rgba(54, 78, 136, 0.20), transparent 68%),
-                rgba(6, 8, 16, 0.94);
-            backdrop-filter: blur(18px) saturate(1.15);
-            -webkit-backdrop-filter: blur(18px) saturate(1.15);
-            transition: opacity 0.4s ease, visibility 0.4s ease;
+            background: rgba(8, 10, 14, 0.58);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            transition: opacity 0.28s ease, visibility 0.28s ease;
             z-index: 10;
         }
 
@@ -969,18 +963,21 @@
         }
 
         .launch-screen-panel {
-            width: min(430px, 88vw);
-            display: flex;
-            flex-direction: column;
+            width: min(560px, calc(100vw - 48px));
+            display: grid;
+            grid-template-columns: 56px minmax(0, 1fr);
+            column-gap: 16px;
+            row-gap: 8px;
             align-items: center;
-            gap: 15px;
-            padding: 32px 34px 28px;
-            border-radius: 22px;
-            background: linear-gradient(180deg, rgba(28, 32, 48, 0.94), rgba(15, 17, 27, 0.97));
+            padding: 24px;
+            border-radius: 16px;
+            background: rgba(21, 23, 27, 0.68);
+            -webkit-backdrop-filter: blur(28px) saturate(1.08);
+            backdrop-filter: blur(28px) saturate(1.08);
             border: 1px solid rgba(255, 255, 255, 0.12);
-            box-shadow: 0 24px 90px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.07);
-            transform: translateY(10px) scale(0.985);
-            transition: transform 0.45s cubic-bezier(0.22, 0.61, 0.36, 1);
+            box-shadow: 0 16px 48px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+            transform: translateY(8px);
+            transition: transform 0.32s cubic-bezier(0.22, 1, 0.36, 1);
         }
 
         .launch-screen.visible .launch-screen-panel {
@@ -988,142 +985,122 @@
         }
 
         .launch-screen-logo {
-            width: 72px;
-            height: 72px;
-            border-radius: 18px;
+            grid-column: 1;
+            grid-row: 1 / span 2;
+            width: 56px;
+            height: 56px;
+            border-radius: 12px;
             object-fit: cover;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.10);
         }
 
         .launch-screen-title {
             display: flex;
             align-items: center;
-            font-family: 'Montserrat Alternates', sans-serif;
-            font-size: clamp(24px, 3vw, 32px);
-            font-weight: 700;
-            color: #fff;
-            letter-spacing: 0.6px;
-            text-align: center;
-            text-shadow: 0 0 30px rgba(255, 255, 255, 0.22);
+            grid-column: 2;
+            grid-row: 1;
+            font-size: 20px;
+            line-height: 26px;
+            font-weight: 500;
+            color: #eef0f3;
+            text-align: left;
         }
 
         .launch-screen-server {
-            font-family: 'Montserrat Alternates', sans-serif;
-            font-size: 12px;
-            color: rgba(255, 255, 255, 0.42);
-            letter-spacing: 0.4px;
-            text-align: center;
-            min-height: 16px;
-        }
-
-        .launch-screen-dots {
-            display: inline-flex;
-            gap: 6px;
-            margin-left: 8px;
-        }
-
-        .launch-screen-dots span {
-            width: 6px; height: 6px;
-            background: rgba(255,255,255,0.7);
-            border-radius: 50%;
-        }
-        .launch-screen.visible .launch-screen-dots span {
-            animation: ldot 1.2s ease-in-out infinite;
-        }
-        .launch-screen-dots span:nth-child(2) { animation-delay: 0.2s; }
-        .launch-screen-dots span:nth-child(3) { animation-delay: 0.4s; }
-
-        @keyframes ldot {
-            0%, 80%, 100% { transform: scale(0.6); opacity: 0.3; }
-            40% { transform: scale(1); opacity: 1; }
-        }
-
-        .launch-screen[data-state="done"] .launch-screen-dots,
-        .launch-screen[data-state="error"] .launch-screen-dots {
-            display: none;
+            grid-column: 2;
+            grid-row: 2;
+            min-height: 18px;
+            font-size: 13px;
+            line-height: 18px;
+            color: #a3a8b1;
+            text-align: left;
         }
 
         .launch-screen-bar-wrap {
+            grid-column: 1 / -1;
+            margin-top: 12px;
             width: 100%;
-            height: 5px;
-            background: rgba(255,255,255,0.08);
-            border-radius: 999px;
+            height: 4px;
+            background: #30343b;
+            border-radius: 2px;
             overflow: hidden;
         }
 
         .launch-screen-bar {
             height: 100%;
-            width: 0%;
-            background: linear-gradient(90deg, rgba(130, 170, 255, 0.75), rgba(220, 232, 255, 0.95));
-            border-radius: 999px;
-            transition: width 0.6s ease, background 0.3s ease;
+            width: 100%;
+            transform: scaleX(0);
+            transform-origin: left center;
+            background: rgba(var(--accent-rgb), 0.9);
+            border-radius: 2px;
+            transition: transform 0.32s ease, background-color 0.18s ease;
         }
         .launch-screen[data-state="done"] .launch-screen-bar {
-            background: linear-gradient(90deg, rgba(72, 210, 125, 0.8), rgba(160, 255, 195, 0.95));
+            background: #4cc38a;
         }
         .launch-screen[data-state="error"] .launch-screen-bar {
-            background: linear-gradient(90deg, rgba(255, 90, 90, 0.85), rgba(255, 150, 150, 0.95));
-        }
-        .launch-screen.visible .launch-screen-bar {
-            animation: bar-shimmer 2s ease infinite;
-        }
-
-        @keyframes bar-shimmer {
-            0% { filter: brightness(1); }
-            50% { filter: brightness(1.4); }
-            100% { filter: brightness(1); }
+            background: #e5484d;
         }
 
         .launch-screen-status {
-            font-size: 14px;
-            color: rgba(255,255,255,0.55);
-            letter-spacing: 0.4px;
-            text-align: center;
+            grid-column: 1;
+            grid-row: 4;
+            font-size: 13px;
+            line-height: 20px;
+            color: #a3a8b1;
+            text-align: left;
             min-height: 20px;
-            transition: opacity 0.3s ease;
         }
 
         .launch-screen-badge {
             display: inline-flex;
             align-items: center;
-            gap: 7px;
-            padding: 5px 11px;
-            border-radius: 999px;
-            background: rgba(255,255,255,0.05);
-            border: 1px solid rgba(255,255,255,0.10);
-            font-family: 'Montserrat Alternates', sans-serif;
-            font-size: 10px;
-            font-weight: 600;
-            letter-spacing: 0.8px;
-            text-transform: uppercase;
-            color: rgba(255,255,255,0.55);
-            transition: color 0.3s ease, border-color 0.3s ease, background 0.3s ease;
+            justify-self: end;
+            grid-column: 2;
+            grid-row: 4;
+            gap: 8px;
+            padding: 0;
+            border: 0;
+            background: transparent;
+            font-size: 12px;
+            line-height: 20px;
+            font-weight: 400;
+            letter-spacing: 0;
+            text-transform: none;
+            color: #a3a8b1;
+            transition: color 0.18s ease;
         }
 
         .launch-screen-badge::before {
             content: '';
-            width: 6px;
-            height: 6px;
+            width: 7px;
+            height: 7px;
             border-radius: 50%;
             background: currentColor;
         }
 
         .launch-screen[data-state="launch"] .launch-screen-badge {
-            color: rgba(150, 185, 255, 0.95);
-            border-color: rgba(120, 160, 255, 0.32);
-            background: rgba(90, 130, 230, 0.12);
+            color: rgba(var(--accent-rgb), 0.95);
         }
 
         .launch-screen[data-state="done"] .launch-screen-badge {
-            color: rgba(110, 235, 155, 0.95);
-            border-color: rgba(80, 220, 130, 0.32);
-            background: rgba(60, 190, 105, 0.12);
+            color: #4cc38a;
         }
 
         .launch-screen[data-state="error"] .launch-screen-badge {
-            color: rgba(255, 125, 125, 0.95);
-            border-color: rgba(255, 90, 90, 0.35);
-            background: rgba(220, 60, 60, 0.13);
+            color: #e5484d;
+        }
+
+        @media (max-width: 480px) {
+            .launch-screen-panel {
+                width: calc(100vw - 32px);
+                grid-template-columns: 48px minmax(0, 1fr);
+                column-gap: 12px;
+                padding: 20px;
+            }
+            .launch-screen-logo { width: 48px; height: 48px; }
+            .launch-screen-title { font-size: 18px; line-height: 24px; }
+            .launch-screen-server { font-size: 12px; }
         }
 
         /* ── Хедер панели: тихая шапка (unslop: хедер обязан быть тихим,
@@ -1170,11 +1147,7 @@
             letter-spacing: 0;
         }
 
-        /* ── Компактность меню — вкладка Лаунчер (перенесено из дебага
-           09.11): плотная компоновка левой панели (сетка 4px),
-           хедер одной строкой. Переключатель setCompactMenu — localStorage
-           arp_compactMenu, класс на <html> (до первой отрисовки — см.
-           inline-скрипт в <head>). */
+        /* ── Плотная компоновка меню для пресета «Компакт» ── */
         html.compact-menu .left-panel {
             padding: 16px;
             gap: 12px;
@@ -1624,21 +1597,23 @@
             width: 0%;
             background: linear-gradient(135deg, rgba(var(--accent-rgb), 0.88), rgba(var(--accent2-rgb), 0.72));
             transition: width 0.4s ease;
-            /* Волнистая граница между активной частью и фоном: маска с правым
-               краем-синусоидой, «течёт» вниз. Край никогда не ровный. */
-            -webkit-mask-image: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 20' preserveAspectRatio='none'%3E%3Cpath d='M0,0 L100,0 Q93,5 100,10 Q93,15 100,20 L0,20 Z' fill='%23000'/%3E%3C/svg%3E");
-            -webkit-mask-repeat: repeat-y;
-            -webkit-mask-size: 100% 20px;
-            -webkit-mask-position: 0 0;
-            mask-image: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 20' preserveAspectRatio='none'%3E%3Cpath d='M0,0 L100,0 Q93,5 100,10 Q93,15 100,20 L0,20 Z' fill='%23000'/%3E%3C/svg%3E");
-            mask-repeat: repeat-y;
-            mask-size: 100% 20px;
-            mask-position: 0 0;
+            /* Полная заливка + отдельный край фиксированной ширины: амплитуда
+               волны не зависит от текущего процента заполнения. */
+            -webkit-mask-image: linear-gradient(#000 0 0), url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='20' viewBox='0 0 16 20'%3E%3Cpath d='M0 0H16Q12 5 16 10Q12 15 16 20H0Z' fill='%23000'/%3E%3C/svg%3E");
+            -webkit-mask-repeat: no-repeat, repeat-y;
+            -webkit-mask-size: calc(100% - 16px) 100%, 16px 20px;
+            -webkit-mask-position: 0 0, 100% 0;
+            -webkit-mask-composite: source-over;
+            mask-image: linear-gradient(#000 0 0), url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='20' viewBox='0 0 16 20'%3E%3Cpath d='M0 0H16Q12 5 16 10Q12 15 16 20H0Z' fill='%23000'/%3E%3C/svg%3E");
+            mask-repeat: no-repeat, repeat-y;
+            mask-size: calc(100% - 16px) 100%, 16px 20px;
+            mask-position: 0 0, 100% 0;
+            mask-composite: add;
             animation: gpWaveMask 1.6s linear infinite;
         }
         @keyframes gpWaveMask {
-            from { -webkit-mask-position: 0 0; mask-position: 0 0; }
-            to   { -webkit-mask-position: 0 -20px; mask-position: 0 -20px; }
+            from { -webkit-mask-position: 0 0, 100% 0; mask-position: 0 0, 100% 0; }
+            to   { -webkit-mask-position: 0 0, 100% -20px; mask-position: 0 0, 100% -20px; }
         }
         .gp-wrap.done .gp-fill {
             background: linear-gradient(135deg, rgba(60, 200, 110, 0.85), rgba(30, 160, 80, 0.85));
@@ -2900,28 +2875,28 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            flex-wrap: wrap;
-            gap: 10px;
+            flex-wrap: nowrap;
+            gap: 6px;
             max-width: calc(100vw - 24px);
-            padding: 10px 14px;
-            background: rgba(var(--surface-rgb), 0.9);
-            backdrop-filter: blur(24px) saturate(1.2);
-            -webkit-backdrop-filter: blur(24px) saturate(1.2);
+            padding: 6px 8px;
+            background: rgba(var(--surface-rgb), 0.76);
+            backdrop-filter: blur(28px) saturate(1.25);
+            -webkit-backdrop-filter: blur(28px) saturate(1.25);
             border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 12px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+            border-radius: 10px;
+            box-shadow: 0 8px 28px rgba(0, 0, 0, 0.34);
             animation: fadeIn 0.2s ease-out;
         }
         .layout-float-title {
             font-family: 'Montserrat Alternates', sans-serif;
-            font-size: 11px;
+            font-size: 10px;
             font-weight: 600;
             color: rgba(255, 255, 255, 0.4);
             white-space: nowrap;
         }
         .layout-float-target {
             font-family: 'Montserrat Alternates', sans-serif;
-            font-size: 10px;
+            font-size: 9px;
             color: rgba(255, 255, 255, 0.3);
             max-width: 150px;
             overflow: hidden;
@@ -2933,18 +2908,18 @@
             gap: 4px;
         }
         .layout-float-apply {
-            height: 30px !important;
-            padding: 0 12px !important;
-            font-size: 11px !important;
+            height: 26px !important;
+            padding: 0 9px !important;
+            font-size: 10px !important;
         }
         .layout-float-reset {
-            height: 30px !important;
-            padding: 0 10px !important;
-            font-size: 11px !important;
+            height: 26px !important;
+            padding: 0 8px !important;
+            font-size: 10px !important;
         }
         .layout-float-cancel {
-            width: 30px !important;
-            height: 30px !important;
+            width: 26px !important;
+            height: 26px !important;
             padding: 0 !important;
         }
 
@@ -3145,8 +3120,8 @@
         .patches-toolbar {
             display: flex;
             flex-direction: column;
-            gap: 10px;
-            margin-bottom: 14px;
+            gap: 8px;
+            margin-bottom: 10px;
             flex-shrink: 0;
         }
 
@@ -3155,8 +3130,8 @@
             display: flex;
             align-items: center;
             gap: 12px;
-            padding: 10px 12px;
-            margin-bottom: 12px;
+            padding: 8px 11px;
+            margin-bottom: 9px;
             border: 1px solid rgba(255,255,255,0.08);
             border-radius: 10px;
             background: rgba(255,255,255,0.03);
@@ -3253,14 +3228,14 @@
         .patches-search-wrap.has-value .patches-search-clear { display: block; }
         .patches-search {
             width: 100%;
-            height: 36px;
+            height: 32px;
             background: rgba(255,255,255,0.05);
             border: 1px solid rgba(255,255,255,0.1);
             border-radius: 8px;
             color: white;
             font-family: 'Montserrat Alternates', sans-serif;
-            font-size: 13px;
-            padding: 0 34px 0 34px;
+            font-size: 12.5px;
+            padding: 0 32px 0 32px;
             outline: none;
             transition: border-color 0.18s;
         }
@@ -3276,9 +3251,9 @@
             background: rgba(255,255,255,0.05);
             border: 1px solid rgba(255,255,255,0.1);
             border-radius: 16px;
-            padding: 5px 12px;
+            padding: 4px 10px;
             font-family: 'Montserrat Alternates', sans-serif;
-            font-size: 11px;
+            font-size: 10.5px;
             color: rgba(255,255,255,0.65);
             cursor: pointer;
             transition: all 0.15s;
@@ -3329,7 +3304,7 @@
 
         /* Категория-аккордеон */
         .patch-category {
-            margin-bottom: 8px;
+            margin-bottom: 6px;
             background: rgba(255,255,255,0.02);
             border: 1px solid rgba(255,255,255,0.06);
             border-radius: 10px;
@@ -3338,15 +3313,15 @@
         .patch-category-header {
             display: flex;
             align-items: center;
-            gap: 10px;
-            padding: 12px 14px;
+            gap: 8px;
+            padding: 9px 12px;
             cursor: pointer;
             user-select: none;
             transition: background 0.15s;
         }
         .patch-category-header:hover { background: rgba(255,255,255,0.03); }
         .patch-category-icon {
-            width: 26px; height: 26px;
+            width: 22px; height: 22px;
             border-radius: 6px;
             background: rgba(var(--accent2-rgb), 0.18);
             display: flex; align-items: center; justify-content: center;
@@ -3391,8 +3366,8 @@
         .patch-row {
             display: flex;
             align-items: flex-start;
-            gap: 12px;
-            padding: 11px 14px;
+            gap: 10px;
+            padding: 7px 12px;
             border-top: 1px solid rgba(255,255,255,0.04);
             transition: background 0.12s;
         }
@@ -3402,17 +3377,17 @@
             min-width: 0;
             display: flex;
             flex-direction: column;
-            gap: 2px;
+            gap: 1px;
         }
         .patch-row-title {
             font-family: 'Montserrat Alternates', sans-serif;
-            font-size: 12px;
+            font-size: 11.5px;
             font-weight: 600;
             color: rgba(255,255,255,0.88);
         }
         .patch-row-desc {
             font-family: 'Montserrat Alternates', sans-serif;
-            font-size: 10.5px;
+            font-size: 10px;
             color: rgba(255,255,255,0.4);
             line-height: 1.45;
         }
@@ -3443,8 +3418,8 @@
             border: 1px solid rgba(255,255,255,0.12);
             color: rgba(255,255,255,0.8);
             border-radius: 6px;
-            padding: 4px 10px;
-            font-size: 11px;
+            padding: 3px 9px;
+            font-size: 10.5px;
             font-family: 'Montserrat Alternates', sans-serif;
             cursor: pointer;
             transition: all 0.15s;
@@ -3458,14 +3433,14 @@
 
         /* number / slider контролы */
         .patch-number-input {
-            width: 80px;
-            height: 28px;
+            width: 74px;
+            height: 26px;
             background: rgba(255,255,255,0.06);
             border: 1px solid rgba(255,255,255,0.12);
             border-radius: 6px;
             color: white;
             font-family: 'Consolas', monospace;
-            font-size: 12px;
+            font-size: 11.5px;
             padding: 0 8px;
             outline: none;
             text-align: right;
@@ -3511,7 +3486,7 @@
         }
         /* select */
         .patch-select {
-            height: 28px;
+            height: 26px;
             background: rgba(255,255,255,0.06);
             border: 1px solid rgba(255,255,255,0.12);
             border-radius: 6px;
@@ -6683,7 +6658,7 @@
         /* ── Profiles hover menu (top-left) ── */
         #profilesHoverWidget {
             position: fixed;
-            top: 16px;
+            top: 56px;
             left: 50%;
             transform: translateX(-50%);
             z-index: 500;
@@ -8103,9 +8078,6 @@
                     <img class="launch-screen-logo" src="app-icon.png" alt="Arizona RP Launcher">
                     <div class="launch-screen-title">
                         Запуск игры
-                        <span class="launch-screen-dots">
-                            <span></span><span></span><span></span>
-                        </span>
                     </div>
                     <div class="launch-screen-server" id="launchServer"></div>
                     <div class="launch-screen-bar-wrap">
@@ -8836,27 +8808,6 @@
                     <div class="lt-grid">
                     <div class="s-section">
                         <div class="s-section-head">
-                            <span class="s-section-head-icon"><i data-lucide="menu"></i></span>
-                            <span class="s-section-title">Компактность меню</span>
-                        </div>
-                        <div class="s-section-body">
-                            <label class="launch-item" style="margin:8px 16px;"
-                                   onclick="event.preventDefault(); setCompactMenu(!document.getElementById('compactMenuCheck').checked)">
-                                <input type="checkbox" id="compactMenuCheck">
-                                <div class="s-toggle"></div>
-                                <div class="launch-item-text">
-                                    <span class="launch-item-name">Компактное меню</span>
-                                </div>
-                            </label>
-                            <div style="padding:0 16px 10px;font-family:'Montserrat Alternates';font-size:10px;color:rgba(255,255,255,0.25);line-height:1.5;">
-                                Плотная компоновка левой панели и хедер в одну строку — больше информации на экране.
-                                Переключается сразу, без перезапуска.
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="s-section">
-                        <div class="s-section-head">
                             <span class="s-section-head-icon"><i data-lucide="snowflake"></i></span>
                             <span class="s-section-title">Зимние эффекты</span>
                         </div>
@@ -8874,6 +8825,11 @@
                                 <input type="range" id="snowAmountRange" class="s-range" min="30" max="180" step="5"
                                        oninput="setSnowAmount(this.value)">
                                 <span id="snowAmountVal" style="flex:none; width:32px; text-align:right; font-family:'Montserrat Alternates', sans-serif; font-size:12px; font-weight:600; color:rgba(255,255,255,0.75);">90</span>
+                            </div>
+                            <div style="padding:0 16px 8px;">
+                                <button class="s-btn" type="button" onclick="showNewYearFireworks()" style="height:30px;padding:0 10px;font-size:10px;">
+                                    <i data-lucide="sparkles" style="width:13px;height:13px;"></i> Показать фейерверк
+                                </button>
                             </div>
                             <label class="launch-item" style="margin:0 16px 8px;"
                                    onclick="event.preventDefault(); setWinterFx('vignette', !document.getElementById('winterVignetteCheck').checked)">
@@ -8908,7 +8864,7 @@
                         </div>
                     </div>
 
-                    </div><!-- /.lt-grid: Компактность меню + Зимние эффекты -->
+                    </div><!-- /.lt-grid: Зимние эффекты -->
 
                     <div class="lt-grid">
                     <div class="s-section">
@@ -10053,7 +10009,6 @@
                 { id: 'CustomObjectScaleDistance', title: 'Дистанция масштабирования объектов', description: 'Расстояние, на котором объекты начинают масштабироваться.', category: 'render', type: 'slider', default: 80.0, min: 0, max: 500, step: 1, conflicts: [], requires: [] },
                 { id: 'DontUseGreenZone', title: 'Отключить зелёную зону', description: 'Убирает отображение зелёной зоны безопасного района на карте.', category: 'gameplay', type: 'bool', default: true, conflicts: [], requires: [] },
                 { id: 'RadarMode', title: 'Режим радара', description: 'Способ отображения радара в углу экрана.', category: 'gameplay', type: 'select', default: 'default', options: [{value:'default',label:'По умолчанию'},{value:'compact',label:'Компактный'},{value:'hidden',label:'Скрытый'}], conflicts: [], requires: [] },
-                { id: 'CustomStaticObjects', title: 'Кастомные статические объекты', description: 'Список объектов с принудительным размещением. Нажми «Редактировать».', category: 'advanced', type: 'cso', default: [], conflicts: [], requires: [] },
                 { id: 'ServerObjectForceDistance', title: 'Дистанция форсирования серверных объектов', description: 'Дистанция принудительного появления серверных объектов (метры).', category: 'advanced', type: 'number', default: 200, min: 0, max: 5000, step: 10, conflicts: [], requires: [] }
             ]
         };
@@ -10992,10 +10947,7 @@
 
             perfMark('all done');
 
-            if (gameUpdateCheckOnStartEnabled()) {
-                checkLauncherUpdate();
-                setTimeout(gameCheckOnStart, 1500);
-            }
+            if (gameUpdateCheckOnStartEnabled()) setTimeout(gameCheckOnStart, 1500);
             setTimeout(() => checkPatchesStatus(), 500);
             // Первый запуск: путь к игре не настроен — открываем онбординг
             // (в Python это делал main.py:3371 через evaluate_js)
@@ -11033,40 +10985,13 @@
                             const hiddenSelect = document.getElementById('serverSelect');
                             if (hiddenSelect) hiddenSelect.value = result.server;
                         }
+                        // Инициализируем кнопку панели независимо от настройки
+                        // автопроверки обновлений игры.
+                        await checkLauncherInstallation(result.paths_configured, result.game_path);
                     }
                 }
             } catch (error) {
                 console.error('Ошибка загрузки init data:', error);
-            }
-        }
-
-        async function checkLauncherUpdate() {
-            try {
-                if (window.pywebview && window.pywebview.api.check_launcher_update) {
-                    const update = await window.pywebview.api.check_launcher_update();
-                    // needs_update у check_launcher_update — только про установку/
-                    // апгрейд лаунчера v8 (состояние файлов игры проверяет
-                    // check_update_api). Подтягиваем полный install_info в
-                    // _installActionBtn: иначе клик по «Обновить» провалится в
-                    // startDownloadUpdate() и запустит обновление игры вместо
-                    // модалки установки лаунчера (с мгновенным ложным
-                    // «Обновление установлено!» при актуальных файлах).
-                    if (update && update.needs_update && update.folder &&
-                        window.pywebview.api.get_install_action_api) {
-                        try {
-                            const r = await window.pywebview.api.get_install_action_api(update.folder);
-                            const info = (r && r.success) ? r.install_info : null;
-                            if (info && info.action && info.action !== 'none' && info.action !== 'error') {
-                                _installActionBtn = { folder: update.folder, info };
-                            }
-                        } catch (e) {
-                            console.warn('get_install_action_api:', e);
-                        }
-                    }
-                    checkLauncherInstallationUI(true, null, update);
-                }
-            } catch (e) {
-                console.warn('check_launcher_update:', e);
             }
         }
 
@@ -11075,6 +11000,8 @@
         // {folder, info} — нужна установка лаунчера/preloading: клик откроет
         // модалку установки (install_info из get_install_action_api).
         let _installActionBtn = null;
+        let _installActionCheckSeq = 0;
+        let _installActionCheckPending = false;
 
         function _renderInstallHandle() {
             const wrap = document.getElementById('updateLauncherWrap');
@@ -11097,7 +11024,12 @@
         // Клик по patch-handle: нужна установка лаунчера — открываем модалку
         // установки, иначе прежний inline-флоу обновления патчей.
         async function patchHandleClick() {
+            if (_installActionCheckPending) return;
             if (_installActionBtn && _installActionBtn !== 'no-path') {
+                if (_installActionBtn === 'game-update') {
+                    startDownloadUpdate();
+                    return;
+                }
                 openInstallModalWithAction(_installActionBtn.folder, _installActionBtn.info);
                 return;
             }
@@ -11106,44 +11038,8 @@
                 openInstallLauncherFlow();
                 return;
             }
-            startDownloadUpdate();
-        }
-
-        function checkLauncherInstallationUI(pathsConfigured, gamePath, update) {
-            const wrap = document.getElementById('updateLauncherWrap');
-            if (!wrap) return;
-
-            if (!pathsConfigured) {
-                _installActionBtn = 'no-path';
-                _renderInstallHandle();
-                return;
-            }
-
-            if (update && update.needs_update) {
-                const icon = document.getElementById('patchHandleIcon');
-                const label = document.getElementById('updateBtnText');
-                icon.style.display = '';
-                icon.innerHTML = '<i data-lucide="download"></i>';
-                label.textContent = 'Обновить';
-                label.style.display = '';
-                wrap.style.display = 'flex';
-                wrap.classList.add('pulse');
-                wrap.style.opacity = '1';
-                wrap.style.pointerEvents = '';
-                wrap.title = update.message || 'Требуется установка патчей';
-                if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
-                return;
-            }
-
-            // Установка лаунчера всё ещё нужна — кнопку не прячем
-            // (не даём параллельной проверке затереть её)
-            if (_installActionBtn) {
-                _renderInstallHandle();
-                return;
-            }
-
-            wrap.style.display = 'none';
-            wrap.classList.remove('pulse');
+            // Не запускаем случайное действие, если кнопка ещё не получила
+            // результат проверки состояния папки игры.
         }
 
         async function loadServersAndNews() {
@@ -11493,7 +11389,7 @@
                             if (saved) selectServer(saved, true);
                         }
                         
-                        checkLauncherInstallation(result.paths_configured, result.game_path);
+                        await checkLauncherInstallation(result.paths_configured, result.game_path);
                     }
                 }
             } catch (error) {
@@ -11504,35 +11400,49 @@
         async function checkLauncherInstallation(pathsConfigured, gamePath) {
             const wrap = document.getElementById('updateLauncherWrap');
             if (!wrap) return;
+            const checkSeq = ++_installActionCheckSeq;
+            _installActionCheckPending = true;
             _installActionBtn = null;
+            wrap.style.pointerEvents = 'none';
 
             if (!pathsConfigured) {
                 _installActionBtn = 'no-path';
+                _installActionCheckPending = false;
                 _renderInstallHandle();
                 return;
             }
 
-            try {
-                // Лаунчер/preloading не установлены — кнопка «Установить»
-                // (по клику откроется модалка установки)
-                if (gamePath && window.pywebview && window.pywebview.api.get_install_action_api) {
+            // Лаунчер/preloading не установлены — кнопка «Установить».
+            // Ошибка одного запроса не должна пропускать независимую проверку
+            // обновления игры и оставлять панель в случайном состоянии.
+            if (gamePath && window.pywebview && window.pywebview.api.get_install_action_api) {
+                try {
                     const sep = gamePath.lastIndexOf('\\') >= 0 ? '\\' : '/';
                     const folderPath = gamePath.substring(0, gamePath.lastIndexOf(sep));
                     const actionResult = await window.pywebview.api.get_install_action_api(folderPath);
+                    if (checkSeq !== _installActionCheckSeq) return;
                     const info = (actionResult && actionResult.success) ? actionResult.install_info : null;
                     if (info && info.action && info.action !== 'none' && info.action !== 'error') {
                         _installActionBtn = { folder: folderPath, info };
+                        _installActionCheckPending = false;
                         _renderInstallHandle();
                         return;
                     }
                     // native/всё установлено: сбрасываем кнопку, оставшуюся от
                     // прошлого способа запуска (Air), иначе она висит зря.
                     if (info && info.action === 'none') _installActionBtn = null;
+                } catch (e) {
+                    if (checkSeq !== _installActionCheckSeq) return;
+                    console.warn('get_install_action_api:', e);
                 }
+            }
 
-                if (window.pywebview && window.pywebview.api.check_update_api) {
+            if (window.pywebview && window.pywebview.api.check_update_api) {
+                try {
                     const result = await window.pywebview.api.check_update_api(gamePath);
+                    if (checkSeq !== _installActionCheckSeq) return;
                     if (result.success && result.needs_update) {
+                        _installActionBtn = 'game-update';
                         const icon = document.getElementById('patchHandleIcon');
                         const label = document.getElementById('updateBtnText');
                         icon.style.display = '';
@@ -11545,14 +11455,20 @@
                         wrap.style.pointerEvents = '';
                         wrap.title = result.message || 'Требуется установка патчей';
                         if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
+                        _installActionCheckPending = false;
                         return;
                     }
+                } catch (e) {
+                    if (checkSeq !== _installActionCheckSeq) return;
+                    console.warn('check_update_api:', e);
                 }
-            } catch (e) {
-                console.error('Error checking update:', e);
             }
 
+            if (checkSeq !== _installActionCheckSeq) return;
+            _installActionBtn = null;
+            _installActionCheckPending = false;
             wrap.style.display = 'none';
+            wrap.style.pointerEvents = '';
             wrap.classList.remove('pulse');
         }
 
@@ -11713,7 +11629,7 @@
             if (label) label.textContent = LAUNCH_STATES[state];
             if (state === 'done') {
                 const bar = document.getElementById('launchBar');
-                if (bar) bar.style.width = '100%';
+                if (bar) bar.style.transform = 'scaleX(1)';
             }
         }
 
@@ -11733,7 +11649,7 @@
                     serverEl.textContent = '';
                 }
             }
-            if (barEl) barEl.style.width = '0%';
+            if (barEl) barEl.style.transform = 'scaleX(0)';
             _launchSetState('prep');
             setLaunchStatus('Подготовка...', 5, 'prep');
             if (leftPanel) leftPanel.classList.add('slide-out');
@@ -11767,7 +11683,7 @@
                     startBtn.classList.remove('start-btn-loading');
                 }
                 const bar = document.getElementById('launchBar');
-                if (bar) bar.style.width = '0%';
+                if (bar) bar.style.transform = 'scaleX(0)';
                 setLaunchStatus('Подготовка...', 0, 'prep');
                 if (screen) screen.setAttribute('aria-busy', 'false');
             }, 300);
@@ -11777,7 +11693,10 @@
             const statusEl = document.getElementById('launchStatus');
             const barEl    = document.getElementById('launchBar');
             if (statusEl) statusEl.textContent = text;
-            if (barEl && progress > 0) barEl.style.width = progress + '%';
+            if (barEl) {
+                const value = Math.min(100, Math.max(0, Number(progress) || 0));
+                barEl.style.transform = `scaleX(${value / 100})`;
+            }
             if (state) {
                 _launchSetState(state);
             } else if (progress === 0 && /Ошибка|Не хватает/i.test(text || '')) {
@@ -13946,12 +13865,11 @@
                     kind   = 'outdated';
                     title  = 'Установлена старая версия патчей';
                     detail = 'Настройки можно менять — они применятся после обновления до v2.';
+                } else if (status.status === 'missing') {
+                    // Отсутствие ещё не опубликованного плагина ожидаемо.
+                    kind = null;
                 } else {
-                    // missing и прочее
-                    kind   = 'missing';
-                    title  = 'Патчи v2 не установлены';
-                    detail = 'Настройки можно менять — они сохранятся в папку игры '
-                           + 'и применятся после установки патчей v2.';
+                    kind = null;
                 }
 
                 if (kind) {
@@ -14873,6 +14791,10 @@
             notifications: true,
             ctx: null,
             master: null,
+            echo: null,
+            echoGain: null,
+            echo2: null,
+            echoGain2: null,
             lastClick: 0,
         };
         let _sfxGestureSeen = false;
@@ -14905,6 +14827,23 @@
                     SFX.ctx = new Ctx();
                     SFX.master = SFX.ctx.createGain();
                     SFX.master.connect(SFX.ctx.destination);
+
+                    // Короткие тихие отражения дают «стеклу» мягкий хвост.
+                    SFX.echo = SFX.ctx.createDelay(0.5);
+                    SFX.echo.delayTime.value = 0.11;
+                    SFX.echoGain = SFX.ctx.createGain();
+                    SFX.echoGain.gain.value = 0.10;
+                    SFX.master.connect(SFX.echo);
+                    SFX.echo.connect(SFX.echoGain);
+                    SFX.echoGain.connect(SFX.ctx.destination);
+
+                    SFX.echo2 = SFX.ctx.createDelay(0.5);
+                    SFX.echo2.delayTime.value = 0.22;
+                    SFX.echoGain2 = SFX.ctx.createGain();
+                    SFX.echoGain2.gain.value = 0.045;
+                    SFX.master.connect(SFX.echo2);
+                    SFX.echo2.connect(SFX.echoGain2);
+                    SFX.echoGain2.connect(SFX.ctx.destination);
                 }
                 if (SFX.ctx.state === 'suspended') SFX.ctx.resume();
                 return SFX.ctx;
@@ -14913,23 +14852,37 @@
             }
         }
 
-        function _sfxTone(ctx, freq, at, dur, type, peak, slideTo) {
+        function _sfxTone(ctx, freq, at, dur, peak, slideTo) {
             const osc = ctx.createOscillator();
+            const overtone = ctx.createOscillator();
+            const overtoneGain = ctx.createGain();
             const gain = ctx.createGain();
+            const filter = ctx.createBiquadFilter();
             const t0 = ctx.currentTime + at;
-            osc.type = type || 'sine';
+            osc.type = 'sine';
             osc.frequency.setValueAtTime(freq, t0);
             if (slideTo) {
                 osc.frequency.exponentialRampToValueAtTime(Math.max(30, slideTo), t0 + dur);
             }
+            overtone.type = 'sine';
+            overtone.frequency.setValueAtTime(freq * 2, t0);
+            filter.type = 'lowpass';
+            filter.frequency.setValueAtTime(1850, t0);
+            filter.Q.setValueAtTime(0.55, t0);
             const vol = Math.max(0.0001, peak);
             gain.gain.setValueAtTime(0.0001, t0);
-            gain.gain.exponentialRampToValueAtTime(vol, t0 + 0.012);
-            gain.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-            osc.connect(gain);
+            gain.gain.exponentialRampToValueAtTime(vol, t0 + Math.min(0.035, dur * 0.35));
+            gain.gain.setTargetAtTime(0.0001, t0 + dur * 0.55, Math.max(0.025, dur * 0.2));
+            overtoneGain.gain.value = 0.035;
+            osc.connect(filter);
+            overtone.connect(overtoneGain);
+            overtoneGain.connect(filter);
+            filter.connect(gain);
             gain.connect(SFX.master);
             osc.start(t0);
-            osc.stop(t0 + dur + 0.03);
+            overtone.start(t0);
+            osc.stop(t0 + dur + 0.12);
+            overtone.stop(t0 + dur + 0.12);
         }
 
         function _sfxPlay(kind) {
@@ -14944,20 +14897,20 @@
             }
             const ctx = _sfxUnlock();
             if (!ctx) return;
-            const v = Math.pow(SFX.volume, 1.4) * 0.22;
+            const v = Math.pow(SFX.volume, 1.7) * 0.16;
             try {
                 if (kind === 'click') {
-                    _sfxTone(ctx, 760, 0, 0.05, 'triangle', v * 0.8, 560);
+                    _sfxTone(ctx, 510, 0, 0.09, v * 0.72);
                 } else if (kind === 'success') {
-                    _sfxTone(ctx, 660, 0, 0.12, 'sine', v);
-                    _sfxTone(ctx, 880, 0.09, 0.14, 'sine', v);
-                    _sfxTone(ctx, 1320, 0.18, 0.18, 'sine', v * 0.7);
+                    _sfxTone(ctx, 494, 0, 0.15, v * 0.62);
+                    _sfxTone(ctx, 587, 0.072, 0.17, v * 0.55);
+                    _sfxTone(ctx, 740, 0.144, 0.22, v * 0.42);
                 } else if (kind === 'error') {
-                    _sfxTone(ctx, 260, 0, 0.22, 'sawtooth', v * 0.7, 130);
-                    _sfxTone(ctx, 180, 0.10, 0.24, 'square', v * 0.35, 110);
+                    _sfxTone(ctx, 392, 0, 0.17, v * 0.48);
+                    _sfxTone(ctx, 330, 0.082, 0.20, v * 0.38);
                 } else {
-                    _sfxTone(ctx, 620, 0, 0.10, 'sine', v * 0.8);
-                    _sfxTone(ctx, 820, 0.08, 0.12, 'sine', v * 0.7);
+                    _sfxTone(ctx, 523, 0, 0.15, v * 0.70);
+                    _sfxTone(ctx, 659, 0.072, 0.17, v * 0.45);
                 }
             } catch (e) {}
         }
@@ -15073,7 +15026,7 @@
                 if (tabName === 'debug')  loadDebugInfo();
                 if (tabName === 'patches') checkPatchesStatus();
                 if (tabName === 'about')  _renderAboutBug();
-                if (tabName === 'launcher') { applyGameUpdateFuture(); _syncWinterUI(); _syncCompactUI(); _syncBurstUI(); _syncSnowAmountUI(); _syncAnimSpeedUI(); _syncWeakPcUI(); _syncSfxUI(); }
+                if (tabName === 'launcher') { applyGameUpdateFuture(); _syncWinterUI(); _syncBurstUI(); _syncSnowAmountUI(); _syncAnimSpeedUI(); _syncWeakPcUI(); _syncSfxUI(); }
             }
         }
 
@@ -17074,14 +17027,11 @@
                     break;
                 }
                 case 'cso': {
-                    // Массив объектов — открывает существующий CSO Editor.
-                    const btn = document.createElement('button');
-                    btn.type = 'button';
-                    btn.className = 'patch-action-btn';
-                    const count = Array.isArray(val) ? val.length : 0;
-                    btn.innerHTML = `<i data-lucide="package"></i> Редактировать (${count})`;
-                    btn.onclick = (e) => { e.preventDefault(); e.stopPropagation(); openCsoEditor(); };
-                    control.appendChild(btn);
+                    // Совместимость со старыми внешними схемами без редактора.
+                    const span = document.createElement('span');
+                    span.className = 'patch-row-code';
+                    span.textContent = (Array.isArray(val) ? val.length : 0) + ' шт.';
+                    control.appendChild(span);
                     break;
                 }
                 case 'objects': {
@@ -18277,13 +18227,6 @@
             on = (on === true || on === '1' || on === 1);
             try { localStorage.setItem('arp_compactMenu', on ? '1' : '0'); } catch (e) {}
             document.documentElement.classList.toggle('compact-menu', on);
-            _syncCompactUI();
-        }
-
-        function _syncCompactUI() {
-            const on = document.documentElement.classList.contains('compact-menu');
-            const cb = document.getElementById('compactMenuCheck');
-            if (cb) cb.checked = on;
         }
 
         // Сила блюра панели настроек (8–32px, см. --frost-blur в :root).
@@ -18659,7 +18602,7 @@
         // везде»). Общий rAF крутится, пока есть что рисовать; dt ограничен
         // 50мс — после сворачивания окна кадр не «телепортирует» холсты.
         const _snow = { raf: 0, ctx: null, w: 0, h: 0, dpr: 1, flakes: [],
-                        last: 0, bursts: [], mx: 0, my: 0,
+                        last: 0, bursts: [], fireworks: [], mx: 0, my: 0,
                         mouseOn: false, inputOn: false };
         const SNOW_COUNT = 90;               // 3 плана × 30 снежинок
         const BURST_COUNT = 16;              // частиц на один клик
@@ -18744,7 +18687,8 @@
             const c = document.getElementById('winterSnow');
             if (!c) return;
             const need = document.documentElement.classList.contains('winter-snow')
-                || _snow.bursts.length > 0;
+                || _snow.bursts.length > 0
+                || _snow.fireworks.length > 0;
             c.style.display = need ? 'block' : '';
         }
 
@@ -18782,7 +18726,7 @@
                 document.removeEventListener('mouseleave', _snowOnLeave);
             }
             _snow.mouseOn = false;
-            if (_snow.bursts.length === 0) {
+            if (_snow.bursts.length === 0 && _snow.fireworks.length === 0) {
                 // всплесков нет — гасим сразу; если живы — tick доживёт их
                 // сам и остановится на «нечего рисовать»
                 if (_snow.raf) { cancelAnimationFrame(_snow.raf); _snow.raf = 0; }
@@ -18790,6 +18734,125 @@
             }
             _snowSyncCanvas();
         }
+
+        // ── Новогодний фейерверк ────────────────────────────────────────
+        let _newYearFireworksBusy = false;
+        const _NEW_YEAR_HUES = [42, 48, 190, 202, 336, 355];
+
+        function _newYearBurstAt(x, y, hue, lite) {
+            const count = lite ? 28 : 54;
+            const spread = Math.PI * 2 / count;
+            for (let i = 0; i < count; i++) {
+                const angle = i * spread + _snowRand(-0.025, 0.025);
+                const speed = _snowRand(lite ? 55 : 65, lite ? 155 : 235);
+                _snow.fireworks.push({
+                    type: 'spark', x, y, px: x, py: y,
+                    vx: Math.cos(angle) * speed,
+                    vy: Math.sin(angle) * speed,
+                    life: 0,
+                    max: _snowRand(lite ? 0.9 : 1.15, lite ? 1.45 : 2.05),
+                    radius: _snowRand(1.0, lite ? 1.7 : 2.2),
+                    hue: hue + _snowRand(-13, 13),
+                    glitter: Math.random() < 0.18
+                });
+            }
+        }
+
+        function _newYearLaunchShell(lite) {
+            if (!_snow.ctx || _snow.w !== window.innerWidth || _snow.h !== window.innerHeight)
+                _snowResize();
+            const x = _snowRand(_snow.w * 0.16, _snow.w * 0.84);
+            const targetY = _snowRand(_snow.h * 0.17, _snow.h * 0.48);
+            const rise = _snowRand(lite ? 390 : 430, lite ? 510 : 620);
+            _snow.fireworks.push({
+                type: 'rocket', x, y: _snow.h + 8, px: x, py: _snow.h + 8,
+                vx: _snowRand(-22, 22), vy: -rise, targetY,
+                age: 0, hue: _NEW_YEAR_HUES[Math.floor(Math.random() * _NEW_YEAR_HUES.length)],
+                lite
+            });
+            _snowWake();
+        }
+
+        function _newYearFireworksTick(ctx, dt) {
+            if (!_snow.fireworks.length) return;
+            ctx.globalCompositeOperation = 'lighter';
+            for (let i = _snow.fireworks.length - 1; i >= 0; i--) {
+                const p = _snow.fireworks[i];
+                if (p.type === 'rocket') {
+                    p.age += dt;
+                    p.px = p.x; p.py = p.y;
+                    p.x += p.vx * dt;
+                    p.y += p.vy * dt;
+                    p.vy += 110 * dt;
+                    ctx.globalAlpha = Math.max(0.15, 1 - p.age * 0.35);
+                    ctx.strokeStyle = `hsl(${p.hue} 95% 74%)`;
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.moveTo(p.px, p.py);
+                    ctx.lineTo(p.x, p.y);
+                    ctx.stroke();
+                    if (p.y <= p.targetY || p.age > 1.6) {
+                        _snow.fireworks.splice(i, 1);
+                        _newYearBurstAt(p.x, p.y, p.hue, p.lite);
+                    }
+                    continue;
+                }
+
+                p.life += dt;
+                if (p.life >= p.max) {
+                    _snow.fireworks.splice(i, 1);
+                    continue;
+                }
+                p.px = p.x; p.py = p.y;
+                p.vx *= Math.pow(0.982, dt * 60);
+                p.vy = p.vy * Math.pow(0.982, dt * 60) + 78 * dt;
+                p.x += p.vx * dt;
+                p.y += p.vy * dt;
+                const fade = Math.pow(1 - p.life / p.max, 1.35);
+                const twinkle = p.glitter ? (0.55 + Math.sin(p.life * 28) * 0.35) : 1;
+                ctx.globalAlpha = fade * twinkle;
+                ctx.strokeStyle = `hsl(${p.hue} 100% ${p.glitter ? 82 : 70}%)`;
+                ctx.lineWidth = p.radius;
+                ctx.beginPath();
+                ctx.moveTo(p.px, p.py);
+                ctx.lineTo(p.x, p.y);
+                ctx.stroke();
+                ctx.fillStyle = '#fff7dc';
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.radius * 0.48, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        function showNewYearFireworks() {
+            if (_newYearFireworksBusy) return;
+            _newYearFireworksBusy = true;
+            const lite = perfLowEnabled() || motionReduced();
+            const offsets = lite
+                ? [0, 850, 1750, 2700, 3650, 4550, 5450]
+                : [0, 470, 960, 1460, 1970, 2500, 3040, 3590, 4150, 4720, 5300, 5800, 6300, 6800, 7300];
+            offsets.forEach(delay => setTimeout(() => _newYearLaunchShell(lite), delay));
+            setTimeout(() => { _newYearFireworksBusy = false; }, offsets[offsets.length - 1] + 3900);
+        }
+        window.showNewYearFireworks = showNewYearFireworks;
+
+        function _checkNewYearFireworks() {
+            if (document.hidden) return;
+            const now = new Date();
+            if (now.getMonth() !== 0 || now.getDate() !== 1 || now.getHours() >= 6) return;
+            const year = String(now.getFullYear());
+            try {
+                if (localStorage.getItem('arp_newYearFireworksYear') === year) return;
+                localStorage.setItem('arp_newYearFireworksYear', year);
+            } catch (e) {
+                if (window.__newYearFireworksYear === year) return;
+                window.__newYearFireworksYear = year;
+            }
+            setTimeout(showNewYearFireworks, 500);
+        }
+        setTimeout(_checkNewYearFireworks, 700);
+        setInterval(_checkNewYearFireworks, 15000);
+        document.addEventListener('visibilitychange', _checkNewYearFireworks);
 
         function _snowTick(ts) {
             const dt = Math.min((ts - (_snow.last || ts)) / 1000, 0.05);
@@ -18851,9 +18914,11 @@
                 ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
                 ctx.fill();
             }
+            _newYearFireworksTick(ctx, dt);
             ctx.globalAlpha = 1;
+            ctx.globalCompositeOperation = 'source-over';
 
-            if (!snowOn && _snow.bursts.length === 0) {
+            if (!snowOn && _snow.bursts.length === 0 && _snow.fireworks.length === 0) {
                 // нечего рисовать — останавливаемся и прячем холст
                 _snow.raf = 0;
                 ctx.clearRect(0, 0, _snow.w, _snow.h);
@@ -20062,7 +20127,6 @@
         <span class="layout-float-title">Раскладка</span>
         <div class="layout-float-zones">
             <button class="layout-zone-btn" data-preset="classic" onclick="applyLayoutPreset('classic')">Классика</button>
-            <button class="layout-zone-btn" data-preset="compact" onclick="applyLayoutPreset('compact')">Компакт</button>
             <button class="layout-zone-btn" data-preset="minimal" onclick="applyLayoutPreset('minimal')">Минимал</button>
         </div>
         <span class="layout-float-target" id="layoutFloatTarget"></span>
@@ -20191,7 +20255,7 @@
         let _layoutEditStart = null;
         let _layoutDrag = null;
         let _layoutReady = false;
-        let _layoutResizeTimer = null;
+        let _layoutResizeRaf = 0;
 
         function _layoutDefault() {
             return {
@@ -20247,21 +20311,26 @@
             return _layoutNormalize(_layoutGlobal || launcherSettings.layout);
         }
 
-        /** Отступы, которые нельзя перекрывать: строка статуса. */
+        /** Полезная зона для раскладки: отступ от рамки и элементов окна. */
         function _layoutInsets() {
-            // 20px — как padding .interface: классическая раскладка не
-            // должна визуально прилипать к краям сильнее прежнего.
-            const ins = { top: 20, right: 20, bottom: 20, left: 20 };
+            // Оставляем свободное поле вокруг интерфейса, чтобы сетка и
+            // перетаскивание не занимали всё окно и не заходили под chrome.
+            const ins = {
+                top: Math.max(56, Math.round(window.innerHeight * 0.08)),
+                right: Math.max(36, Math.round(window.innerWidth * 0.035)),
+                bottom: Math.max(42, Math.round(window.innerHeight * 0.06)),
+                left: Math.max(36, Math.round(window.innerWidth * 0.035))
+            };
             if (!launcherSettings.status_bar) return ins;
             const bar = document.getElementById('statusBar');
             if (!bar || bar.offsetParent === null) return ins;
             const pos = launcherSettings.status_bar_pos || 'bottom';
             const h = bar.offsetHeight || 34;
             const w = bar.offsetWidth || 40;
-            if (pos === 'top') ins.top = h + 10;
-            else if (pos === 'bottom') ins.bottom = h + 10;
-            else if (pos === 'left') ins.left = w + 10;
-            else if (pos === 'right') ins.right = w + 10;
+            if (pos === 'top') ins.top = Math.max(ins.top, h + 10);
+            else if (pos === 'bottom') ins.bottom = Math.max(ins.bottom, h + 10);
+            else if (pos === 'left') ins.left = Math.max(ins.left, w + 10);
+            else if (pos === 'right') ins.right = Math.max(ins.right, w + 10);
             return ins;
         }
 
@@ -20392,12 +20461,36 @@
         function _layoutPresetToDraft(name, applyNow) {
             const preset = LAYOUT_PRESETS[name];
             if (!preset || !_layoutDraft) return;
-            _layoutDraft.menu = { x: preset.menu.x, y: preset.menu.y };
-            _layoutDraft.profiles = { x: preset.profiles.x, y: preset.profiles.y };
-            // Компактность меняет высоту/ширину блоков — пересчитываем
-            // позиции уже после смены классов.
+            const sizeOnly = name === 'classic' || name === 'compact';
+            const menu = document.querySelector('.left-panel');
+            const profiles = document.getElementById('profilesHoverWidget');
+            const fixedRects = sizeOnly ? {
+                menu: menu && menu.getBoundingClientRect(),
+                profiles: profiles && profiles.getBoundingClientRect()
+            } : null;
+            // Классика и Компакт меняют только плотность блоков. Перемещение
+            // доступно перетаскиванием; Минимал оставлен позиционным пресетом.
+            if (name === 'minimal') {
+                _layoutDraft.menu = { x: preset.menu.x, y: preset.menu.y };
+                _layoutDraft.profiles = { x: preset.profiles.x, y: preset.profiles.y };
+            }
             setCompactMenu(preset.compactMenu);
             setProfilesCompact(preset.profilesCompact, false);
+            if (fixedRects) {
+                // После изменения размеров сохраняем экранные координаты
+                // левого верхнего угла обоих элементов.
+                const ins = _layoutInsets();
+                [[menu, fixedRects.menu, 'menu'], [profiles, fixedRects.profiles, 'profiles']]
+                    .forEach(([el, rect, key]) => {
+                        if (!el || !rect || !rect.width || !rect.height) return;
+                        const freeW = Math.max(1, window.innerWidth - el.offsetWidth - ins.left - ins.right);
+                        const freeH = Math.max(1, window.innerHeight - el.offsetHeight - ins.top - ins.bottom);
+                        _layoutDraft[key] = {
+                            x: Math.max(0, Math.min(100, (rect.left - ins.left) / freeW * 100)),
+                            y: Math.max(0, Math.min(100, (rect.top - ins.top) / freeH * 100))
+                        };
+                    });
+            }
             if (applyNow) _layoutApplyAnimated(_layoutDraft);
             _layoutRefreshPresetButtons();
             _layoutTargetLabel();
@@ -20407,11 +20500,16 @@
             if (!_layoutDraft) return;
             document.querySelectorAll('#layoutFloatBar .layout-zone-btn').forEach(btn => {
                 const p = LAYOUT_PRESETS[btn.dataset.preset];
+                const sizeOnly = btn.dataset.preset === 'classic' || btn.dataset.preset === 'compact';
                 const active = !!p &&
-                    Math.abs(p.menu.x - _layoutDraft.menu.x) < 0.5 &&
-                    Math.abs(p.menu.y - _layoutDraft.menu.y) < 0.5 &&
-                    Math.abs(p.profiles.x - _layoutDraft.profiles.x) < 0.5 &&
-                    Math.abs(p.profiles.y - _layoutDraft.profiles.y) < 0.5;
+                    document.documentElement.classList.contains('compact-menu') === p.compactMenu &&
+                    !!launcherSettings.profiles_compact === p.profilesCompact &&
+                    (sizeOnly || (
+                        Math.abs(p.menu.x - _layoutDraft.menu.x) < 0.5 &&
+                        Math.abs(p.menu.y - _layoutDraft.menu.y) < 0.5 &&
+                        Math.abs(p.profiles.x - _layoutDraft.profiles.x) < 0.5 &&
+                        Math.abs(p.profiles.y - _layoutDraft.profiles.y) < 0.5
+                    ));
                 btn.classList.toggle('active', active);
             });
         }
@@ -20456,7 +20554,11 @@
 
         function resetLayoutDraft() {
             if (!_layoutEditActive) return;
-            _layoutPresetToDraft('classic', true);
+            _layoutDraft = _layoutDefault();
+            setCompactMenu(false);
+            setProfilesCompact(false, false);
+            _layoutApplyAnimated(_layoutDraft);
+            _layoutRefreshPresetButtons();
             showNotification('Раскладка сброшена к классической', 'info');
         }
 
@@ -20545,8 +20647,10 @@
             const ins = _layoutInsets();
             box.style.left = ins.left + 'px';
             box.style.top = ins.top + 'px';
-            box.style.width = Math.max(1, window.innerWidth - el.offsetWidth - ins.left - ins.right) + 'px';
-            box.style.height = Math.max(1, window.innerHeight - el.offsetHeight - ins.top - ins.bottom) + 'px';
+            // Сетка показывает почти всю безопасную рабочую область. Размер
+            // самого меню учитывается отдельно в _layoutDragStart при clamp.
+            box.style.width = Math.max(1, window.innerWidth - ins.left - ins.right) + 'px';
+            box.style.height = Math.max(1, window.innerHeight - ins.top - ins.bottom) + 'px';
         }
 
         function _layoutDragStart(e, kind) {
@@ -20622,12 +20726,13 @@
         });
 
         window.addEventListener('resize', function () {
-            clearTimeout(_layoutResizeTimer);
-            _layoutResizeTimer = setTimeout(function () {
+            if (_layoutResizeRaf) return;
+            _layoutResizeRaf = requestAnimationFrame(function () {
+                _layoutResizeRaf = 0;
                 if (!_layoutReady || _layoutDrag) return;
                 if (_layoutEditActive && _layoutDraft) _layoutApplyToDom(_layoutDraft, true);
                 else _layoutApplyToDom(_effectiveLayout(), true);
-            }, 120);
+            });
         });
 
         // Меню меняет высоту (компактность, прогресс) — держим позицию

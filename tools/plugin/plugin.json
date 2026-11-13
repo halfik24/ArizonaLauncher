@@ -246,14 +246,6 @@
         "default": false
       },
       {
-        "id": "CustomStaticObjects",
-        "title": "Кастомные статические объекты",
-        "description": "Список объектов с принудительным размещением.",
-        "category": "objects",
-        "type": "cso",
-        "default": []
-      },
-      {
         "id": "ServerObjectScaleDistance",
         "title": "Дистанция масштабирования серверных объектов",
         "description": "Расстояние, на котором начинают масштабироваться серверные объекты.",

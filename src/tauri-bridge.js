@@ -124,13 +124,38 @@
     if (window.__pywebviewReadyFired) return;
     window.__pywebviewReadyFired = true;
     console.log('[tauri-bridge] PyWebView готов (Tauri)');
-    try {
-      window.dispatchEvent(new Event('pywebviewready'));
-    } catch (e) {
-      var evt = document.createEvent('Event');
-      evt.initEvent('pywebviewready', false, false);
-      window.dispatchEvent(evt);
+    var ready = function () {
+      try {
+        window.dispatchEvent(new Event('pywebviewready'));
+      } catch (e) {
+        var evt = document.createEvent('Event');
+        evt.initEvent('pywebviewready', false, false);
+        window.dispatchEvent(evt);
+      }
+    };
+
+    // Сначала подписываем фронтенд на прогресс, затем запускаем init(): так
+    // ранние события не потеряются, а кнопки не останутся на 0%.
+    var eventApi = window.__TAURI__ && window.__TAURI__.event;
+    if (!eventApi || typeof eventApi.listen !== 'function') {
+      ready();
+      return;
     }
+    Promise.all([
+      eventApi.listen('launcher-install-progress', function (event) {
+        if (typeof window._onLauncherInstallProgress === 'function') {
+          window._onLauncherInstallProgress(event.payload);
+        }
+      }),
+      eventApi.listen('patches-install-progress', function (event) {
+        if (typeof window._onPatchesInstallProgress === 'function') {
+          window._onPatchesInstallProgress(event.payload);
+        }
+      })
+    ]).then(ready).catch(function (e) {
+      console.warn('[tauri-bridge] не удалось подписаться на прогресс:', e);
+      ready();
+    });
   }
 
   // Фронт регистрирует listener синхронно при разборе <body>, поэтому к
