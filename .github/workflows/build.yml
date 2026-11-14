@@ -52,6 +52,9 @@ jobs:
           TAG_NAME: ${{ github.ref_name }}
         run: node tools/set-version.js --set "$env:TAG_NAME"
 
+      - name: Run Rust tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml
+
       - name: Build Tauri (NSIS)
         run: npm run build
 
