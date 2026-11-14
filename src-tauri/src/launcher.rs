@@ -688,6 +688,7 @@ mod config_deadlock_tests {
             game_update_cancel: std::sync::Mutex::new(None),
             game_update_pause: std::sync::Mutex::new(None),
             last_picked_empty_folder: std::sync::Mutex::new(None),
+            heavy_job_busy: std::sync::atomic::AtomicBool::new(false),
         });
 
         // Если дедлок — вызов никогда не вернётся; гоняем в отдельном потоке
@@ -1863,6 +1864,114 @@ const MAX_SCRIPT_BYTES: u64 = 20 * 1024 * 1024; // .lua скрипт
 const MAX_LIB_BYTES: u64 = 256 * 1024 * 1024; // zip библиотеки (ассеты бывают большими)
 const MAX_OTHER_BYTES: u64 = 128 * 1024 * 1024; // dll «другого» (DxVK и пр.)
 
+/// DNS-имя резолвится и КАЖДЫЙ адрес проверяется: публичная A-запись может
+/// вести на 127.0.0.1/169.254.169.254 (DNS-rebinding). Резолв блокирующий —
+/// в spawn_blocking (аудит Б1). IP-литерал проверяется статически.
+async fn validate_host_resolves_public(host: &str) -> Result<(), String> {
+    let h = host.trim().trim_end_matches('.').to_ascii_lowercase();
+    if h.parse::<std::net::IpAddr>().is_ok() {
+        return if is_forbidden_image_host(&h) {
+            Err("Недопустимый адрес".to_string())
+        } else {
+            Ok(())
+        };
+    }
+    let host_owned = h;
+    let addrs = tokio::task::spawn_blocking(move || -> Result<Vec<std::net::IpAddr>, String> {
+        use std::net::ToSocketAddrs;
+        Ok((host_owned.as_str(), 443u16)
+            .to_socket_addrs()
+            .map_err(|e| format!("DNS: {e}"))?
+            .map(|s| s.ip())
+            .collect())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())?;
+    if addrs.is_empty() {
+        return Err("Недопустимый адрес".to_string());
+    }
+    for ip in addrs {
+        if is_forbidden_image_host(&ip.to_string()) {
+            return Err("Недопустимый адрес".to_string());
+        }
+    }
+    Ok(())
+}
+
+/// Общий клиент «ручных» закачек: без авто-редиректов (reqwest по умолчанию
+/// следует до 10 хопов и обходит SSRF-проверку исходного URL) и без прокси.
+/// Таймаут задаётся per-request (RequestBuilder::timeout).
+static FETCH_CLIENT: std::sync::OnceLock<Result<reqwest::Client, String>> =
+    std::sync::OnceLock::new();
+
+fn fetch_client() -> Result<&'static reqwest::Client, String> {
+    FETCH_CLIENT
+        .get_or_init(|| {
+            reqwest::Client::builder()
+                .no_proxy() // см. game_update::downloader::client
+                .redirect(reqwest::redirect::Policy::none())
+                .connect_timeout(std::time::Duration::from_secs(15))
+                .build()
+                .map_err(|e| e.to_string())
+        })
+        .as_ref()
+        .map_err(|e| e.clone())
+}
+
+/// Максимум хопов ручного следования редиректам.
+const MAX_REDIRECT_HOPS: usize = 5;
+
+/// GET с SSRF-валидацией КАЖДОГО хопа: схема + хост (статически) + DNS
+/// (резолв всех адресов). Редиректы следуем вручную из Location, в т.ч.
+/// относительные. Заменяет «голый» client.get/send для любых URL, пришедших
+/// из вебвью (аудит Б1/Б2).
+async fn validated_get(
+    url: &str,
+    headers: reqwest::header::HeaderMap,
+    timeout: std::time::Duration,
+) -> Result<reqwest::Response, String> {
+    let client = fetch_client()?;
+    let mut current = url.to_string();
+    for _hop in 0..=MAX_REDIRECT_HOPS {
+        let parsed = reqwest::Url::parse(&current).map_err(|_| "Недопустимый адрес".to_string())?;
+        match parsed.scheme() {
+            "http" | "https" => {}
+            _ => return Err("Недопустимый адрес".to_string()),
+        }
+        let host = parsed
+            .host_str()
+            .ok_or_else(|| "Недопустимый адрес".to_string())?
+            .to_string();
+        if is_forbidden_image_host(&host) {
+            return Err("Недопустимый адрес".to_string());
+        }
+        validate_host_resolves_public(&host).await?;
+        let resp = client
+            .get(parsed.clone())
+            .headers(headers.clone())
+            .timeout(timeout)
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
+        if resp.status().is_redirection() {
+            let loc = resp
+                .headers()
+                .get(reqwest::header::LOCATION)
+                .and_then(|v| v.to_str().ok())
+                .ok_or_else(|| "Недопустимый адрес".to_string())?
+                .to_string();
+            current = parsed
+                .join(&loc)
+                .map_err(|_| "Недопустимый адрес".to_string())?
+                .to_string();
+            continue;
+        }
+        return Ok(resp);
+    }
+    Err("Слишком много перенаправлений".to_string())
+}
+
 /// Скачивание URL из внешних каталогов: та же SSRF-политика, что у картинок
 /// (http/https, публичный хост), плюс жёсткий лимит размера с стримингом.
 /// Раньше эти команды читали ответ целиком в память без ограничения —
@@ -1874,13 +1983,10 @@ async fn fetch_catalog_url(url: &str, max_bytes: u64) -> Result<Vec<u8>, String>
         reqwest::header::USER_AGENT,
         reqwest::header::HeaderValue::from_static("Mozilla/5.0"),
     );
-    let resp = util::http_request(
-        reqwest::Method::GET,
-        url,
-        headers,
-        std::time::Duration::from_secs(60),
-    )
-    .await?;
+    // 600 с на весь запрос: сюда попадают и библиотеки до 256 МБ — 60 с
+    // гарантированно падали на соединениях медленнее ~34 Мбит/с (аудит Б4;
+    // у патчей/лаунчера и так 600 с).
+    let resp = validated_get(url, headers, std::time::Duration::from_secs(600)).await?;
     if resp.status() != reqwest::StatusCode::OK {
         return Err(format!("HTTP {}", resp.status()));
     }
@@ -1900,37 +2006,25 @@ async fn fetch_catalog_url(url: &str, max_bytes: u64) -> Result<Vec<u8>, String>
 
 /// Скачивать картинку по URL и отдавать как data: URL в base64.
 /// SSRF-защита: схема только http/https, хост не из приватных диапазонов,
-/// ответ читается с лимитом размера.
-/// Общий клиент для картинок: строить Client на каждый вызов дорого
-/// (TLS-хендлейк на соединение), а пачка из 20+ превью каталога иначе
-/// создаёт шторм новых подключений — GitHub начинал резать часть запросов.
-static IMAGE_CLIENT: std::sync::OnceLock<Result<reqwest::Client, String>> = std::sync::OnceLock::new();
-
-fn image_client() -> Result<&'static reqwest::Client, String> {
-    IMAGE_CLIENT
-        .get_or_init(|| {
-            reqwest::Client::builder()
-                .no_proxy() // см. game_update::downloader::client
-                .timeout(std::time::Duration::from_secs(30))
-                .build()
-                .map_err(|e| e.to_string())
-        })
-        .as_ref()
-        .map_err(|e| e.clone())
-}
-
+/// каждый хоп редиректа валидируется заново (validated_get), ответ читается
+/// с лимитом размера.
 #[tauri::command]
 pub async fn fetch_image_as_base64(url: String) -> Result<serde_json::Value, String> {
     if let Err(msg) = check_image_url(&url) {
         return Ok(serde_json::json!({"success": false, "message": msg}));
     }
-    let client = match image_client() {
-        Ok(c) => c,
-        Err(e) => return Ok(serde_json::json!({"success": false, "message": e.to_string()})),
-    };
-    let resp = match client.get(&url).send().await {
+    // Общий FETCH_CLIENT (см. validated_get): TLS-соединения переиспользуются,
+    // пачка превью каталога не создаёт шторм подключений (GitHub начинал
+    // резать часть запросов, если Client строился на каждый вызов).
+    let resp = match validated_get(
+        &url,
+        reqwest::header::HeaderMap::new(),
+        std::time::Duration::from_secs(30),
+    )
+    .await
+    {
         Ok(r) => r,
-        Err(e) => return Ok(serde_json::json!({"success": false, "message": e.to_string()})),
+        Err(e) => return Ok(serde_json::json!({"success": false, "message": e})),
     };
     if !resp.status().is_success() {
         return Ok(serde_json::json!({"success": false, "message": format!("HTTP {}", resp.status())}));
@@ -2147,6 +2241,10 @@ pub fn minimize_to_tray(app: tauri::AppHandle) -> Result<serde_json::Value, Stri
 #[tauri::command]
 pub fn restore_window(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
     if let Some(window) = app.get_webview_window("main") {
+        // Минимизированное окно иначе показывалось свёрнутым: show+focus не
+        // поднимают его из таскбара (аудит Б10; трей и single-instance
+        // разворачивают явно — привели restore_window к ним)
+        window.unminimize().ok();
         window.show().map_err(|e| e.to_string())?;
         window.set_focus().map_err(|e| e.to_string())?;
     }
@@ -3431,6 +3529,10 @@ pub async fn download_and_install_patches(
     state: State<'_, AppState>,
     version: Option<String>,
 ) -> Result<serde_json::Value, String> {
+    let _job = match HeavyJobGuard::try_acquire(&state.heavy_job_busy) {
+        Ok(g) => g,
+        Err(e) => return util::fail_message(e),
+    };
     let version = version.unwrap_or_else(|| "v2".to_string());
     // Версия вставляется в URL архива — без проверки ею можно вывести запрос
     // за пределы закреплённого репозитория (см. is_safe_patches_version).
@@ -3886,6 +3988,10 @@ pub async fn install_patch_preset(
     state: State<'_, AppState>,
     url: String,
 ) -> Result<serde_json::Value, String> {
+    let _job = match HeavyJobGuard::try_acquire(&state.heavy_job_busy) {
+        Ok(g) => g,
+        Err(e) => return util::fail_message(e),
+    };
     if util::game_path(&state).is_empty() {
         return util::fail_message("Путь к патчам не установлен. Сначала укажи путь к игре.");
     }
@@ -3931,8 +4037,10 @@ pub async fn install_patch_preset(
     }))
 }
 
-/// Кэш схемы патчей в памяти (Python _patches_schema_cache).
-static PATCHES_SCHEMA_CACHE: std::sync::Mutex<Option<serde_json::Value>> =
+/// Кэш схемы патчей в памяти (Python _patches_schema_cache). Храним пару
+/// «ключ запроса → схема»: вызов с кастомным schema_url не должен
+/// отравлять кэш для дефолтных вызовов без него (аудит Б2).
+static PATCHES_SCHEMA_CACHE: std::sync::Mutex<Option<(String, serde_json::Value)>> =
     std::sync::Mutex::new(None);
 
 /// Схема патчей V2 с GitHub (categories/settings); при ошибке фронт падает
@@ -3943,16 +4051,36 @@ static PATCHES_SCHEMA_CACHE: std::sync::Mutex<Option<serde_json::Value>> =
 /// используются прежние адреса.
 #[tauri::command]
 pub async fn fetch_patches_schema(schema_url: Option<String>) -> Result<serde_json::Value, String> {
+    // Ключ кэша: кастомный URL или «default» — кэш общий, но срабатывает
+    // только для того же варианта запроса
+    let cache_key = schema_url.clone().unwrap_or_default();
     if let Ok(cache) = PATCHES_SCHEMA_CACHE.lock() {
-        if let Some(data) = cache.as_ref() {
-            return Ok(serde_json::json!({"success": true, "data": data, "cached": true}));
+        if let Some((k, data)) = cache.as_ref() {
+            if *k == cache_key {
+                return Ok(serde_json::json!({"success": true, "data": data, "cached": true}));
+            }
         }
     }
     let mut urls: Vec<String> = Vec::new();
     if let Some(url) = schema_url {
         let url = url.trim();
+        // Аудит Б2: URL из plugin.json — это URL вебвью, поэтому та же
+        // SSRF-политика, что у картинок/каталогов (только https префикс —
+        // недостаточно: 127.0.0.1/приватные хосты проходили).
         if url.starts_with("https://") && url.len() <= 2048 {
-            urls.push(url.to_string());
+            if let Err(msg) = check_image_url(url) {
+                log::warn!("fetch_patches_schema: schema_url отклонён ({msg}): {url}");
+            } else if validate_host_resolves_public(&reqwest::Url::parse(url)
+                .map_err(|_| "Недопустимый адрес".to_string())?
+                .host_str()
+                .unwrap_or_default())
+            .await
+            .is_ok()
+            {
+                urls.push(url.to_string());
+            } else {
+                log::warn!("fetch_patches_schema: schema_url отклонён (DNS/хост): {url}");
+            }
         }
     }
     urls.push("https://raw.githubusercontent.com/halfik24/ArzLaunchRepo/main/patches_schema.json".to_string());
@@ -3969,14 +4097,7 @@ pub async fn fetch_patches_schema(schema_url: Option<String>) -> Result<serde_js
             reqwest::header::USER_AGENT,
             reqwest::header::HeaderValue::from_static("Mozilla/5.0"),
         );
-        let resp = match util::http_request(
-            reqwest::Method::GET,
-            url,
-            headers,
-            std::time::Duration::from_secs(10),
-        )
-        .await
-        {
+        let resp = match validated_get(url, headers, std::time::Duration::from_secs(10)).await {
             Ok(r) => r,
             Err(e) => {
                 last_err = e;
@@ -4016,7 +4137,7 @@ pub async fn fetch_patches_schema(schema_url: Option<String>) -> Result<serde_js
         }
         log::info!("fetch_patches_schema: загружена схема с {url}");
         if let Ok(mut cache) = PATCHES_SCHEMA_CACHE.lock() {
-            *cache = Some(parsed.clone());
+            *cache = Some((cache_key.clone(), parsed.clone()));
         }
         return Ok(serde_json::json!({"success": true, "data": parsed}));
     }
@@ -4164,6 +4285,27 @@ struct GameJobGuard<'a>(&'a AppState);
 impl Drop for GameJobGuard<'_> {
     fn drop(&mut self) {
         release_game_job(self.0);
+    }
+}
+
+/// Слот единственной «тяжёлой» установки (патчи / лаунчер / пресет патчей):
+/// общий AtomicBool в AppState, освобождается при выходе из scope, в т.ч.
+/// при панике. Раньше двойной клик «Установить» вёл к параллельной
+/// распаковке двух zip в один dll (аудит Б9).
+struct HeavyJobGuard<'a>(&'a std::sync::atomic::AtomicBool);
+
+impl<'a> HeavyJobGuard<'a> {
+    fn try_acquire(flag: &'a std::sync::atomic::AtomicBool) -> Result<Self, String> {
+        use std::sync::atomic::Ordering;
+        flag.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+            .map(|_| Self(flag))
+            .map_err(|_| "Установка уже выполняется — подожди завершения".to_string())
+    }
+}
+
+impl Drop for HeavyJobGuard<'_> {
+    fn drop(&mut self) {
+        self.0.store(false, std::sync::atomic::Ordering::SeqCst);
     }
 }
 
@@ -4992,6 +5134,10 @@ pub async fn start_launcher_install(
     version: Option<String>,
     install_type: Option<String>,
 ) -> Result<serde_json::Value, String> {
+    let _job = match HeavyJobGuard::try_acquire(&state.heavy_job_busy) {
+        Ok(g) => g,
+        Err(e) => return util::fail_message(e),
+    };
     let version = version.unwrap_or_else(|| "v8".to_string());
     if version != "v8" {
         return util::fail_message(format!("Поддерживается только версия v8 (получена: {version})"));
@@ -5364,6 +5510,10 @@ pub async fn install_moonloader_script(
         Ok(n) => n,
         Err(e) => return util::fail_message(e),
     };
+    // Только скрипты MoonLoader: каталог/D&D не должны уметь положить exe
+    if let Err(e) = check_file_extension(&safe_name, &[".lua", ".luac"]) {
+        return util::fail_message(e);
+    }
     // Скачиваем скрипт
     let bytes = match fetch_catalog_url(&url, MAX_SCRIPT_BYTES).await {
         Ok(b) => b,
@@ -5375,6 +5525,26 @@ pub async fn install_moonloader_script(
     }
     log::info!("Скрипт установлен: {}", dest.display());
     Ok(serde_json::json!({"success": true, "message": format!("Установлен: {safe_name}")}))
+}
+
+/// Whitelist расширений для D&D/каталожных установок: safe_script_filename
+/// не ограничивает расширение, и вебвью иначе мог положить evil.exe в
+/// moonloader (автозагрузка .asi) или dll в корень игры (аудит Б8).
+/// `allowed` — с точкой, регистронезависимо.
+fn check_file_extension(name: &str, allowed: &[&str]) -> Result<(), String> {
+    let dot = match name.rfind('.') {
+        Some(d) => d,
+        None => return Err("Файл без расширения".to_string()),
+    };
+    let ext = name[dot..].to_ascii_lowercase();
+    if allowed.iter().any(|a| a.eq_ignore_ascii_case(&ext)) {
+        Ok(())
+    } else {
+        Err(format!(
+            "Недопустимое расширение «{ext}»: ожидалось {}",
+            allowed.join(", ")
+        ))
+    }
 }
 
 /// Принимает .lua файл (base64 из drag&drop) и кладёт его в папку moonloader.
@@ -5392,6 +5562,9 @@ pub fn install_lua_file(
         Ok(n) => n,
         Err(e) => return util::fail_message(e),
     };
+    if let Err(e) = check_file_extension(&name, &[".lua", ".luac"]) {
+        return util::fail_message(e);
+    }
     use base64::Engine;
     let content = match base64::engine::general_purpose::STANDARD.decode(content_b64.trim()) {
         Ok(b) => b,
@@ -5909,6 +6082,11 @@ pub async fn install_other_file(
         Ok(n) => n,
         Err(e) => return util::fail_message(e),
     };
+    // «Другое» — нативные библиотеки (DxVK и пр.): только dll/asi/ini,
+    // никаких exe (аудит Б8)
+    if let Err(e) = check_file_extension(&name, &[".dll", ".asi", ".ini"]) {
+        return util::fail_message(e);
+    }
     let bytes = match fetch_catalog_url(&url, MAX_OTHER_BYTES).await {
         Ok(b) => b,
         Err(e) => return util::fail_message(format!("Ошибка загрузки: {e}")),

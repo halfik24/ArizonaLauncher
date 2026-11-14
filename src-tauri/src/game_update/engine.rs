@@ -22,7 +22,17 @@ fn commit_download(staged: &Path, dest: &Path) -> anyhow::Result<()> {
         dest.file_name().and_then(|n| n.to_str()).unwrap_or("download")
     ));
     if backup.exists() {
-        fs::remove_file(&backup).with_context(|| format!("удаление старой копии {}", backup.display()))?;
+        // На месте файла из манифеста мог оказаться КАТАЛОГ (кривая
+        // распаковка и пр.): remove_file над ним падает — раньше мусорный
+        // <file>.previous-download оставался навсегда и валил следующие
+        // прогоны (аудит Б3)
+        if backup.is_dir() {
+            fs::remove_dir_all(&backup)
+                .with_context(|| format!("удаление старой копии-каталога {}", backup.display()))?;
+        } else {
+            fs::remove_file(&backup)
+                .with_context(|| format!("удаление старой копии {}", backup.display()))?;
+        }
     }
     let had_destination = dest.exists();
     if had_destination {
@@ -35,7 +45,13 @@ fn commit_download(staged: &Path, dest: &Path) -> anyhow::Result<()> {
         return Err(error).with_context(|| format!("переименование проверенной загрузки в {}", dest.display()));
     }
     if had_destination {
-        fs::remove_file(&backup).ok();
+        // См. выше: на месте файла мог быть каталог — remove_file молча
+        // падал и оставлял мусор
+        if backup.is_dir() {
+            fs::remove_dir_all(&backup).ok();
+        } else {
+            fs::remove_file(&backup).ok();
+        }
     }
     Ok(())
 }
@@ -153,17 +169,24 @@ pub async fn build_plan(
     if cancel.load(Ordering::Relaxed) {
         bail!("отменено пользователем");
     }
-    let plan = verify::plan(&flat, &job.target, repair, &cache, Some(&|bytes_done, bytes_total, current| {
-        // Прогресс стадии проверки: без скорости, чтобы фронту было ясно
-        on_event(Event::Progress {
-            files_done: 0,
-            files_total: 0,
-            bytes_done,
-            bytes_total,
-            current: format!("проверка: {current}"),
-            speed: 0,
-        });
-    }), Some(cancel), Some(&log));
+    // verify::plan внутри держит thread::scope с md5-воркерами и БЛОКИРУЕТ
+    // вызвавший поток на минуты. build_plan зовётся из async-задач
+    // (check_update_api, run) — без block_in_place замораживался воркер
+    // tokio-рантайма (аудит Б5); block_in_place требует multi-thread
+    // рантайма — у Tauri он такой.
+    let plan = tokio::task::block_in_place(|| {
+        verify::plan(&flat, &job.target, repair, &cache, Some(&|bytes_done, bytes_total, current| {
+            // Прогресс стадии проверки: без скорости, чтобы фронту было ясно
+            on_event(Event::Progress {
+                files_done: 0,
+                files_total: 0,
+                bytes_done,
+                bytes_total,
+                current: format!("проверка: {current}"),
+                speed: 0,
+            });
+        }), Some(cancel), Some(&log))
+    });
     log(format!(
         "Проверено: в порядке {}, md5 пересчитано {}",
         plan.ok, plan.hashed
@@ -364,8 +387,12 @@ pub async fn run(
                             };
                             // Отмена сразу после md5 скачанного файла:
                             // хэш считается целиком, без этой проверки флаг
-                            // замечался бы только на следующем файле
+                            // замечался бы только на следующем файле.
+                            // Staged-файл удаляем — иначе осиротевший
+                            // .verified-download (до ГБ) остаётся в папке
+                            // игры навсегда (аудит Б6)
                             if cancel.load(Ordering::Relaxed) {
+                                fs::remove_file(&staged_path).ok();
                                 cancelled = true;
                                 break 'act;
                             }

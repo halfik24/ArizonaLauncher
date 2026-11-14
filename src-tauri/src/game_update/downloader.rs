@@ -110,7 +110,9 @@ fn part_path(dest: &Path) -> PathBuf {
 
 /// Ждать, пока пауза снята. Проверяет и cancel: во время паузы отмена тоже
 /// работает (иначе кнопка «Отменить» зависнет). true — вышли из-за отмены.
-fn wait_while_paused(
+/// Асинхронная версия (как engine::wait_while_paused): std::thread::sleep
+/// в async-задаче блокировал воркер tokio на всё время паузы (аудит Б5).
+async fn wait_while_paused(
     pause: &AtomicBool,
     cancel: &AtomicBool,
     on_tick: &mut (dyn FnMut() + Send),
@@ -120,7 +122,7 @@ fn wait_while_paused(
             return true;
         }
         on_tick();
-        std::thread::sleep(Duration::from_millis(120));
+        tokio::time::sleep(Duration::from_millis(120)).await;
     }
     cancel.load(Ordering::Relaxed)
 }
@@ -225,7 +227,7 @@ pub async fn download_to(
         }
         // Пауза: стоим на месте, пока фронт не снимет. .part не трогаем —
         // после снятия качаем дальше с того же байта.
-        if wait_while_paused(pause, cancel, &mut || {}) {
+        if wait_while_paused(pause, cancel, &mut || {}).await {
             drop(f);
             bail!("отменено");
         }
@@ -264,7 +266,7 @@ pub async fn download_to(
                 if pause.load(Ordering::Relaxed) {
                     // На паузе «дедлайн» токенов замораживаем: базу не двигаем,
                     // чтобы после снятия не пытаться «догнать» время паузы.
-                    if wait_while_paused(pause, cancel, &mut || {}) {
+                    if wait_while_paused(pause, cancel, &mut || {}).await {
                         drop(f);
                         bail!("отменено");
                     }

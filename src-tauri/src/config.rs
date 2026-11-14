@@ -266,6 +266,9 @@ pub struct AppState {
     /// select_game_path без игры (код EMPTY_FOLDER): install_game_to_folder
     /// принимает только её — consent живёт на нативной стороне, а не в вебвью.
     pub last_picked_empty_folder: Mutex<Option<PathBuf>>,
+    /// Слот единственной «тяжёлой» установки (патчи/лаунчер/пресет): двойной
+    /// клик иначе вёл к параллельной распаковке в один dll (аудит Б9).
+    pub heavy_job_busy: std::sync::atomic::AtomicBool,
 }
 
 impl AppState {
@@ -296,6 +299,7 @@ impl AppState {
             game_update_cancel: Mutex::new(None),
             game_update_pause: Mutex::new(None),
             last_picked_empty_folder: Mutex::new(None),
+            heavy_job_busy: std::sync::atomic::AtomicBool::new(false),
         };
         if strip_bg {
             // Сразу переписываем файл — иначе 2.8 МБ едут на каждое чтение
