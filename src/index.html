@@ -5722,10 +5722,10 @@
             align-items: center;
             justify-content: center;
             cursor: pointer;
-            z-index: 9999;
-            /* translate — уввод за край открытой панели новостей (_newsDodgeApply) */
-            transition: background 0.18s, border-color 0.18s, color 0.18s, transform 0.15s,
-                        translate 0.45s cubic-bezier(0.4, 0, 0.2, 1);
+            /* Ниже панели новостей (50): открытые новости просто перекрывают
+               кнопку, а не гоняют её по экрану. Выше интерфейса (3-5). */
+            z-index: 45;
+            transition: background 0.18s, border-color 0.18s, color 0.18s, transform 0.15s;
         }
         #feedbackFab svg { width: 18px; height: 18px; }
         #feedbackFab:hover {
@@ -5745,12 +5745,10 @@
             border: 1px solid rgba(255,255,255,0.1);
             border-radius: 14px;
             padding: 16px;
-            z-index: 9998;
+            z-index: 45; /* как у feedbackFab — под панелью новостей (50) */
             box-shadow: 0 12px 32px rgba(0,0,0,0.45);
             display: none;
             animation: flFeatIn 0.25s cubic-bezier(0.34, 1.2, 0.64, 1);
-            /* translate — общий уввод с feedbackFab при открытых новостях */
-            transition: translate 0.45s cubic-bezier(0.4, 0, 0.2, 1);
             user-select: text;
         }
         .feedback-popup.open { display: block; }
@@ -6945,12 +6943,11 @@
             top: 56px;
             left: 50%;
             transform: translateX(-50%);
-            z-index: 500;
+            /* Ниже панели новостей (50): открытые новости перекрывают виджет */
+            z-index: 45;
             display: flex;
             flex-direction: column;
             align-items: center;
-            /* translate — уввод за край открытой панели новостей */
-            transition: translate 0.45s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
         /* Компактная кнопка профилей: только иконка, без подписи.
@@ -7308,8 +7305,8 @@
            Включаются классами winter-* на <html> (ставит скрипт в <head> из
            localStorage airSnow/airVignette/airFrost; всё по умолчанию выкл —
            декабрь не наступил). Оверлеи pointer-events:none, z=9000/9001:
-           под тайтлбаром (100000), тостами (99999) и feedbackFab (9999),
-           но над всеми панелями/модалками (≤1500). */
+           под тайтлбаром (100000) и тостами (99999), но над всеми
+           панелями/модалками и угловыми кнопками (≤1500). */
         #winterSnow {
             display: none;
             position: fixed;
@@ -8249,16 +8246,6 @@
         <div class="drag-sub" id="dragSub">Файл будет установлен автоматически</div>
     </div>
 
-    <!-- ── Profiles hover menu ── -->
-    <div id="profilesHoverWidget">
-        <div class="ph-trigger" id="phTrigger">
-            <span><i data-lucide="user"></i></span>
-            <span class="ph-trigger-label">Профили</span>
-            <div class="ph-active-dot" id="phActiveDot"></div>
-        </div>
-        <div class="ph-dropdown hide" id="phDropdown"></div>
-    </div>
-
     <!-- Зимний снег: canvas на весь экран, включается классом winter-snow
          на <html> (вкладка Лаунчер → «Зимние эффекты»), движок setWinterFx внизу -->
     <canvas id="winterSnow" aria-hidden="true"></canvas>
@@ -8274,6 +8261,39 @@
 
     <div id="container">
         <div class="interface">
+            <!-- ── Профили и обратная связь: внутри .interface (z=3) — панель
+                 новостей (z=50) должна уметь их перекрывать. Снаружи, в body,
+                 они жили бы над ней всегда (свой stacking-контекст). ── -->
+            <div id="profilesHoverWidget">
+                <div class="ph-trigger" id="phTrigger">
+                    <span><i data-lucide="user"></i></span>
+                    <span class="ph-trigger-label">Профили</span>
+                    <div class="ph-active-dot" id="phActiveDot"></div>
+                </div>
+                <div class="ph-dropdown hide" id="phDropdown"></div>
+            </div>
+
+            <!-- Обратная связь: кнопка в углу + попап с описанием формы -->
+            <button id="feedbackFab" title="Обратная связь" onclick="toggleFeedbackPopup()">
+                <i data-lucide="message-circle-question"></i>
+            </button>
+            <div id="feedbackPopup" class="feedback-popup">
+                <div class="feedback-popup-title">
+                    <i data-lucide="message-circle-question"></i> Обратная связь
+                </div>
+                <div class="feedback-popup-text">
+                    Форма обращения к разработчику. Здесь можно сообщить о проблеме
+                    в лаунчере или предложить идею — разберёмся и постараемся помочь.
+                    Откроется в вашем браузере, заполнение займёт пару минут.
+                </div>
+                <div class="feedback-popup-btns">
+                    <button class="feedback-popup-open" onclick="openFeedbackForm()">
+                        <i data-lucide="external-link"></i> Открыть форму
+                    </button>
+                    <button class="feedback-popup-close" onclick="toggleFeedbackPopup()">Закрыть</button>
+                </div>
+            </div>
+
             <div class="left-panel">
                 <div class="header">
                     <div class="title">Arizona RP</div>
@@ -9979,27 +9999,6 @@
         <!-- Контейнер уведомлений -->
         <div id="notificationContainer" aria-live="polite" role="status"></div>
 
-        <!-- Обратная связь: кнопка в углу + попап с описанием формы -->
-        <button id="feedbackFab" title="Обратная связь" onclick="toggleFeedbackPopup()">
-            <i data-lucide="message-circle-question"></i>
-        </button>
-        <div id="feedbackPopup" class="feedback-popup">
-            <div class="feedback-popup-title">
-                <i data-lucide="message-circle-question"></i> Обратная связь
-            </div>
-            <div class="feedback-popup-text">
-                Форма обращения к разработчику. Здесь можно сообщить о проблеме
-                в лаунчере или предложить идею — разберёмся и постараемся помочь.
-                Откроется в вашем браузере, заполнение займёт пару минут.
-            </div>
-            <div class="feedback-popup-btns">
-                <button class="feedback-popup-open" onclick="openFeedbackForm()">
-                    <i data-lucide="external-link"></i> Открыть форму
-                </button>
-                <button class="feedback-popup-close" onclick="toggleFeedbackPopup()">Закрыть</button>
-            </div>
-        </div>
-
     </div>
 
     <script>
@@ -10410,7 +10409,6 @@
                 popup.classList.remove('closing');
                 popup.classList.add('open');
                 if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
-                _newsDodgeApply(); // попап уходит за край открытой панели новостей
             }
         }
 
@@ -10801,51 +10799,6 @@
                 _markAllNewsRead();
             }
         }
-
-        // ── Кнопки углов не должны висеть над панелью новостей ──
-        // Открытая панель занимает полосу у края (ширина 360px, top/bottom 20px),
-        // подмигивание — 218px. feedbackFab, попап обратной связи и виджет
-        // профилей уезжают за край панели (зазор 16px) с той же анимацией 0.45s
-        // и возвращаются при закрытии. Панель может стоять у любого края
-        // (news-left — когда меню переехало вправо), сторона учитывается.
-        function _newsDodgeApply() {
-            const panel = document.querySelector('.right-panel');
-            if (!panel) return;
-            const open = panel.classList.contains('open') && !panel.classList.contains('news-away');
-            const peek = panel.classList.contains('peek-anim');
-            const strip = open ? panel.offsetWidth : (peek ? 218 : 0);
-            const leftSide = panel.classList.contains('news-left');
-            const dodge = (el) => {
-                if (!el) return;
-                const r = el.getBoundingClientRect();
-                if (!strip || r.width === 0 || r.height === 0 ||
-                    r.bottom <= 20 || r.top >= window.innerHeight - 20) {
-                    if (el.style.translate) el.style.translate = '';
-                    return;
-                }
-                let need = 0;
-                if (!leftSide && r.right > window.innerWidth - strip) {
-                    need = -(r.right - (window.innerWidth - strip) + 16);
-                } else if (leftSide && r.left < strip) {
-                    need = (strip + 16) - r.left;
-                }
-                el.style.translate = need ? need + 'px 0' : '';
-            };
-            dodge(document.getElementById('feedbackFab'));
-            dodge(document.getElementById('feedbackPopup'));
-            dodge(document.getElementById('profilesHoverWidget'));
-        }
-        // Классы панели меняются в разных местах (toggleNewsPanel, подмигивание,
-        // настройки, смена стороны) — наблюдатель надёжнее точечных вызовов
-        (() => {
-            const panelEl = document.querySelector('.right-panel');
-            if (panelEl) {
-                new MutationObserver(_newsDodgeApply)
-                    .observe(panelEl, { attributes: true, attributeFilter: ['class'] });
-            }
-            window.addEventListener('resize', _newsDodgeApply);
-            _newsDodgeApply();
-        })();
 
         /** Запустить 3 «подмигивания» панели новостей */
         function startNewsPeek(times = 3, pauseMs = 1800) {
