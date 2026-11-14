@@ -3104,6 +3104,87 @@
             pointer-events: none !important;
             opacity: 0.35;
         }
+        /* Ручка перетаскивания тулбара редактора */
+        .layout-float-grip {
+            display: flex;
+            align-items: center;
+            cursor: grab;
+            color: rgba(255, 255, 255, 0.35);
+            padding: 0 2px;
+            margin-right: 2px;
+            touch-action: none;
+        }
+        .layout-float-grip svg { width: 14px; height: 14px; }
+        .layout-float-grip:hover { color: rgba(255, 255, 255, 0.7); }
+        .layout-float-grip.dragging { cursor: grabbing; color: rgba(255, 255, 255, 0.9); }
+        /* Скрытый объект раскладки: вне редактора его нет, в редакторе —
+           призрак, который можно вернуть ПКМ → «Показать» */
+        body:not(.layout-edit-mode) .layout-hidden { display: none !important; }
+        .layout-edit-mode .layout-hidden {
+            opacity: 0.35;
+            outline: 1px dashed rgba(255, 255, 255, 0.25);
+            outline-offset: -1px;
+        }
+        /* Контекстное меню редактора (ПКМ по объекту раскладки) */
+        .layout-ctx {
+            position: fixed;
+            z-index: 10001;
+            min-width: 200px;
+            padding: 5px;
+            background: rgba(var(--surface-rgb), 0.9);
+            backdrop-filter: blur(24px) saturate(1.2);
+            -webkit-backdrop-filter: blur(24px) saturate(1.2);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+        }
+        .layout-ctx-title {
+            font-family: 'Montserrat Alternates', sans-serif;
+            font-size: 10px;
+            letter-spacing: 0.6px;
+            color: rgba(255, 255, 255, 0.4);
+            padding: 4px 10px 6px;
+        }
+        .layout-ctx-item {
+            display: block;
+            width: 100%;
+            text-align: left;
+            background: none;
+            border: none;
+            border-radius: 7px;
+            color: rgba(255, 255, 255, 0.82);
+            font-family: 'Montserrat Alternates', sans-serif;
+            font-size: 12px;
+            padding: 7px 10px;
+            cursor: pointer;
+        }
+        .layout-ctx-item:hover {
+            background: rgba(var(--accent-rgb), 0.16);
+            color: rgba(255, 255, 255, 0.95);
+        }
+        /* Кнопка возврата скрытого меню — иначе лаунчер без меню не спасти */
+        .unhide-menu-fab {
+            position: fixed;
+            left: 12px;
+            bottom: 12px;
+            z-index: 9998;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            height: 32px;
+            padding: 0 12px;
+            background: rgba(var(--surface-rgb), 0.8);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            color: rgba(255, 255, 255, 0.7);
+            font-family: 'Montserrat Alternates', sans-serif;
+            font-size: 11px;
+            cursor: pointer;
+        }
+        .unhide-menu-fab:hover { color: rgba(255, 255, 255, 0.95); }
+        .unhide-menu-fab svg { width: 13px; height: 13px; }
         /* Сетка свободного хода: показывается только во время перетаскивания,
            совпадает с точками snap 0/25/50/75/100. */
         #layoutGrid {
@@ -20408,6 +20489,7 @@
 
     <!-- Layout editor floating toolbar -->
     <div class="layout-float-bar" id="layoutFloatBar" style="display:none;">
+        <span class="layout-float-grip" id="layoutFloatGrip" title="Переместить панель"><i data-lucide="grip-vertical"></i></span>
         <span class="layout-float-title">Раскладка</span>
         <div class="layout-float-zones">
             <button class="layout-zone-btn" data-preset="classic" onclick="applyLayoutPreset('classic')">Классика</button>
@@ -20422,6 +20504,15 @@
             <i data-lucide="x" style="width:14px;height:14px;"></i>
         </button>
     </div>
+
+    <!-- Контекстное меню редактора (ПКМ по объекту раскладки) -->
+    <div class="layout-ctx" id="layoutCtxMenu" style="display:none;"></div>
+
+    <!-- Меню скрыто через редактор — единственный вход в настройки,
+         без этой кнопки его не вернуть -->
+    <button class="unhide-menu-fab" id="unhideMenuFab" style="display:none;" onclick="unhideMenu()">
+        <i data-lucide="eye"></i> Показать меню
+    </button>
 
     <script src="lucide.min.js"></script>
     <script>
@@ -20575,11 +20666,13 @@
                 v: LAYOUT_VERSION,
                 menu: {
                     x: _layoutNum(menu.x, base.menu.x),
-                    y: _layoutNum(menu.y, base.menu.y)
+                    y: _layoutNum(menu.y, base.menu.y),
+                    hidden: menu.hidden === true
                 },
                 profiles: {
                     x: _layoutNum(prof.x, base.profiles.x),
-                    y: _layoutNum(prof.y, base.profiles.y)
+                    y: _layoutNum(prof.y, base.profiles.y),
+                    hidden: prof.hidden === true
                 },
                 status: st
                     ? { x: _layoutNum(st.x, statusFallback.x), y: _layoutNum(st.y, statusFallback.y) }
@@ -20653,6 +20746,17 @@
             updateRightPanelPosition(overlaps ? 'right' : 'center');
         }
 
+        /** Видимость скрытых объектов раскладки: вне редактора призраков
+            нет (display:none), в редакторе они приглушены и доступны ПКМ.
+            Заодно держим кнопку возврата скрытого меню. */
+        function _updateUnhideFab(layout) {
+            const fab = document.getElementById('unhideMenuFab');
+            if (!fab) return;
+            const menuHidden = !!(layout && layout.menu && layout.menu.hidden);
+            const editMode = document.body.classList.contains('layout-edit-mode');
+            fab.style.display = (menuHidden && !editMode) ? 'flex' : 'none';
+        }
+
         function _layoutApplyToDom(layout, syncNews) {
             const menu = document.querySelector('.left-panel');
             const prof = document.getElementById('profilesHoverWidget');
@@ -20660,11 +20764,14 @@
             document.body.classList.add('layout-positioned');
             _layoutSetPos(menu, layout.menu);
             _layoutSetPos(prof, layout.profiles);
+            if (menu) menu.classList.toggle('layout-hidden', layout.menu.hidden === true);
+            if (prof) prof.classList.toggle('layout-hidden', layout.profiles.hidden === true);
             if (bar && layout.status) {
                 bar.classList.remove('sb-pos-bottom', 'sb-pos-top');
                 bar.classList.add('sb-free');
                 _layoutSetPos(bar, layout.status);
             }
+            _updateUnhideFab(layout);
             if (syncNews !== false) _layoutSyncNewsSide();
         }
 
@@ -20748,30 +20855,34 @@
                 : 'Раскладка сохранится как общая';
         }
 
+        /** После изменения плотности (пресеты, ПКМ «Компакт») держим
+            экранные координаты левого верхнего угла блоков: процент
+            пересчитывается от новых размеров, визуально блок не сдвигается. */
+        function _layoutKeepCorners() {
+            if (!_layoutDraft) return;
+            const menu = document.querySelector('.left-panel');
+            const profiles = document.getElementById('profilesHoverWidget');
+            const ins = _layoutInsets();
+            [[menu, 'menu'], [profiles, 'profiles']].forEach(([el, key]) => {
+                if (!el || !_layoutDraft[key]) return;
+                const rect = el.getBoundingClientRect();
+                if (!rect.width || !rect.height) return;
+                const freeW = Math.max(1, window.innerWidth - el.offsetWidth - ins.left - ins.right);
+                const freeH = Math.max(1, window.innerHeight - el.offsetHeight - ins.top - ins.bottom);
+                _layoutDraft[key] = {
+                    x: Math.max(0, Math.min(100, (rect.left - ins.left) / freeW * 100)),
+                    y: Math.max(0, Math.min(100, (rect.top - ins.top) / freeH * 100)),
+                    hidden: _layoutDraft[key].hidden === true
+                };
+            });
+        }
+
         function _layoutPresetToDraft(name, applyNow) {
             const preset = LAYOUT_PRESETS[name];
             if (!preset || !_layoutDraft) return;
-            const menu = document.querySelector('.left-panel');
-            const profiles = document.getElementById('profilesHoverWidget');
-            // Позиции сохраняются: после изменения размеров держим экранные
-            // координаты левого верхнего угла обоих блоков.
-            const rects = {
-                menu: menu && menu.getBoundingClientRect(),
-                profiles: profiles && profiles.getBoundingClientRect()
-            };
             setCompactMenu(preset.compactMenu);
             setProfilesCompact(preset.profilesCompact, false);
-            const ins = _layoutInsets();
-            [[menu, rects.menu, 'menu'], [profiles, rects.profiles, 'profiles']]
-                .forEach(([el, rect, key]) => {
-                    if (!el || !rect || !rect.width || !rect.height) return;
-                    const freeW = Math.max(1, window.innerWidth - el.offsetWidth - ins.left - ins.right);
-                    const freeH = Math.max(1, window.innerHeight - el.offsetHeight - ins.top - ins.bottom);
-                    _layoutDraft[key] = {
-                        x: Math.max(0, Math.min(100, (rect.left - ins.left) / freeW * 100)),
-                        y: Math.max(0, Math.min(100, (rect.top - ins.top) / freeH * 100))
-                    };
-                });
+            _layoutKeepCorners();
             if (applyNow) _layoutApplyAnimated(_layoutDraft);
             _layoutRefreshPresetButtons();
             _layoutTargetLabel();
@@ -20813,11 +20924,12 @@
                 document.body.classList.add('layout-edit-mode');
                 const bar = document.getElementById('layoutFloatBar');
                 if (bar) bar.style.display = 'flex';
+                if (typeof _editorBarApplySaved === 'function') _editorBarApplySaved();
                 _layoutApplyToDom(_layoutDraft, true);
                 _layoutRefreshPresetButtons();
                 _layoutTargetLabel();
                 if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
-                showNotification('Двигайте меню, кнопку профилей и статус-строку. Изменения — «Применить».', 'info');
+                showNotification('Двигайте меню, кнопку профилей и статус-строку. ПКМ по объекту — действия. Изменения — «Применить».', 'info');
             }, 330);
         }
 
@@ -20886,6 +20998,8 @@
             document.body.classList.remove('layout-edit-mode', 'layout-dragging');
             const bar = document.getElementById('layoutFloatBar');
             if (bar) bar.style.display = 'none';
+            _layoutCtxClose();
+            _updateUnhideFab(_effectiveLayout());
             _layoutSyncNewsSide();
         }
 
@@ -20900,8 +21014,14 @@
 
         /* ── Перетаскивание ── */
 
+        /** Автопритяжение к краям — глобальный тумблер редактора
+            (ПКМ по объекту → «Автопритяжение»), хранится в localStorage. */
+        function _layoutSnapEnabled() {
+            try { return localStorage.getItem('arp_layoutSnap') !== '0'; } catch (e) { return true; }
+        }
+
         function _layoutSnap(value, freeSize) {
-            if (freeSize <= 0) return value;
+            if (freeSize <= 0 || !_layoutSnapEnabled()) return value;
             const threshold = (LAYOUT_SNAP_PX / freeSize) * 100;
             let best = value;
             let bestDist = threshold + 0.001;
@@ -20998,6 +21118,175 @@
         document.addEventListener('pointermove', _layoutDragMove);
         document.addEventListener('pointerup', _layoutDragEnd);
         document.addEventListener('pointercancel', _layoutDragEnd);
+
+        /* ── Тулбар редактора: перетаскивание за ручку ── */
+        (function () {
+            const KEY = 'arp_editorBarPos';
+            function applySaved() {
+                const bar = document.getElementById('layoutFloatBar');
+                if (!bar) return;
+                let p = null;
+                try { p = JSON.parse(localStorage.getItem(KEY) || 'null'); } catch (e) {}
+                if (!p || typeof p.x !== 'number' || typeof p.y !== 'number') return;
+                const x = Math.max(4, Math.min(window.innerWidth - bar.offsetWidth - 4, p.x));
+                const y = Math.max(4, Math.min(window.innerHeight - bar.offsetHeight - 4, p.y));
+                bar.style.left = x + 'px';
+                bar.style.top = y + 'px';
+                bar.style.right = 'auto';
+                bar.style.bottom = 'auto';
+                bar.style.transform = 'none';
+            }
+            window._editorBarApplySaved = applySaved;
+
+            document.addEventListener('pointerdown', function (e) {
+                if (e.button !== 0) return;
+                const grip = e.target.closest && e.target.closest('#layoutFloatGrip');
+                if (!grip) return;
+                const bar = document.getElementById('layoutFloatBar');
+                if (!bar || bar.style.display === 'none') return;
+                e.preventDefault();
+                e.stopPropagation();
+                const r = bar.getBoundingClientRect();
+                const dx = e.clientX - r.left;
+                const dy = e.clientY - r.top;
+                grip.classList.add('dragging');
+                const move = (ev) => {
+                    const x = Math.max(4, Math.min(window.innerWidth - bar.offsetWidth - 4, ev.clientX - dx));
+                    const y = Math.max(4, Math.min(window.innerHeight - bar.offsetHeight - 4, ev.clientY - dy));
+                    bar.style.left = x + 'px';
+                    bar.style.top = y + 'px';
+                    bar.style.right = 'auto';
+                    bar.style.bottom = 'auto';
+                    bar.style.transform = 'none';
+                };
+                const up = () => {
+                    document.removeEventListener('pointermove', move);
+                    document.removeEventListener('pointerup', up);
+                    grip.classList.remove('dragging');
+                    try {
+                        const r2 = bar.getBoundingClientRect();
+                        localStorage.setItem(KEY, JSON.stringify({ x: r2.left, y: r2.top }));
+                    } catch (err) {}
+                };
+                document.addEventListener('pointermove', move);
+                document.addEventListener('pointerup', up);
+            });
+        })();
+
+        /* ── Контекстное меню (ПКМ по объекту раскладки) ── */
+        const LAYOUT_CTX_NAMES = { menu: 'Меню', profiles: 'Кнопка профилей', status: 'Статус-строка' };
+
+        function _layoutObjCompact(kind) {
+            if (kind === 'menu') return document.documentElement.classList.contains('compact-menu');
+            if (kind === 'profiles') return !!launcherSettings.profiles_compact;
+            return launcherSettings.status_bar_size !== 'lg';
+        }
+
+        function _layoutObjHidden(kind) {
+            if (kind === 'status') return !launcherSettings.status_bar;
+            return !!(_layoutDraft && _layoutDraft[kind] && _layoutDraft[kind].hidden);
+        }
+
+        function _layoutCtxOpen(kind, ev) {
+            const m = document.getElementById('layoutCtxMenu');
+            if (!m || !_layoutDraft) return;
+            const hidden = _layoutObjHidden(kind);
+            const items = [
+                { act: 'hide', label: hidden ? 'Показать' : 'Скрыть' },
+                { act: 'compact', label: 'Компакт — ' + (_layoutObjCompact(kind) ? 'вкл' : 'выкл') },
+                { act: 'classic', label: 'Классика' },
+                { act: 'snap', label: 'Автопритяжение к краям — ' + (_layoutSnapEnabled() ? 'вкл' : 'выкл') }
+            ];
+            m.dataset.kind = kind;
+            m.innerHTML = '<div class="layout-ctx-title">' + LAYOUT_CTX_NAMES[kind] + '</div>' +
+                items.map(it => '<button class="layout-ctx-item" data-act="' + it.act + '">' + it.label + '</button>').join('');
+            m.style.display = 'block';
+            // Позиция у курсора с клампом в окно
+            const x = Math.max(8, Math.min(ev.clientX, window.innerWidth - m.offsetWidth - 8));
+            const y = Math.max(8, Math.min(ev.clientY, window.innerHeight - m.offsetHeight - 8));
+            m.style.left = x + 'px';
+            m.style.top = y + 'px';
+        }
+
+        function _layoutCtxClose() {
+            const m = document.getElementById('layoutCtxMenu');
+            if (m) { m.style.display = 'none'; m.innerHTML = ''; }
+        }
+
+        function _layoutCtxAction(act) {
+            const m = document.getElementById('layoutCtxMenu');
+            const kind = m ? m.dataset.kind : null;
+            if (!kind || !_layoutDraft) { _layoutCtxClose(); return; }
+            const el = kind === 'menu' ? document.querySelector('.left-panel')
+                : (kind === 'status' ? document.getElementById('statusBar')
+                    : document.getElementById('profilesHoverWidget'));
+            if (act === 'hide') {
+                if (kind === 'status') {
+                    toggleStatusBar(); // у строки видимость — существующая настройка
+                } else {
+                    // Только в draft: сохранит «Применить», «Отменить» вернёт
+                    _layoutDraft[kind].hidden = !( _layoutDraft[kind].hidden === true);
+                    if (el) el.classList.toggle('layout-hidden', _layoutDraft[kind].hidden === true);
+                    _updateUnhideFab(_layoutDraft);
+                }
+            } else if (act === 'compact') {
+                if (kind === 'menu') setCompactMenu(!document.documentElement.classList.contains('compact-menu'));
+                else if (kind === 'profiles') setProfilesCompact(!launcherSettings.profiles_compact, false);
+                else setStatusBarSize(launcherSettings.status_bar_size === 'lg' ? 'sm' : 'lg');
+                _layoutKeepCorners();
+                _layoutApplyToDom(_layoutDraft, true);
+                _layoutRefreshPresetButtons();
+            } else if (act === 'classic') {
+                // Классика для одного объекта: дефолтная позиция + некомпакт
+                if (kind === 'menu') { _layoutDraft.menu = { x: 50, y: 50, hidden: false }; setCompactMenu(false); }
+                else if (kind === 'profiles') { _layoutDraft.profiles = { x: 50, y: 0, hidden: false }; setProfilesCompact(false, false); }
+                else { _layoutDraft.status = { x: 50, y: 100 }; setStatusBarSize('lg'); }
+                if (el) el.classList.remove('layout-hidden');
+                _layoutApplyToDom(_layoutDraft, true);
+                _layoutRefreshPresetButtons();
+            } else if (act === 'snap') {
+                try { localStorage.setItem('arp_layoutSnap', _layoutSnapEnabled() ? '0' : '1'); } catch (e) {}
+            }
+            _layoutCtxClose();
+        }
+
+        document.addEventListener('contextmenu', function (e) {
+            if (!document.body.classList.contains('layout-edit-mode') || _layoutDrag) return;
+            let kind = null;
+            if (e.target.closest && e.target.closest('.left-panel')) kind = 'menu';
+            else if (e.target.closest && e.target.closest('#statusBar')) kind = 'status';
+            else if (e.target.closest && e.target.closest('#profilesHoverWidget')) kind = 'profiles';
+            if (!kind) { _layoutCtxClose(); return; }
+            e.preventDefault();
+            e.stopPropagation();
+            _layoutCtxOpen(kind, e);
+        });
+
+        document.addEventListener('click', function (e) {
+            const item = e.target.closest && e.target.closest('.layout-ctx-item');
+            if (item) { _layoutCtxAction(item.dataset.act); return; }
+            const m = document.getElementById('layoutCtxMenu');
+            if (m && m.style.display !== 'none' &&
+                !(e.target.closest && e.target.closest('.layout-ctx'))) {
+                _layoutCtxClose();
+            }
+        }, true);
+
+        /** Меню спрятали через редактор — вернуть (единственный вход в настройки). */
+        function unhideMenu() {
+            const layout = _layoutNormalize(_effectiveLayout());
+            layout.menu.hidden = false;
+            const profile = _activeProfile();
+            if (profile) {
+                profile.layout = layout;
+                _saveProfiles();
+            } else {
+                _layoutGlobal = layout;
+                launcherSettings.layout = _layoutClone(layout);
+            }
+            persistLauncherSettings();
+            _layoutApplyToDom(_effectiveLayout(), true);
+        }
 
         document.addEventListener('keydown', function (e) {
             if (e.key !== 'Escape' || !_layoutEditActive) return;
