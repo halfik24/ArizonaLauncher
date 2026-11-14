@@ -1347,5 +1347,8 @@ right=47 в экране), Ф3 (3 кейса мержа через подмен�
 - `README.md` — публичное описание, скриншоты, установка.
 - `updatenews.txt` — черновик новости для ArzLaunchRepo (не код).
 - `.agent/README.md` — инструменты скриншотов и CDP.
+- `handoff/original-launcher/` — полный разбор оригинального Arizona Games
+  Launcher (Electron, 0.0.144): архитектура, CDN/API, game.json, моды, новости,
+  запуск, данные. Распаковка кода — `.agent/orig-launcher/` (вне git).
 - Внешнее: [ArzLaunchRepo](https://github.com/halfik24/ArzLaunchRepo) (каталоги,
   патчи, новости), CDN `pc.az-ins.com`, релизы проекта.
