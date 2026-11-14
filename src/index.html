@@ -11637,6 +11637,23 @@
                 return;
             }
 
+            // Проверка обновления игры — полный MD5-скан папки (первый раз —
+            // минуты, пока не соберётся кэш хэшей) и без промежуточных событий.
+            // Показываем видимое состояние на язычке, иначе после выбора пути
+            // окно выглядит зависшим.
+            wrap.style.display = 'flex';
+            wrap.classList.remove('pulse');
+            wrap.style.opacity = '1';
+            wrap.style.pointerEvents = 'none';
+            wrap.title = 'Проверяем файлы игры — это может занять пару минут';
+            icon.style.display = '';
+            icon.innerHTML = '<i data-lucide="loader"></i>';
+            label.textContent = 'Проверка игры';
+            label.style.display = '';
+            if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
+            const _spinSvg = icon.querySelector('svg');
+            if (_spinSvg) _spinSvg.style.animation = 'spin 1s linear infinite';
+
             // Лаунчер/preloading не установлены — кнопка «Установить».
             // Ошибка одного запроса не должна пропускать независимую проверку
             // обновления игры и оставлять панель в случайном состоянии.

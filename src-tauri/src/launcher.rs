@@ -5227,8 +5227,11 @@ fn parse_catalog_txt(text: &str) -> Vec<serde_json::Value> {
     blocks
 }
 
-/// Безопасное имя файла — аналог `_safe_basename` из v1:
-/// только basename (без путей/`..`) и whitelist символов.
+/// Безопасное имя файла — basename без путей/`..`. Запрещено только то, что
+/// Windows не позволяет в имени (служебные `< > : " / \ | ? *`, управляющие
+/// символы) плюс зарезервированные имена устройств. Остальное — легально:
+/// реальные скрипты с маркета называются `#ArzMarket[3-57].lua`, и прежний
+/// whitelist (`буквы/цифры/._-()`) их отвергал с «Недопустимые символы».
 fn safe_script_filename(name: &str) -> Result<String, String> {
     let trimmed = name.trim();
     if trimmed.is_empty() {
@@ -5238,11 +5241,25 @@ fn safe_script_filename(name: &str) -> Result<String, String> {
     if cleaned.is_empty() || cleaned == "." || cleaned == ".." {
         return Err(format!("Недопустимое имя файла: {name}"));
     }
-    let ok = cleaned
-        .chars()
-        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_' | ' ' | '(' | ')'));
+    if cleaned.chars().count() > 240 {
+        return Err(format!("Слишком длинное имя файла: {cleaned}"));
+    }
+    let ok = !cleaned.chars().any(|c| {
+        matches!(c, '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*') || c.is_control()
+    });
     if !ok {
         return Err(format!("Недопустимые символы в имени файла: {cleaned}"));
+    }
+    // CON/NUL/COM1... Windows не создаёт даже с расширением — не доводим
+    // до невнятной ошибки fs::write.
+    let stem = cleaned.split('.').next().unwrap_or("").to_ascii_uppercase();
+    if matches!(
+        stem.as_str(),
+        "CON" | "PRN" | "AUX" | "NUL"
+            | "COM1" | "COM2" | "COM3" | "COM4" | "COM5" | "COM6" | "COM7" | "COM8" | "COM9"
+            | "LPT1" | "LPT2" | "LPT3" | "LPT4" | "LPT5" | "LPT6" | "LPT7" | "LPT8" | "LPT9"
+    ) {
+        return Err(format!("Зарезервированное имя Windows: {cleaned}"));
     }
     Ok(cleaned.to_string())
 }
@@ -6330,10 +6347,43 @@ file = two.lua
     }
 
     #[test]
-    fn safe_filename_whitelist_rejects_exotic_chars() {
-        assert!(safe_script_filename("#ArzMarket[3_57].lua").is_err());
-        assert!(safe_script_filename("a&b.lua").is_err());
+    fn safe_filename_allows_market_script_names() {
+        // Реальный кейс с маркета: прежний whitelist отвергал `#[]`
+        assert_eq!(
+            safe_script_filename("#ArzMarket[3-57].lua").unwrap(),
+            "#ArzMarket[3-57].lua"
+        );
+        assert_eq!(safe_script_filename("#ArzMarket[3_57].lua").unwrap(), "#ArzMarket[3_57].lua");
+        assert_eq!(safe_script_filename("a&b.lua").unwrap(), "a&b.lua");
+        assert_eq!(safe_script_filename("скрипт@v2!.lua").unwrap(), "скрипт@v2!.lua");
+    }
+
+    #[test]
+    fn safe_filename_rejects_windows_forbidden_chars() {
+        // Служебные символы Windows и управляющие — по-прежнему запрещены
+        assert!(safe_script_filename("a<b.lua").is_err());
+        assert!(safe_script_filename("a>b.lua").is_err());
+        assert!(safe_script_filename("a:b.lua").is_err());
+        assert!(safe_script_filename("a|b.lua").is_err());
+        assert!(safe_script_filename("a?b.lua").is_err());
+        assert!(safe_script_filename("a*b.lua").is_err());
+        assert!(safe_script_filename("a\"b.lua").is_err());
         assert!(safe_script_filename("lua\ninject.lua").is_err());
+    }
+
+    #[test]
+    fn safe_filename_rejects_reserved_device_names() {
+        for name in ["CON.lua", "nul", "COM1.lua", "lpt4.txt", "Aux"] {
+            assert!(safe_script_filename(name).is_err(), "{name} не отклонён");
+        }
+    }
+
+    #[test]
+    fn safe_filename_rejects_too_long_names() {
+        let long = format!("{}.lua", "a".repeat(241));
+        assert!(safe_script_filename(&long).is_err());
+        let ok = format!("{}.lua", "a".repeat(236));
+        assert!(safe_script_filename(&ok).is_ok());
     }
 }
 
