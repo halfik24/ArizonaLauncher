@@ -17119,7 +17119,11 @@
             if (['bottom', 'top'].indexOf(pos) < 0) return;
             // Положение строки — часть раскладки: кнопки ставят край
             // («внизу»/«вверху» по центру), двигать свободно — редактор.
-            const point = { x: 50, y: pos === 'top' ? 0 : 100 };
+            // Вид (остров/пилюля) сохраняем прежний — раньше он тихо
+            // сбрасывался, и строка «сама меняла вид».
+            const cur = (typeof _layoutGlobal === 'object' && _layoutGlobal && _layoutGlobal.status) ||
+                        (launcherSettings.layout && launcherSettings.layout.status) || {};
+            const point = { x: 50, y: pos === 'top' ? 0 : 100, style: cur.style === 'strip' ? 'strip' : 'pill' };
             const profile = (typeof _activeProfile === 'function' && _layoutReady) ? _activeProfile() : null;
             if (typeof _layoutNormalize === 'function' && _layoutReady) {
                 if (profile) {
@@ -20767,7 +20771,17 @@
 
         function _effectiveLayout() {
             const p = _activeProfile();
-            if (p && p.layout) return _layoutNormalize(p.layout);
+            if (p && p.layout) {
+                const l = _layoutNormalize(p.layout);
+                // Строка — общая история: в раскладке профиля без своего
+                // status берём глобальное положение, иначе при переключении
+                // профиля, сохранённого до появления layout.status, строка
+                // «сама переезжала» на дефолт
+                if (!p.layout.status) {
+                    l.status = _layoutNormalize(_layoutGlobal || launcherSettings.layout).status;
+                }
+                return l;
+            }
             return _layoutNormalize(_layoutGlobal || launcherSettings.layout);
         }
 
@@ -20932,6 +20946,14 @@
 
             if (launcherSettings.layout && typeof launcherSettings.layout === 'object') {
                 _layoutGlobal = _layoutNormalize(launcherSettings.layout);
+                // Раскладки, сохранённые до появления layout.status: доклеиваем
+                // положение строки один раз, иначе _effectiveLayout() до
+                // первого сохранения давал fallback — и строка «сама» вставала
+                // на дефолт вместо того, куда её поставили
+                if (!launcherSettings.layout.status) {
+                    launcherSettings.layout.status = _layoutClone(_layoutGlobal.status);
+                    persistLauncherSettings();
+                }
             } else {
                 let order = launcherSettings.layout_order;
                 if (!Array.isArray(order) && window.pywebview && window.pywebview.api.get_layout_order) {
