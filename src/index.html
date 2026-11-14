@@ -19956,27 +19956,26 @@
         }
 
         // Вызывается из Python при первом запуске
+        /** Превью для карточек шага «Обои» онбординга: бэк отдаёт только имена,
+            без thumb карточки рендерились с url('undefined') и выбор шёл
+            вслепую (аудит Ф1). get_wallpaper_thumb кэшируется бэком —
+            повторное открытие почти бесплатно. */
+        async function _flEnsureWallpaperThumbs() {
+            if (!window.pywebview || !window.pywebview.api.get_wallpaper_thumb) return;
+            await Promise.all(_wallpapers.map(wp => {
+                if (wp.data_url) return Promise.resolve();
+                return window.pywebview.api.get_wallpaper_thumb(wp.filename)
+                    .then(res => { if (res && res.success) wp.data_url = res.data_url; })
+                    .catch(() => {});
+            }));
+        }
+
         window._flStart = async function(data) {
             _flData = data;
             _flStep = 0;
             // Грузим обои заранее чтобы шаг выбора обоев был готов
             if (_wallpapers.length === 0) await loadWallpapers();
-            // Превью для карточек шага «Обои»: бэк отдаёт только имена,
-            // без thumb карточки рендерились с url('undefined') и выбор
-            // шёл вслепую (аудит Ф1). get_wallpaper_thumb кэшируется бэком —
-            // повторное открытие почти бесплатно.
-            try {
-                if (window.pywebview && window.pywebview.api.get_wallpaper_thumb) {
-                    await Promise.all(_wallpapers.map(wp => {
-                        if (wp.data_url) return Promise.resolve();
-                        return window.pywebview.api.get_wallpaper_thumb(wp.filename)
-                            .then(res => { if (res && res.success) wp.data_url = res.data_url; })
-                            .catch(() => {});
-                    }));
-                }
-            } catch (e) {
-                console.warn('onboarding thumbs:', e);
-            }
+            await _flEnsureWallpaperThumbs();
             // Текущий способ запуска — для шага выбора (по умолчанию native)
             try {
                 if (window.pywebview && window.pywebview.api.get_launch_method) {
@@ -20130,6 +20129,13 @@
             // Открывается из «О программе» — сначала убираем панель настроек,
             // чтобы онбординг не оказался под ней
             if (typeof closeSettings === 'function') closeSettings();
+            // Превью обоев — как при первом запуске (аудит Ф1)
+            try {
+                if (_wallpapers.length === 0) await loadWallpapers();
+                await _flEnsureWallpaperThumbs();
+            } catch (e) {
+                console.warn('onboarding thumbs (manual):', e);
+            }
             _flStep = 0;
             try {
                 if (window.pywebview && window.pywebview.api.get_launch_method) {
