@@ -11641,6 +11641,8 @@
             // минуты, пока не соберётся кэш хэшей) и без промежуточных событий.
             // Показываем видимое состояние на язычке, иначе после выбора пути
             // окно выглядит зависшим.
+            const icon = document.getElementById('patchHandleIcon');
+            const label = document.getElementById('updateBtnText');
             wrap.style.display = 'flex';
             wrap.classList.remove('pulse');
             wrap.style.opacity = '1';
