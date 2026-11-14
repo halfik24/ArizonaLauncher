@@ -15,11 +15,11 @@
  *   node tools/set-version.js --build    с номером сборки: 2.0.0-beta.20261020.1435
  *   node tools/set-version.js --print    только показать, ничего не писать
  *
- * Номер сборки — дата и время запуска (YYYYMMDD.HHMM, локальное время).
- * Часы пишутся без ведущего нуля: сборка в 09:35 даёт .935, а не .0935.
- * Это не косметика — Cargo/семвер запрещают ведущий ноль в числовом
- * идентификаторе prerelease, и версия вида 2.0.0-beta.20261020.0935
- * ломает сборку (проверено: "invalid leading zero in pre-release identifier").
+ * Номер сборки — дата и время запуска (YYYYMMDD.<минуты с полуночи>, локальное
+ * время). Минуты с полуночи вместо HHMM: семвер запрещает ведущий ноль в
+ * числовом идентификаторе prerelease — старый HHMM падал на сборках после
+ * полуночи (00:47 давало .047, проверено 15.11: "must be a semver string");
+ * минуты с полуночи (0..1439) ведущих нулей не дают никогда.
  */
 
 'use strict';
@@ -84,11 +84,11 @@ function header() {
   ].join('\n');
 }
 
-/** Сборка номера сборки: YYYYMMDD.HHMM, часы без ведущего нуля. */
+/** Сборка номера сборки: YYYYMMDD.<минуты с полуночи> (без ведущих нулей). */
 function buildNumber(now = new Date()) {
   const p = (n) => String(n).padStart(2, '0');
   const date = `${now.getFullYear()}${p(now.getMonth() + 1)}${p(now.getDate())}`;
-  const time = String(now.getHours()) + p(now.getMinutes());
+  const time = String(now.getHours() * 60 + now.getMinutes());
   return `${date}.${time}`;
 }
 

@@ -269,6 +269,17 @@ pub struct AppState {
     /// Слот единственной «тяжёлой» установки (патчи/лаунчер/пресет): двойной
     /// клик иначе вёл к параллельной распаковке в один dll (аудит Б9).
     pub heavy_job_busy: std::sync::atomic::AtomicBool,
+    /// Кэш авто-CDN (ping.json зеркал, как в оригинальном лаунчере):
+    /// ts + значение "0/1,0/1,0/1". TTL 10 мин — start_game не ждёт пинги.
+    pub cdn_auto_cache: Mutex<Option<CdnAutoCache>>,
+    /// Фоновое обновление новостей Arizona RP уже запущено (swap-guard).
+    pub arizona_news_revalidating: std::sync::atomic::AtomicBool,
+}
+
+/// Кэш авто-CDN: значение + момент проверки.
+pub struct CdnAutoCache {
+    pub ts: std::time::Instant,
+    pub value: String,
 }
 
 impl AppState {
@@ -300,6 +311,8 @@ impl AppState {
             game_update_pause: Mutex::new(None),
             last_picked_empty_folder: Mutex::new(None),
             heavy_job_busy: std::sync::atomic::AtomicBool::new(false),
+            cdn_auto_cache: Mutex::new(None),
+            arizona_news_revalidating: std::sync::atomic::AtomicBool::new(false),
         };
         if strip_bg {
             // Сразу переписываем файл — иначе 2.8 МБ едут на каждое чтение

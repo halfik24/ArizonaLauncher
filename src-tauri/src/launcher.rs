@@ -568,6 +568,134 @@ fn validate_cdn(raw: &str) -> String {
     }
 }
 
+// ==================== Авто-CDN (как в оригинальном лаунчере) ====================
+//
+// Пары зеркал [main, reserve] по трём группам; живость — GET <зеркало>/ping.json
+// с валидацией hash (handoff/original-launcher/02 §«Пинг зеркал»). Индексы уходят
+// в игру флагом `-cdn i,i,i`: 0 = main, 1 = reserve.
+
+const PING_HASH: &str = "5aa4731d5d84e09e2f7e7141e560104f";
+const CDN_AUTO_GROUPS: [&[&str]; 3] = [
+    // [контент]: main, reserve
+    &["https://cdn.azresources.cloud", "https://resources.azgames-cdn.ru"],
+    // [звук]
+    &["https://cdn.azsounds.net", "https://azgamesound-cdn.ru"],
+    // [серверное API]
+    &["https://server-api.arizona.games", "https://server-api.azgames-cdn.ru"],
+];
+const CDN_AUTO_TTL: std::time::Duration = std::time::Duration::from_secs(600); // 10 мин
+
+/// Живость зеркала: ping.json отвечает 200 и содержит наш hash.
+/// В ответе ~220 КБ болтовни (plug_text) — читаем целиком, лимит по таймауту.
+async fn ping_mirror(base: &str) -> bool {
+    let url = format!("{}/ping.json", base.trim_end_matches('/'));
+    let mut headers = reqwest::header::HeaderMap::new();
+    headers.insert(
+        reqwest::header::USER_AGENT,
+        reqwest::header::HeaderValue::from_static("ArizonaLauncher/2.0"),
+    );
+    let resp = match util::http_request(
+        reqwest::Method::GET,
+        &url,
+        headers,
+        std::time::Duration::from_secs(5),
+    )
+    .await
+    {
+        Ok(r) => r,
+        Err(_) => return false,
+    };
+    if resp.status() != reqwest::StatusCode::OK {
+        return false;
+    }
+    match resp.bytes().await {
+        Ok(bytes) => serde_json::from_slice::<serde_json::Value>(&bytes)
+            .ok()
+            .and_then(|v| {
+                v.get("hash")
+                    .and_then(|h| h.as_str())
+                    .map(|h| h == PING_HASH)
+            })
+            .unwrap_or(false),
+        Err(_) => false,
+    }
+}
+
+/// Выбор индекса группы: main жив → "0", иначе reserve жив → "1",
+/// иначе "0" (фоллбэк оригинала —main, даже если пинг не прошёл).
+fn pick_cdn_index(main_alive: bool, reserve_alive: bool) -> &'static str {
+    if main_alive {
+        "0"
+    } else if reserve_alive {
+        "1"
+    } else {
+        "0"
+    }
+}
+
+/// Актуальное значение авто-CDN: кэш 10 мин, иначе пингуем все 6 зеркал
+/// параллельно (худший случай ~5 с). Кэш в AppState.cdn_auto_cache.
+async fn resolve_cdn_auto(state: &State<'_, AppState>) -> String {
+    if let Ok(cache) = state.cdn_auto_cache.lock() {
+        if let Some(c) = cache.as_ref() {
+            if c.ts.elapsed() < CDN_AUTO_TTL {
+                return c.value.clone();
+            }
+        }
+    }
+    let g = CDN_AUTO_GROUPS;
+    let (a0, a1, b0, b1, c0, c1) = tokio::join!(
+        ping_mirror(g[0][0]),
+        ping_mirror(g[0][1]),
+        ping_mirror(g[1][0]),
+        ping_mirror(g[1][1]),
+        ping_mirror(g[2][0]),
+        ping_mirror(g[2][1]),
+    );
+    let value = format!(
+        "{},{},{}",
+        pick_cdn_index(a0, a1),
+        pick_cdn_index(b0, b1),
+        pick_cdn_index(c0, c1)
+    );
+    log::info!(
+        "resolve_cdn_auto: {} (cdn main/reserve: {}/{} sound: {}/{} api: {}/{})",
+        value,
+        a0, a1, b0, b1, c0, c1
+    );
+    if let Ok(mut cache) = state.cdn_auto_cache.lock() {
+        *cache = Some(crate::config::CdnAutoCache {
+            ts: std::time::Instant::now(),
+            value: value.clone(),
+        });
+    }
+    value
+}
+
+/// Включён ли авто-CDN в настройках (launcher_settings.extra.cdn_auto).
+fn cdn_auto_enabled(state: &State<'_, AppState>) -> bool {
+    state
+        .config
+        .lock()
+        .ok()
+        .and_then(|c| {
+            c.launcher_settings
+                .extra
+                .get("cdn_auto")
+                .and_then(|v| v.as_bool())
+        })
+        .unwrap_or(false)
+}
+
+/// Ручная проверка зеркал из настроек (кнопка «Проверить» рядом с «Авто»).
+#[tauri::command]
+pub async fn get_cdn_auto(
+    state: State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    let cdn = resolve_cdn_auto(&state).await;
+    Ok(serde_json::json!({"success": true, "cdn": cdn}))
+}
+
 /// Паритет с оригиналом (03 §1, 04 §1): при запуске игры пишем ник и память
 /// в HKCU\Software\SAMP — тот же ключ, который читает сам клиент SA-MP.
 /// `cdn` не пишем: его DWORD-семантика в разборе лаунчера «не проверена».
@@ -689,6 +817,8 @@ mod config_deadlock_tests {
             game_update_pause: std::sync::Mutex::new(None),
             last_picked_empty_folder: std::sync::Mutex::new(None),
             heavy_job_busy: std::sync::atomic::AtomicBool::new(false),
+            cdn_auto_cache: std::sync::Mutex::new(None),
+            arizona_news_revalidating: std::sync::atomic::AtomicBool::new(false),
         });
 
         // Если дедлок — вызов никогда не вернётся; гоняем в отдельном потоке
@@ -835,10 +965,15 @@ pub async fn start_game(
         Some(p) => serde_json::from_value::<crate::config::LaunchParams>(p).ok(),
         None => None,
     };
-    let params = match params {
+    let mut params = match params {
         Some(p) => p,
         None => util::lock_config(&state)?.launch_params.clone(),
     };
+
+    // Авто-CDN: зеркала пингуются сами (кэш 10 мин), пользователь не выбирает
+    if cdn_auto_enabled(&state) {
+        params.cdn = resolve_cdn_auto(&state).await;
+    }
 
     let launcher_ver = detect_launcher_version(&state);
     // При нативном запуске поддержка только v8 → все доп. флаги без проверок
@@ -1587,6 +1722,144 @@ pub fn save_read_news_ids(state: State<'_, AppState>, ids: Vec<String>) -> Resul
     }
     state.save_config()?;
     util::ok_true()
+}
+
+// ==================== Новости Arizona RP (оригинальный API) ====================
+//
+// Источник — как в оригинальном лаунчере (handoff/original-launcher/04):
+// GET <api>/launcher/projects → массив проектов, берём gameId="arizona",
+// news: [{title, imageUrl, url}]. Файлы картинок отдаём как есть — фронт
+// грузит их через fetch_image_as_base64 (no_proxy). Кэш: диск cache/arizona_news.json,
+// ревалидация не чаще 30 мин (новости меняются редко).
+
+const ARIZONA_NEWS_TTL_MS: u128 = 30 * 60 * 1000;
+const ARIZONA_NEWS_URLS: [&str; 2] = [
+    "https://api.arizona-five.com/",
+    "https://arz-api-reserve.s-amp.com/",
+];
+
+/// Достать новости проекта arizona из ответа launcher/projects.
+fn parse_arizona_projects(body: &serde_json::Value) -> Option<Vec<serde_json::Value>> {
+    let arr = body.as_array()?;
+    let project = arr
+        .iter()
+        .find(|p| p.get("gameId").and_then(|g| g.as_str()) == Some("arizona"))?;
+    let news = project.get("news")?.as_array()?.clone();
+    let mapped: Vec<serde_json::Value> = news
+        .iter()
+        .filter_map(|n| {
+            let title = n.get("title")?.as_str()?.to_string();
+            let image = n.get("imageUrl").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let url = n.get("url").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            if url.is_empty() {
+                return None;
+            }
+            Some(serde_json::json!({"title": title, "image_url": image, "url": url}))
+        })
+        .collect();
+    if mapped.is_empty() {
+        None
+    } else {
+        Some(mapped)
+    }
+}
+
+/// Сеть: launcher/projects с main → при пустом/битом ответе Reserve.
+async fn fetch_arizona_news_network() -> Option<Vec<serde_json::Value>> {
+    for base in ARIZONA_NEWS_URLS {
+        let url = format!("{base}launcher/projects");
+        let mut headers = reqwest::header::HeaderMap::new();
+        headers.insert(
+            reqwest::header::USER_AGENT,
+            reqwest::header::HeaderValue::from_static("Mozilla/5.0"),
+        );
+        let resp = match util::http_request(
+            reqwest::Method::GET,
+            &url,
+            headers,
+            std::time::Duration::from_secs(20),
+        )
+        .await
+        {
+            Ok(r) => r,
+            Err(_) => continue,
+        };
+        if resp.status() != reqwest::StatusCode::OK {
+            continue;
+        }
+        let bytes = match resp.bytes().await {
+            Ok(b) => b,
+            Err(_) => continue,
+        };
+        let body: serde_json::Value = match serde_json::from_slice(&bytes) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        if let Some(news) = parse_arizona_projects(&body) {
+            return Some(news);
+        }
+    }
+    None
+}
+
+/// Фоновая ревалидация: swap-guard + возраст кэша (не чаще 30 мин).
+fn spawn_arizona_news_revalidate(app: &tauri::AppHandle) {
+    use std::sync::atomic::Ordering;
+    let state = app.state::<AppState>();
+    if state.arizona_news_revalidating.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    if let Some(v) = read_cache_file(&state, "arizona_news.json") {
+        let ts = v.get("ts_ms").and_then(|t| t.as_u64()).unwrap_or(0u64);
+        let age = now_ms().saturating_sub(ts as u128);
+        if age < ARIZONA_NEWS_TTL_MS {
+            state.arizona_news_revalidating.store(false, Ordering::SeqCst);
+            return;
+        }
+    }
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let result = fetch_arizona_news_network().await;
+        let state = app.state::<AppState>();
+        if let Some(news) = result {
+            write_cache_file(
+                &state,
+                "arizona_news.json",
+                &serde_json::json!({"ts_ms": now_ms(), "news": news}),
+            );
+        }
+        state
+            .arizona_news_revalidating
+            .store(false, Ordering::SeqCst);
+    });
+}
+
+/// Новости Arizona RP: диск мгновенно (+ фоновая ревалидация), при пустом
+/// кэше — сеть синхронно.
+#[tauri::command]
+pub async fn get_arizona_news(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    if let Some(v) = read_cache_file(&state, "arizona_news.json") {
+        if let Some(news) = v.get("news").cloned() {
+            spawn_arizona_news_revalidate(&app);
+            return Ok(serde_json::json!({"success": true, "news": news}));
+        }
+    }
+    match fetch_arizona_news_network().await {
+        Some(news) => {
+            write_cache_file(
+                &state,
+                "arizona_news.json",
+                &serde_json::json!({"ts_ms": now_ms(), "news": news}),
+            );
+            Ok(serde_json::json!({"success": true, "news": news}))
+        }
+        None => util::fail_message(
+            "Не удалось загрузить новости Arizona RP (проверьте интернет)".to_string(),
+        ),
+    }
 }
 
 // ==================== Launcher Version ====================
@@ -6874,5 +7147,38 @@ mod patches_version_tests {
         assert!(!is_safe_patches_version("v2:main"));
         assert!(!is_safe_patches_version("v..2"));
         assert!(!is_safe_patches_version(&"v".repeat(17)));
+    }
+}
+
+#[cfg(test)]
+mod auto_cdn_news_tests {
+    use super::*;
+
+    #[test]
+    fn pick_cdn_index_prefers_main_and_falls_back() {
+        assert_eq!(pick_cdn_index(true, true), "0");
+        assert_eq!(pick_cdn_index(true, false), "0");
+        // main мёртв, reserve жив — берём reserve
+        assert_eq!(pick_cdn_index(false, true), "1");
+        // оба мертвы — фоллбэк на main (как в оригинале)
+        assert_eq!(pick_cdn_index(false, false), "0");
+    }
+
+    #[test]
+    fn parse_arizona_projects_extracts_news() {
+        let body = serde_json::json!([
+            {"gameId": "rodina", "news": [{"title": "r", "imageUrl": "i", "url": "u"}]},
+            {"gameId": "arizona", "news": [
+                {"title": "T1", "imageUrl": "img1", "url": "https://arizona-rp.com/posts/6"},
+                {"title": "Без ссылки", "imageUrl": "", "url": ""}
+            ]}
+        ]);
+        let news = parse_arizona_projects(&body).expect("должен найти arizona");
+        assert_eq!(news.len(), 1, "без url записи отбрасываются");
+        assert_eq!(news[0]["title"], "T1");
+        assert_eq!(news[0]["image_url"], "img1");
+        assert_eq!(news[0]["url"], "https://arizona-rp.com/posts/6");
+        let body2 = serde_json::json!([{"gameId": "rodina"}]);
+        assert!(parse_arizona_projects(&body2).is_none());
     }
 }

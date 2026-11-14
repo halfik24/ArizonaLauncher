@@ -1540,6 +1540,19 @@
             background: rgba(255, 255, 255, 0.075);
         }
 
+        /* Новости Arizona RP: карточка с обложкой (изображение через
+           _fetchImageData → data URL; при неудаче обложка скрывается) */
+        .news-item-cover {
+            display: none;
+            height: 110px;
+            border-radius: 10px;
+            margin-bottom: 10px;
+            background-size: cover;
+            background-position: center;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        .news-item-cover.visible { display: block; }
+
         /* ── Появление новостей: каскад карточек при открытии панели и
            переключении вкладок (класс news-reveal ставит JS, перезапуск —
            через remove/reflow/add). backwards — до своего delay карточка
@@ -4340,6 +4353,19 @@
         .cdn-hint b {
             color: rgba(var(--accent2-rgb), 0.65);
             font-weight: 600;
+        }
+
+        /* Авто-CDN: тогл под подсказкой; при включении барабаны глохнут
+           (значение выбирает пинг зеркал на бэке при запуске игры) */
+        .cdn-auto-row {
+            margin-top: 6px;
+            padding: 6px 8px;
+        }
+        .cdn-auto-row .checkbox-label { font-size: 11px; }
+        .cdn-btn-group.cdn-disabled {
+            opacity: 0.35;
+            pointer-events: none;
+            filter: grayscale(0.6);
         }
 
         /* Vulkan incompatibility warning под чекбоксом плитки */
@@ -8891,6 +8917,12 @@
                             <div class="cdn-hint">
                                 <b>0</b> — основной, <b>1</b> — резерв.
                             </div>
+                            <label class="checkbox-item cdn-auto-row" onclick="event.preventDefault(); toggleCdnAuto()">
+                                <input type="checkbox" id="cdnAutoCheck">
+                                <div class="s-toggle"></div>
+                                <div class="checkbox-label">Авто — проверять зеркала при запуске игры</div>
+                            </label>
+                            <div class="cdn-hint" id="cdnAutoHint" style="display:none;"></div>
                         </div>
                     </div>
 
@@ -11270,6 +11302,7 @@
             folderBtn.addEventListener('click', openFolderModal);
             nicknameInput.addEventListener('input', debounce(saveNickname, 500));
             setCdnBtns(document.getElementById('cdnInput')?.value || '0,0,0');
+            syncCdnAutoUI();
             cdnInitReels();
             memInit();
             limitUnitInit(); // единицы лимита скорости (селект рядом с числом)
@@ -11708,8 +11741,68 @@
             } else if (tab === 'arizona') {
                 document.querySelector('.news-tab:nth-child(2)').classList.add('active');
                 document.getElementById('arizonaNews').classList.add('active');
+                // Ленивая загрузка: сетка Arizona RP живёт в отдельном API
+                loadArizonaNews();
             }
             _replayNewsReveal(); // каскад карточек при смене вкладки
+        }
+
+        // ── Новости Arizona RP: api.arizona-five.com/launcher/projects
+        // (как в оригинальном лаунчере, handoff/original-launcher/04).
+        // Бэк отдаёт {title, image_url, url}; картинки — через _fetchImageData. ──
+        let _arizonaNewsLoaded = false;
+        async function loadArizonaNews(force) {
+            const div = document.getElementById('arizonaNews');
+            if (!div) return;
+            if (_arizonaNewsLoaded && !force) { _loadArizonaCovers(); return; }
+            _arizonaNewsLoaded = true;
+            showSkeletonCards(div, 3);
+            if (!window.pywebview || !window.pywebview.api.get_arizona_news) {
+                div.innerHTML = '<div class="news-loading">Доступно в приложении</div>';
+                return;
+            }
+            try {
+                const res = await window.pywebview.api.get_arizona_news();
+                if (!(res && res.success && Array.isArray(res.news) && res.news.length)) {
+                    _arizonaNewsLoaded = false;
+                    showErrorWithRetry(div, (res && res.message) || 'Новости недоступны', () => loadArizonaNews(true));
+                    return;
+                }
+                let html = '';
+                res.news.forEach(n => {
+                    const id = 'az_' + String(n.url || '').replace(/\W/g, '').substring(0, 30);
+                    html += `<div class="news-item news-item-clickable" data-news-id="${escapeHtml(id)}">
+                        <div class="news-item-cover" data-cover="${escapeHtml(n.image_url || '')}"></div>
+                        <div class="news-item-title">${escapeHtml(n.title || 'Arizona RP')}</div>
+                        <div class="news-item-link-hint"><i data-lucide="external-link"></i> Открыть</div>
+                    </div>`;
+                });
+                div.innerHTML = html;
+                if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
+                updateNewsBadge();
+                _loadArizonaCovers();
+                _replayNewsReveal();
+            } catch (e) {
+                console.warn('loadArizonaNews:', e);
+                _arizonaNewsLoaded = false;
+                showErrorWithRetry(div, 'Ошибка загрузки новостей', () => loadArizonaNews(true));
+            }
+        }
+
+        function _loadArizonaCovers() {
+            document.querySelectorAll('#arizonaNews .news-item-cover[data-cover]').forEach(el => {
+                const url = el.dataset.cover;
+                if (!url || el.dataset.coverDone) return;
+                el.dataset.coverDone = '1';
+                _fetchImageData(url).then(src => {
+                    // _fetchImageData при неудаче возвращает исходный URL —
+                    // обложку в таком случае просто не показываем
+                    if (src && src.startsWith('data:')) {
+                        el.style.backgroundImage = `url('${src}')`;
+                        el.classList.add('visible');
+                    }
+                }).catch(() => {});
+            });
         }
 
         // Загрузка сохраненных данных
@@ -15880,6 +15973,7 @@
             profiles_compact: false,
             settings_width: 940,
             settings_full: false,
+            cdn_auto: false,
             layout: null
         };
 
@@ -17832,6 +17926,7 @@
                 document.getElementById('memoryInput').value         = params.memory || 4096;
                 memSync();
                 setCdnBtns(params.cdn || '0,0,0');
+                syncCdnAutoUI();
 
                 document.getElementById('oldWindowCheck').checked       = !!params.old_window;
                 document.getElementById('enableNewGrassCheck').checked  = !!params.enable_new_grass;
@@ -19920,6 +20015,45 @@
             });
             const hidden = document.getElementById('cdnInput');
             if (hidden) hidden.value = val || '0,0,0';
+        }
+
+        // ── Авто-CDN: зеркала пингуются на бэке при каждом запуске игры
+        // (ping.json + hash-валидация, как в оригинальном лаунчере). Ключ
+        // cdn_auto в launcherSettings.extra; при включении барабаны глохнут. ──
+        function syncCdnAutoUI() {
+            const on = launcherSettings.cdn_auto === true;
+            const check = document.getElementById('cdnAutoCheck');
+            if (check) check.checked = on;
+            const group = document.getElementById('cdnBtnGroup');
+            if (group) group.classList.toggle('cdn-disabled', on);
+            const hint = document.getElementById('cdnAutoHint');
+            if (hint) {
+                hint.style.display = on ? '' : 'none';
+                if (on && hint.dataset.cdn) {
+                    hint.textContent = 'Авто: ' + hint.dataset.cdn + ' — зеркала проверены';
+                } else if (on) {
+                    hint.textContent = 'Зеркала будут проверены при следующем запуске игры.';
+                }
+            }
+        }
+
+        async function toggleCdnAuto() {
+            launcherSettings.cdn_auto = !(launcherSettings.cdn_auto === true);
+            syncCdnAutoUI();
+            persistLauncherSettings();
+            if (launcherSettings.cdn_auto === true) {
+                // Сразу прогреваем кэш и показываем, что выбрал пинг
+                try {
+                    const r = await window.pywebview.api.get_cdn_auto();
+                    const hint = document.getElementById('cdnAutoHint');
+                    if (r && r.success && hint) {
+                        hint.dataset.cdn = r.cdn;
+                        hint.textContent = 'Авто: ' + r.cdn + ' — зеркала проверены';
+                    }
+                } catch (e) {
+                    console.warn('get_cdn_auto:', e);
+                }
+            }
         }
 
         // ══════════════════════════════════════════════
