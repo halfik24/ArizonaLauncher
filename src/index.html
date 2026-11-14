@@ -2659,10 +2659,13 @@
         body.frame-custom .settings-panel.full-window { pointer-events: none; }
         body.frame-custom .settings-panel.full-window > * { pointer-events: auto; }
         body.frame-custom .settings-panel.full-window > #settingsBaked { pointer-events: none; }
-        /* Пикер обоев внутри полноэкранной панели не уезжает влево */
+        /* Пикер обоев в полноэкранной настройке: как в оконном режиме —
+           панель сжимается в колонку у левого края (12px), справа остаётся
+           рабочий стол с живым превью обоев. Раньше панель держали 100vw —
+           пикер накрывал всё окно без превью (баг 15.11). */
         .settings-panel.full-window.wp-mode {
-            transform: translate(-50%, -50%);
-            width: 100vw;
+            transform: translate(calc(12px - 50vw), -50%);
+            width: min(430px, 92vw);
         }
 
         /* Настройки уезжают влево и гаснут... */
