@@ -1341,7 +1341,45 @@ right=47 в экране), Ф3 (3 кейса мержа через подмен�
 
 ---
 
-## 27. Ссылки
+## 27. Раунд 15.11.2026 — авто-CDN и новости Arizona RP
+
+Пользователь: «галку авто» к CDN-полю (пользователь не должен тыкать на
+рандум) и заполнить пустующую вкладку «Arizona RP». Коммит `de4ce8a`
+(+ фикс штампа версии).
+
+**Авто-CDN** (по разбору оригинала, handoff/original-launcher/02):
+- `PING_HASH` + 3 группы зеркал [main, reserve]: контент/звук/server-api;
+- `ping_mirror` — GET `<зеркало>/ping.json`, 5с, hash-валидация;
+- `resolve_cdn_auto` — все 6 пингов параллельно (`tokio::join!`), кэш
+  `AppState.cdn_auto_cache` TTL 10 мин (start_game не ждёт пинги);
+- `pick_cdn_index`: main→0, reserve→1, оба мертвы→0 (фоллбэк оригинала);
+- `start_game`: если `launcher_settings.extra.cdn_auto=true` → `params.cdn`
+  = авто-значение перед build_launch_args;
+- команда `get_cdn_auto` (кнопка/прогрев);
+- фронт: тогл `.cdn-auto-row` под CDN-полем, `toggleCdnAuto/syncCdnAutoUI`,
+  при вкл — барабаны `.cdn-disabled` + hint «Авто: 0,0,0».
+
+**Новости Arizona RP**:
+- `get_arizona_news` (SWR: диск cache/arizona_news.json, swap-guard
+  `arizona_news_revalidating`, TTL 30 мин; сеть: launcher/projects main/reserve,
+  парс gameId=arizona → `{title, image_url, url}`);
+- фронт: `loadArizonaNews` лениво при первом открытии вкладки, карточки
+  `.news-item` с обложкой `.news-item-cover` (картинки через `_fetchImageData`,
+  неудача — обложка скрыта), клик → openExternal, newsId → бейдж непрочитанных;
+- CSS `.news-item-cover` + `.cdn-disabled`.
+
+**Попутно — фикс set-version.js**: штамп `YYYYMMDD.HHMM` падал после полуночи
+(00:47 → `.047` — ведущий ноль в prerelease-идентификаторе семвера, «must be a
+semver string»); теперь минуты с полуночи (`.48`), нулей не даёт никогда.
+
+**Пробы**: cargo test 58/58 (+pick_cdn_index, +parse_arizona_projects);
+check-tags/inline-JS OK; CDP на собранном exe: авто-пинг `cdn=0,0,0`, API 4
+карточки («Эпицентр Зла»), тогл блокирует барабаны, вкладка — 4 карточки, 4
+обложки, скриншот .agent/shots/arizona_news.jpg.
+
+---
+
+## 28. Ссылки
 
 - `IDEA.md` — старая карта архитектуры (частично устарела; актуальная — §24).
 - `README.md` — публичное описание, скриншоты, установка.
