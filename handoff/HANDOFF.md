@@ -4,10 +4,10 @@
 что сломано/не доделано. Дублей с `IDEA.md` (карта кода) и `README.md` (публичное
 описание) стараемся не плодить — здесь акцент на **статус и порядок действий**.
 
-> Дата составления: 05.11.2026; обновлено 13.11.2026. HEAD: см. `git log`
-> (ветка `main`, рабочее дерево чистое, пуша нет). Раунды §12–§21 закрыты —
-> прогоны PASS; раунд §22 (13.11: чип «Профиль» + логирование ошибок) закрыт,
-> живой смоук 19/19 PASS.
+> Дата составления: 05.11.2026; обновлено 14.11.2026. HEAD: `ac28c96`
+> (ветка `main`, рабочее дерево чистое, пуша нет). Раунды §12–§22 закрыты —
+> прогоны PASS; раунд §23 (14.11: новости — перекрытие кнопок, анимация
+> появления) закрыт. Актуальная карта кода — §24.
 
 ---
 
@@ -35,9 +35,15 @@
 - Все 11 заглушек из аудита 18.10 реализованы; бридж полный: каждая команда из
   `main.rs` есть в `src/tauri-bridge.js` (`tools/gen-bridge.js` сверяет и
   генерирует таблицу).
-- Бэкенд: **43 теста** (`cargo test` в `src-tauri/`), 0 warnings.
+- Бэкенд: **55 `#[test]`** в 9 файлах (`cargo test` в `src-tauri/` через
+  vcvars64), 0 warnings; последний прогон 53/53 (§22, часть — под cfg).
 - Выпущена бета 1, CI собирает установщик на каждый push в `main` и на теги.
 - Деплой лендинга `site/` на GitHub Pages (`.github/workflows/deploy.yml`).
+
+**14.11.2026:** новости — угловые кнопки перекрываются панелью (fab/profiles
+перенесены в `.interface`, `022fc19`), плавное появление (один peek + каскад
+карточек, `ac28c96`); рукописное приветствие онбординга — эксперименты сняты
+(reset на `ccdb00d`, в коде нет). Карта кода — **§24**.
 
 **Что осталось (подробно — §11):**
 1. Живой UI-прогон после правки CSP — по всем экранам (обои/иконки/новости/каталоги).
@@ -51,7 +57,7 @@
 ## 2. Дерево проекта
 
 ```
-src/                    фронтенд — ОДИН файл index.html (~15 800 строк: CSS + JS)
+src/                    фронтенд — ОДИН файл index.html (21 657 строк: CSS + HTML + JS)
   ├─ tauri-bridge.js    мост: позиционные вызовы pywebview.api.* → tauri invoke()
   │                     с именованными camelCase-аргументами (генерируется
   │                     tools/gen-bridge.js из сигнатур launcher.rs)
@@ -59,10 +65,11 @@ src/                    фронтенд — ОДИН файл index.html (~15 8
   ├─ lucide.min.js      иконки
   └─ fonts/             Montserrat Alternates (woff2)
 src-tauri/src/
-  ├─ main.rs (225)      точка входа: логирование, single-instance, трей, ~95 команд
-  ├─ launcher.rs (5819) ВСЯ бизнес-логика
-  ├─ config.rs (373)    LauncherConfig/LaunchParams/LauncherSettings → config.json
-  ├─ util.rs (269)      lock_config, пути, лог, чтение патчей, версии exe
+  ├─ main.rs (236)      точка входа: логирование, single-instance, трей, 99 команд
+  ├─ launcher.rs (6700) ВСЯ бизнес-логика (все 99 Tauri-команд)
+  ├─ config.rs (407)    LauncherConfig/LaunchParams/LauncherSettings → config.json
+  ├─ util.rs (303)      lock_config, пути, лог, чтение патчей, версии exe
+  ├─ plugin.rs (351)    дескриптор plugin.json (preloading_plugins)
   └─ game_update/       движок установки/обновления/починки игры
       ├─ manifest.rs    game.json: дерево → плоский список (variant future/default)
       ├─ verify.rs      сверка локальных файлов → план (Mkdir/Delete/DateFix/Download)
@@ -287,7 +294,7 @@ patchesVersion?, patchesLastCheck?, patchesUpdateAvailable?, lastLauncherVersion
 
 ---
 
-## 6. Фронтенд (`src/index.html`, ~15 800 строк)
+## 6. Фронтенд (`src/index.html`, 21 657 строк)
 
 Один самодостаточный HTML: стили, разметка, весь JS. Инициализация стартует по
 событию `pywebviewready` (его диспатчит бридж) → `init()`.
@@ -927,9 +934,311 @@ WebView2-рантаймом игнорируется. Для проб порт �
 
 ---
 
-## 23. Ссылки
+## 23. Раунд 14.11.2026 — новости: перекрытие кнопок, анимация появления
 
-- `IDEA.md` — карта архитектуры и подводных камней (часть фактов устарела, см. §9.8).
+**Контекст.** «?» обратной связи и кнопка профилей висели поверх открытой панели
+новостей; появление новых новостей — «топорное» (панель мигала три раза подряд,
+карточки возникали мгновенно).
+
+**1. Кнопки углов vs панель новостей** (`4b1c5e1` → переделано `022fc19`).
+Первый вариант — уввод кнопок за край панели через `_newsDodgeApply` + MutationObserver —
+пользователь попросил проще: «чтоб новости их перекрывали, а не съезжали».
+Корень проблемы: `#feedbackFab`/`#feedbackPopup`/`#profilesHoverWidget` лежали
+в body, а `.right-panel` — внутри `.interface` (z=3, свой stacking-контекст),
+поэтому панель физически не могла подняться выше кнопок при любом z. Решение:
+- fab/popup/profilesHoverWidget перенесены ВНУТРЬ `.interface` (HTML 8288–8319);
+- z: 9999/9998/500 → 45 (панель 50 осталась); настройки/модалки/тосты — выше,
+  как были;
+- hit-тест через CDP: открытая панель перехватывает клики в точках кнопок,
+  закрытая — нет.
+Побочный эффект: во время онбординга «?» скрыта вместе с `.interface`
+(приемлемо; вернуть — вынести fab обратно в body).
+
+**2. Появление новостей** (`ac28c96`). Вместо тройного peek — одно плавное
+(`startNewsPeek` 10830: класс `peek-anim` на 1с через 2.5с после загрузки
+новых; внимание дальше держит пульсирующий бейдж `badgePulse` на язычке) +
+каскад карточек: `.news-tab-content.news-reveal .news-item` — newsItemIn
+(подъём 12px + scale 0.985, 0.38s), задержки nth-child по 40мс до 8 карточек,
+дальше одной волной; перезапуск — `_replayNewsReveal` (10847, remove/reflow/add)
+из `toggleNewsPanel` и `switchNewsTab`. При prefers-reduced-motion каскад off.
+
+**3. Откат приветствия.** Эксперименты с рукописным «Привет» на фоне онбординга
+обе версии не приняты — сняты `git reset --hard ccdb00d` (незакоммиченные).
+В коде НЕТ `#flHello`/`_flHelloPlay`; черновики шрифтов — `.agent/fontgen/`
+(вне git). §22-й раунд на этот reset не влиял.
+
+Проверено: check-tags 754/754, 343/343, 181/181, 6/6, 50/50; inline-JS 3/3;
+CDP-измерения (rect/hit-test до-во время-после), скриншоты `.agent/shots/news_*.jpg`.
+Rust не менялся — cargo test не гоняли. Финальная чистая сборка запущена после
+каждого шага.
+
+---
+
+## 24. Карта кода: где и что работает (ревью 14.11.2026)
+
+> Полный ревью-проход тремя агентами (бэкенд / фронт / тулзы). Актуальная карта
+> кода — ЗДЕСЬ; `IDEA.md` частично устарела (см. §9.8). Якоря строк — на HEAD
+> `ac28c96` (14.11.2026); после правок уточняй grep'ом — номера плавают.
+
+### 24.1 Архитектура одним экраном
+
+- **Rust + Tauri 2 + WebView2**, только Windows 10/11 x64. Фронт — ОДИН файл
+  `src/index.html` (21 657 строк: CSS+HTML+JS), без сборщика
+  (`frontendDist: "../src"`); в релизе вшит в exe → правка фронтa = пересборка.
+- `src/tauri-bridge.js` — ГЕНЕРИРУЕМЫЙ (`tools/gen-bridge.js`) шим
+  `window.pywebview.api.*` поверх `__TAURI__.core.invoke`: Proxy возвращает
+  функцию для любого имени (проверки `if (api.x)` всегда истинны — как в
+  pywebview), позиционные аргументы → именованные camelCase (`CMD_PARAMS`),
+  `pywebviewready` диспатчится ПОСЛЕ подписки на хабы прогресса (ранние
+  события не теряются).
+- Конфиг: `Documents/ArizonaLauncher/config.json` — запись атомарно
+  tmp→rename; миграция легаси-Python (snake→camel); битый файл сохраняется в
+  `config.json.broken`, не молча затирается. `AppState`: Mutex<LauncherConfig>
+  + пути + кэши + флаги установки/отмены.
+- Лог: `Documents/ArizonaLauncher/launcher.log` (release; ротация 2 МБ → .old);
+  JS-ошибки фронт шлёт через `log_event` (`_frontLog`, throttle 60с).
+- Плагины: single-instance ОБЯЗАТЕЛЬНО первым (иначе два экземпляра пишут
+  конфиг и установки параллельно), shell, dialog, fs. capabilities — только
+  `core:event:default` (поэтому start_dragging — Rust-команда, а не
+  window.startDragging(), который capability блокирует).
+- Все reqwest-клиенты — `.no_proxy()`: мёртвый системный прокси WinINET валил
+  каждый запрос; картинки каталогов качает БЭК (`fetch_image_as_base64`),
+  не `<img src>`.
+- Диалоги папок/файлов — `blocking_*` только из async-команд (иначе main-поток
+  «Не отвечает»).
+
+### 24.2 Бэкенд
+
+| Файл | Строк | Роль |
+|---|---|---|
+| main.rs | 236 | init логирования, плагины, setup (рамка ДО показа окна, трей), generate_handler 99 команд |
+| launcher.rs | ~6700 | монолит всех 99 Tauri-команд |
+| config.rs | 407 | модель конфига, AppState, миграция легаси, атомарный save |
+| util.rs | 303 | lock_config/update_config, fail_message (пишет в лог!), no_proxy HTTP, 1251-декодер, safe_backup_path, чтение VS_VERSION_INFO |
+| plugin.rs | 351 | дескриптор plugin.json (preloading_plugins) |
+| game_update/ | 5 файлов | engine (план/прогон, confined_join, 2 CDN), downloader (no_proxy, .part→rename, лимит bps), verify (mtime→MD5-воркеры, отменяемый скан), manifest (game.json), state (кэш md5) |
+
+**Реестр команд** (все в launcher.rs, `имя:строка — суть`; 64 sync + 35 async,
+регистрация main.rs:133–233):
+
+- Пути/установка: `get_config`:10 (префлайт; не дедлокнуть — копировать данные
+  под гвардом), `get_saved_data`:52, `get_init_data`:67,
+  `auto_detect_paths`:377 (папки→реестр Uninstall→скан дисков, spawn_blocking),
+  `set_game_paths`:407, `select_game_path`:433 (без gta_sa.exe → EMPTY_FOLDER,
+  выбор живёт в `last_picked_empty_folder`), `get_install_action`:1768/`_api`:1782,
+  `start_launcher_install`:4988 (ZipCrypto пароль `1111`; обязан видеть gta_sa.exe).
+- Запуск: `start_game`:773 (quick_game_check → FILES_MISSING, реестр SAMP,
+  poll 2с — стабы Air выходят с кодом 0), `is_gta_running`:930 (edge
+  `was_running` не съедать — GTA-watcher), `get/set_launch_method`:176/:182.
+- Обновление игры: `check_update_api`:4173, `download_update_api`:4405,
+  `repair_game_api`:4414, `install_game_api`:4427,
+  `install_game_to_folder`:4469 (consent только из нативного диалога!),
+  `cancel/pause/status`:4513/:4531/:4552.
+- Патчи: `get_plugin_descriptor`:2512, `check_patches_status`:2712,
+  `set_plugin_enabled`:2829, `read/write_patches`:2996/:3032, бэкапы
+  list/restore/delete/preview :3053/:3115/:3187/:3202 (MAX 15),
+  `download_and_install_patches`:3429 (zip-slip, лимиты 5000 файлов/64 МБ),
+  `get_patches_latest_version`:3511 (`is_safe_patches_version` — анти-traversal
+  в URL), `fetch_patches_schema`:3945, `import/export_patches`, 
+  `install_patches_file`:3771 (D&D .json), `fetch_patch_presets`:3825/
+  `install_patch_preset`:3885.
+- Моды/скрипты: `get_moonloader_scripts`:5077, `toggle/delete_moonloader_script`
+  :5129/:5171, `fetch_moonloader_catalog`:5282, `install_moonloader_script`:5352/
+  `install_lua_file`:5382 (фильтр `safe_script_filename`:5249: blacklist
+  `< > : " / \ | ? *` + control, reserved names, ≤240 — маркетные имена вида
+  `#ArzMarket[3-57].lua` проходят), `fetch_libraries_catalog`:5412,
+  `install_library`:5656 (zip ≤256 МБ), others-каталог `fetch_others_catalog`:5838
+  + install/remove/check :5898/:5930/:5956.
+- Профили: `get_profiles`:2463 / `save_profiles`:2473.
+- Обои: `get_wallpapers`:6104, `get_wallpaper_thumb`:6155 (кэш),
+  `get_wallpaper_full`:6214 (LRU 3), `select_bg_image`:6258,
+  `strip_redundant_bg_data`:6053 (base64 `bg_data` ~2.8 МБ всегда вырезается).
+  Monet — ТОЛЬКО фронт.
+- Настройки/окно: `update_nickname`:84, `update_server`:92,
+  `update_launch_params`:159 (таблица IPC_KEY_PAIRS snake↔camel),
+  `get/save_launcher_settings`:2226/:2237, frame/title/size
+  :2344/:2259/:2269, rounded corners:2280, thickframe:2305,
+  `toggle_maximize`:2374, `start_dragging`:2397, `start_resize`:2408,
+  `save/get_layout_order`:2444/:2454.
+- Серверы/новости: `get_servers`:1492 (stale-while-revalidate: память 60с →
+  диск cache/servers.json → сеть; иконки в %LOCALAPPDATA% с таймаутами),
+  `get_servers_and_news`:1497, `get_launcher_news`:1571 (3 зеркала ПАРАЛЛЕЛЬНО,
+  revalidate ≤60с), `get/save_read_news_ids`:1576/:1582.
+- Служебные: `log_event`:2193 (level/scope/message, срез 4000 по СИМВОЛАМ),
+  `open_url`:2214, open_game/data/log_folder :2157+:2170+:2177,
+  minimize/tray/restore :2132+:2140+:2148, `check_tray_support`:5975,
+  `fetch_image_as_base64`:1923 (SSRF :1801+:1844, ≤10 МБ стримингом),
+  `get_debug_info`:2020.
+
+**Хабы событий** (слушатели фронта в tauri-bridge.js:146–156):
+`launcher-install-progress` (движок игры + установка Air) и
+`patches-install-progress`. Единственное разрешение capabilities —
+`core:event:default`, потому фронт только слушает события.
+
+### 24.3 Фронт (src/index.html)
+
+Диапазоны: head-скрипт 1–132 (`_frontLog`:18, error/unhandledrejection :42/:48,
+anim/winter/perfLow из localStorage ДО первой отрисовки :53–131) → CSS
+133–8230 → HTML 8232–10026 → JS 10028–20601 → lucide+финал 20633–21655
+(refreshLucideIcons:20635 — конвертит только НОВЫЕ `<i>` через временный
+атрибут; прогрев настроек 20680; Layout v2 20715–21515; ресайз настроек
+21517–21610).
+
+CSS-секции: тайтлбар 316–421 (z 100000, pointer-events:none — кликается только
+`#tbButtons`), resize-ручки 422–433, `.interface` 484–570 (z 3, стек-контекст;
+фейд ПО ДЕТЯМ — filter/opacity на самом .interface ломает backdrop-blur),
+статус-бар 573–716 (`sb-free` «остров» 615, `sb-strip` «пилюля» 630 —
+transform:none как страховка от сброса инлайна), `.left-panel` 718,
+`.right-panel` 736–820 (z 50; свёрнута прозрачна+pointer-events:none;
+peek-anim 784; news-away/news-left через свойство `translate` 803–814),
+язычки 821–988 (news-handle + пульс-бейдж), launchScreen 990, новости
+1446–1640 (news-reveal каскад 1534), глобальная полоса установки 1650–1755,
+install-оверлеи 1826–2047, запечённый блюр 2234–2356 (#settingsBaked/#modsBaked),
+настройки 2571–3100 (wp-mode 2648, full-window 2654), редактор раскладки
+3027–3245 (float-bar z 9999, layout-ctx z 10001, unhide-fab 9998), патчи
+3379–3880, вкладка «Запуск» 3882–4566 (CDN-свитчер 4230), обои 4569–4688,
+folder/confirm 4690–4801 (confirm z 1500), модалка модов 4803–5714 (ml-*
+5190–5460, lib-* 5460–5624), тосты 5716 (z 99999), feedbackFab 5733,
+script-detail 6023–6567, серверы-dropdown 6569–6770, profiles-overlay 6771
+(z 1100), profilesHoverWidget 6965 (z 45), debug 7249, зимние 7329–7377
+(#winterSnow z 9000, vignette 9001), about 7378, онбординг fl-* 7443–7938,
+CSO-скины 7940–8230.
+
+HTML-скелет (body 8232): `#titlebar` 8234 → resize-ручки → `#drag-overlay` →
+`#winterSnow` → `#container` 8286: [`.interface` 8287: **#profilesHoverWidget
+8291, #feedbackFab 8301, #feedbackPopup 8304 — внутри с 14.11**; .left-panel
+8321; #statusBar 8388; #launchScreen 8411; .right-panel 8426 (newsHandle+badge
+8428, patch-handle 8435, вкладки, #launcherNews/#arizonaNews)] →
+#settingsPanel 8461 → #folderModal 9497, #modsModal 9510, #scriptDetailOverlay
+9644, #gpOverlay 9716, #installOverlay 9750, #creOverlay 9825,
+#profilesOverlay 9849, #createProfileOverlay 9863, #editProfileOverlay 9892,
+#csoOverlay 9986, #flOverlay 10012, #notificationContainer 10024. Вне
+контейнера: #layoutGrid 20604, #layoutFloatBar 20607, #layoutCtxMenu 20625,
+#unhideMenuFab 20629.
+
+JS-системы (функция:строка):
+- **Старт**: init:11249 (таймеры: gameCheck 1.5с, patches 0.5с, онбординг 0.3с),
+  loadInitData:11299, loadSavedData:11702.
+- **Layout v2** (20715–21515): модель `{v:2, menu/profiles/status{x,y,style}}`;
+  `_layoutDefault`:20752, `_effectiveLayout`:20816 (status ВСЕГДА глобальный,
+  если у профиля своего нет — иначе строка «сама переезжала»),
+  `_layoutInsets`:20833 (8px со всех сторон), `_layoutSetStatusDom`:20847
+  (strip/pill), `_layoutSyncNewsSide`:20894, `_layoutApplyAnimated`:20942 (FLIP);
+  редактор: startLayoutEdit:21073, applyLayoutPreset:21107 (ТОЛЬКО плотность;
+  `_layoutKeepCorners`:21032 держит углы), drag 21221–21303, snap 21190
+  (arp_layoutSnap; точки 0/25/50/75/100), тулбар-grip 21306 (arp_editorBarPos),
+  ПКМ-меню `_layoutCtxOpen`:21373, unhideMenu:21471.
+- **Статус-бар** (17006–17208): applyStatusBarPos:17107 (layout — источник
+  правды; left/right убраны; body.sb-top при y<50), applyStatusBar:17131,
+  setStatusBarPos:17162 (вид pill/strip сохраняется!), startStatusBar:17081
+  (playtime → arp_playtime_total).
+- **Онбординг** (19905–20396): `_flStart`:19936, `_maybeStartFirstLaunch`:19955
+  (Tauri не умеет evaluate_js — сами по пустому game_path), 5 шагов
+  (FL_TOTAL=5), `_flRender`:20115, установка `_flRunInstall`:20012, CSO 20397+.
+- **Новости** (10816–11698): loadServersAndNews:11372, switchNewsTab:11687,
+  toggleNewsPanel:10816 (открытие = _markAllNewsRead + каскад), непрочитанные
+  _getReadIds:10856/_markAllNewsRead:10884/updateNewsBadge:10893
+  (arp_read_news_ids), startNewsPeek:10830 (одно подмигивание),
+  _replayNewsReveal:10847.
+- **Профили** (10486–10790, hover 18375–18678): _loadProfiles:10486,
+  _createProfileFrom:10621 (снапшот патчи+параметры+lua+метод), applyProfile:10675,
+  _autosaveToActiveProfile:18345, hover-IIFE 18378 (в редакторе — drag),
+  setProfilesCompact:16729 (≠ setCompactMenu:18707).
+- **Обои/Monet** (15882–16600): loadWallpapers:16208, applyLocalWallpaper:16420,
+  applyBgImage:16443, пикер 16369 (wp-mode), Monet _extractMonetFromDataUrl:16044
+  → кэш `monetTheme:v5:` (буст accent2 для тумблеров на тёмном).
+- **Каталоги модов** (12217–14190): `_fetchImageData`:13456 — base64 через БЭК,
+  лимит 3 параллельных (_imgSlot:13448; пачка 20+ ловила троттлинг GitHub),
+  неудачи НЕ кэшируются, IntersectionObserver `_mlEnsureImgLoader`:12674;
+  script-detail 13724+, лайтбокс 13485+, библиотеки 12837+.
+- **Настройки** (15400–18017): switchTab:15400, Debug-вкладка — 5 тапов по жуку
+  (az_debug_tab_unlocked 15441), openSettings:17734 (news-away, запечённый блюр,
+  anim-rise), `_patchesReadFailed` (не подставлять дефолты молча), патчи V2
+  loadPatchesSchema:17215/renderPatchRow:17385/конфликты 17562; CDN-свитчер
+  19775–19880; зимние setWinterFx:19018 (сезон в head-скрипте 89–123; снег —
+  свой rAF), arp_perfLow 18980, анимации setAnimMode:18679/setAnimSpeed:18918.
+- **Установка** (16757+, 10957–11147): checkGameUpdate:16901 (MD5-скан UI),
+  полоса _gpUpdate:10957, gpOverlay 11090, лимит bps 16840.
+- **Общее**: showNotification:15152, confirmAction:13103, _closeWithAnim:12141,
+  openExternal:10396, D&D .lua/.json IIFE 18075–18231 (лимит 5 МБ, relatedTarget
+  ===null — сброс оверлея), тайтлбар 16602+, тултипы 11169+, SFX 15184+.
+
+**localStorage**: airAnimMode, airBlur, airAnimFps, arp_animSpeed,
+arp_compactMenu, arp_perfLow, airSnow/airVignette/airFrost/airSnowAmount,
+airWinterYear, airClickBurst, arp_newYearFireworksYear, arp_profiles/
+arp_active_profile, arp_sfxEnabled/Volume/Clicks/Notifications,
+arp_wp_old_style, arp_layoutSnap, arp_editorBarPos, arp_playtime_total,
+arp_read_news_ids, az_debug_tab_unlocked.
+
+### 24.4 Z-карта (по возрастанию)
+
+| z | Слой |
+|---|---|
+| -1 | #settingsBaked/#modsBaked (canvas под панелью на время анимации) |
+| 3 | `.interface` — СТЕК-КОНТЕКСТ; внутри: панель новостей 50 > fab/popup/profiles 45 > статус-бар 5 |
+| 10 | язычки news/patch, launch-screen |
+| 20 | resize-ручка настроек |
+| 45 | feedbackFab, feedback-popup, profilesHoverWidget, s-select-pop |
+| 50 | `.right-panel` (новости) — перекрывает fab/profiles |
+| 200/500/950 | серверы-dropdown / mods-modal / script-detail |
+| 1000/1100/1200 | settings+folder / profiles-overlay / installOverlay+lightbox+cso |
+| 1300/1400/1500 | fl-overlay+resize-ручки / gpOverlay (inline) / confirm-modal |
+| 9000/9001 | winterSnow / winter-vignette (над панелями ≤1500, под тайтлбаром) |
+| 9998/9999/10001 | unhide-fab / layout-float-bar+drag-overlay / layout-ctx |
+| 99999/100000/100001 | тосты / titlebar / uiTip |
+
+Инвариант 14.11: fab/popup/profilesHoverWidget лежат ВНУТРИ `.interface` —
+снаружи (в body) они рисовались бы над панелью новостей всегда.
+
+### 24.5 Данные и пути
+
+- `Documents/ArizonaLauncher/`: config.json (+.broken; tmp→rename),
+  launcher.log(.old), cache/servers.json, cache/news.json,
+  game_update_state.json (кэш md5), backups/patches_*.json (до 15).
+- `%LOCALAPPDATA%/ArizonaLauncher/icons/` — кэш иконок серверов.
+- Обои: `wallpapers/` рядом с exe + bundle-ресурс (`"../wallpapers"`,
+  НЕ frontendDist — иначе +17 МБ в бинарнике); свои — data URL (bg_data
+  вырезается из конфига).
+- config.json: launchParams (18 полей, snake↔camel по IPC_KEY_PAIRS),
+  launcherSettings (+произвольные snake_case extra: hide_profiles,
+  status_bar_pos, bg_data, game_update_limit_bps, settings_full…),
+  launchMethod (native|air; легаси-миграция → air), readNewsIds,
+  profiles+activeProfileId, layout v2 (глобально или в профиле).
+
+### 24.6 Новая Tauri-команда — 3 шага
+
+1. `#[tauri::command(async)] fn …` в launcher.rs (+тест при уместности);
+2. зарегистрировать в generate_handler! (main.rs:133–233);
+3. `node tools/gen-bridge.js` — перепарсит сигнатуры и перепишет
+   src/tauri-bridge.js (руками его НЕ править). На фронте — ПОЗИЦИОННЫЕ вызовы
+   `window.pywebview.api.имя(a, b)`; опциональное — undefined (→ None в Rust).
+
+### 24.7 Воркфлоу-шпаргалка (детали — §7/§8)
+
+- **Сборка**: `taskkill /IM arizona-launcher.exe` (залоченный файл = падение
+  линковки; установленная копия называется `Arizona RP Launcher.exe`) →
+  vcvars64.bat → `node tools/build.js --no-bundle` → exe
+  `src-tauri/target/release/arizona-launcher.exe`. build.js сам штампует
+  версию (2.0.0-beta.YYYYMMDD.HHMM через set-version.js в 5 файлах) и
+  откатывает в конце.
+- **CDP-проба**: env `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` ИГНОРИРУЕТСЯ
+  (additionalBrowserArgs из конфига побеждают) → вписать
+  `--remote-debugging-port=9222` в tauri.conf.json → пересборка → пробы
+  (`.agent/*.js|mjs`, порт CDP_PORT) → ОБЯЗАТЕЛЬНО откатить конфиг → чистая
+  пересборка. Перед финальным запуском: `git status` + нет 9222 в netstat.
+- **Пробы не должны портить конфиг пользователя** (паттерн `__origStatus` в
+  smoke-editor.js: захват и восстановление исходных значений).
+- **Тесты**: run-cargo-test.bat (vcvars обязателен), inline-JS (new Function
+  по script-блокам, 3/3), check-tags.js (баланс тегов), CDP-смоуки
+  .agent/smoke-*.js.
+- **Коммиты**: локально, пуша нет; формат `тип(область): суть`, по-русски.
+- **Фронт в браузере**: demoGuard — без Tauri работает демо-режим.
+
+---
+
+## 25. Ссылки
+
+- `IDEA.md` — старая карта архитектуры (частично устарела; актуальная — §24).
 - `README.md` — публичное описание, скриншоты, установка.
 - `updatenews.txt` — черновик новости для ArzLaunchRepo (не код).
 - `.agent/README.md` — инструменты скриншотов и CDP.
