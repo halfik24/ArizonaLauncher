@@ -612,8 +612,8 @@
             border-top: none;
             border-radius: 0 0 14px 14px;
         }
-        /* Свободное положение (редактор раскладки): координаты ставит JS,
-           пилюля со скруглением со всех сторон */
+        /* Вид «Остров»: парит с отступом от края, все углы — крупная дуга
+           в полную высоту строки, без рамки (по наброску 15.11) */
         .status-bar.sb-free {
             left: 0; top: 0; right: auto; bottom: auto;
             transform: none;
@@ -623,26 +623,19 @@
             align-items: center;
             justify-content: center;
             padding: 0 18px;
-            border: 1px solid rgba(255,255,255,0.07);
-            border-radius: 14px;
-        }
-        /* Второй вид строки — полоса во всю ширину у края окна (пустого
-           места по бокам нет), углы со стороны окна скруглены крупно —
-           как скругление экрана iPhone 13 Pro. Высоту/толщину задают
-           обычные правила sb-size-lg/md/sm (строка без sb-pos-* попадает
-           под :not([class*="sb-pos-"])). Сторону прикрепления ставит JS
-           (sb-strip-top/bottom). */
-        .status-bar.sb-strip {
-            left: 0; right: 0;
-            width: auto; max-width: none;
-            transform: none;
-            justify-content: center;
-            padding: 0 16px;
             border: none;
-            border-radius: 0;
+            border-radius: 34px;
+            box-shadow: 0 8px 28px rgba(0, 0, 0, 0.3);
         }
-        .status-bar.sb-strip.sb-strip-bottom { border-radius: 20px 20px 0 0; }
-        .status-bar.sb-strip.sb-strip-top { border-radius: 0 0 20px 20px; }
+        /* Вид «Пилюля»: та же компактная ширина по контенту, но прижата
+           к краю окна — пустого места у линии нет. Нижнее положение даёт
+           базовое правило .status-bar:not([class*="sb-pos-"]) (радиус
+           сверху 14px, без нижней границы); для верхнего — зеркало. */
+        .status-bar.sb-strip.sb-strip-top {
+            border-radius: 0 0 14px 14px;
+            border-top: none;
+            border-bottom: 1px solid rgba(255,255,255,0.07);
+        }
         /* Место под виджет «Профили» при верхней строке */
         body.sb-top #profilesHoverWidget { top: 64px; }
 
@@ -20730,8 +20723,10 @@
             return { top: 8, right: 8, bottom: 8, left: 8 };
         }
 
-        /** Положение+вид статус-строки: «пилюля» — свободная точка,
-            «полоса» — лента во всю ширину у ближайшего края (по y). */
+        /** Положение+вид статус-строки. «Остров» — парит в точке (x/y)
+            с отступом от края, крупная дуга без рамки. «Пилюля» — та же
+            компактная ширина, но прижата к верхнему или нижнему краю
+            окна (по y), без пустого места у линии. */
         function _layoutSetStatusDom(bar, st) {
             if (!bar || !st) return;
             const strip = st.style === 'strip';
@@ -20744,14 +20739,21 @@
             const atTop = _layoutNum(st.y, 100) < 50;
             bar.classList.toggle('sb-strip-top', atTop);
             bar.classList.toggle('sb-strip-bottom', !atTop);
-            const h = bar.offsetHeight || 34;
-            bar.style.left = '0px';
-            bar.style.right = '0px';
-            bar.style.width = 'auto';
-            bar.style.maxWidth = 'none';
-            bar.style.top = atTop ? '0px' : Math.max(0, window.innerHeight - h) + 'px';
-            bar.style.bottom = 'auto';
+            const ins = _layoutInsets();
+            const w = bar.offsetWidth;
+            bar.style.left = Math.round(ins.left +
+                (window.innerWidth - w - ins.left - ins.right) * _layoutNum(st.x, 50) / 100) + 'px';
+            bar.style.right = 'auto';
+            bar.style.width = 'max-content';
+            bar.style.maxWidth = 'calc(100% - 16px)';
             bar.style.transform = 'none';
+            if (atTop) {
+                bar.style.top = '0px';
+                bar.style.bottom = 'auto';
+            } else {
+                bar.style.top = 'auto';
+                bar.style.bottom = '0px';
+            }
         }
 
         function _layoutSetPos(el, pos) {
@@ -21128,10 +21130,9 @@
             let y = drag.start.y + (e.clientY - drag.startY) / drag.freeH * 100;
             x = _layoutSnap(Math.max(0, Math.min(100, x)), drag.freeW);
             y = _layoutSnap(Math.max(0, Math.min(100, y)), drag.freeH);
-            // Полоса во всю ширину живёт только у края: тянем — прилипает
-            // к верху или низу, середину не занимает
+            // Пилюля живёт у края: по вертикали прилипает к верху или низу,
+            // по горизонтали двигается свободно
             if (drag.kind === 'status' && _layoutDraft.status && _layoutDraft.status.style === 'strip') {
-                x = 50;
                 y = y < 50 ? 0 : 100;
             }
             // Сохраняем доп. поля (hidden у меню/профилей, style у строки) —
@@ -21252,9 +21253,9 @@
                 { act: 'hide', label: hidden ? 'Показать' : 'Скрыть' }
             ];
             if (kind === 'status' && _layoutDraft.status) {
-                // Два вида строки: пилюля (свободная точка) и полоса во всю
-                // ширину у края — выбирается здесь же
-                items.push({ act: 'style', label: 'Вид — ' + (_layoutDraft.status.style === 'strip' ? 'полоса' : 'пилюля') });
+                // Два вида строки: «остров» парит с отступом от края,
+                // «пилюля» прижата к краю — выбирается здесь же
+                items.push({ act: 'style', label: 'Вид — ' + (_layoutDraft.status.style === 'strip' ? 'пилюля' : 'остров') });
             }
             items.push(
                 { act: 'compact', label: 'Компакт — ' + (_layoutObjCompact(kind) ? 'вкл' : 'выкл') },
