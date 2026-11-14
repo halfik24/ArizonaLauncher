@@ -1530,6 +1530,30 @@
             background: rgba(255, 255, 255, 0.075);
         }
 
+        /* ── Появление новостей: каскад карточек при открытии панели и
+           переключении вкладок (класс news-reveal ставит JS, перезапуск —
+           через remove/reflow/add). backwards — до своего delay карточка
+           держит стартовое состояние и не мелькает. ── */
+        .news-tab-content.news-reveal .news-item {
+            animation: newsItemIn 0.38s cubic-bezier(0.34, 1.2, 0.64, 1) backwards;
+        }
+        @keyframes newsItemIn {
+            from { opacity: 0; transform: translateY(12px) scale(0.985); }
+            to   { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        .news-tab-content.news-reveal .news-item:nth-child(1) { animation-delay: 0.02s; }
+        .news-tab-content.news-reveal .news-item:nth-child(2) { animation-delay: 0.06s; }
+        .news-tab-content.news-reveal .news-item:nth-child(3) { animation-delay: 0.10s; }
+        .news-tab-content.news-reveal .news-item:nth-child(4) { animation-delay: 0.14s; }
+        .news-tab-content.news-reveal .news-item:nth-child(5) { animation-delay: 0.18s; }
+        .news-tab-content.news-reveal .news-item:nth-child(6) { animation-delay: 0.22s; }
+        .news-tab-content.news-reveal .news-item:nth-child(7) { animation-delay: 0.26s; }
+        .news-tab-content.news-reveal .news-item:nth-child(8) { animation-delay: 0.30s; }
+        .news-tab-content.news-reveal .news-item:nth-child(n+9) { animation-delay: 0.32s; }
+        @media (prefers-reduced-motion: reduce) {
+            .news-tab-content.news-reveal .news-item { animation: none; }
+        }
+
         .news-item-clickable {
             cursor: pointer;
             transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
@@ -10797,32 +10821,35 @@
             iface.classList.toggle('news-open', _newsPanelOpen);
             if (_newsPanelOpen) {
                 _markAllNewsRead();
+                _replayNewsReveal(); // каскад карточек при каждом открытии
             }
         }
 
-        /** Запустить 3 «подмигивания» панели новостей */
-        function startNewsPeek(times = 3, pauseMs = 1800) {
+        /** Одно плавное «подмигивание» панели новостей — дальше внимание
+            держит пульсирующий бейдж на язычке (вместо тройного дёрганья). */
+        function startNewsPeek() {
             if (_peekRunning || _newsPanelOpen) return;
             _peekRunning = true;
             const panel = document.querySelector('.right-panel');
-            let done = 0;
 
-            function doPeek() {
-                if (_newsPanelOpen || done >= times) { _peekRunning = false; return; }
+            // Первый peek через 2.5 секунды после загрузки
+            setTimeout(() => {
+                if (_newsPanelOpen) { _peekRunning = false; return; }
                 panel.classList.add('peek-anim');
                 setTimeout(() => {
                     panel.classList.remove('peek-anim');
-                    done++;
-                    if (done < times && !_newsPanelOpen) {
-                        setTimeout(doPeek, pauseMs);
-                    } else {
-                        _peekRunning = false;
-                    }
-                }, 650);
-            }
+                    _peekRunning = false;
+                }, 1000);
+            }, 2500);
+        }
 
-            // Первый peek через 2.5 секунды после загрузки
-            setTimeout(doPeek, 2500);
+        /** Перезапуск каскадного появления карточек в активной вкладке новостей. */
+        function _replayNewsReveal() {
+            const active = document.querySelector('.news-tab-content.active');
+            if (!active) return;
+            active.classList.remove('news-reveal');
+            void active.offsetWidth; // сброс анимации, чтобы каскад сыграл заново
+            active.classList.add('news-reveal');
         }
 
         // --- Read-news storage (pywebview → localStorage fallback) ---
@@ -11668,6 +11695,7 @@
                 document.querySelector('.news-tab:nth-child(2)').classList.add('active');
                 document.getElementById('arizonaNews').classList.add('active');
             }
+            _replayNewsReveal(); // каскад карточек при смене вкладки
         }
 
         // Загрузка сохраненных данных
