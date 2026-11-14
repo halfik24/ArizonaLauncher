@@ -1901,16 +1901,30 @@ async fn fetch_catalog_url(url: &str, max_bytes: u64) -> Result<Vec<u8>, String>
 /// Скачивать картинку по URL и отдавать как data: URL в base64.
 /// SSRF-защита: схема только http/https, хост не из приватных диапазонов,
 /// ответ читается с лимитом размера.
+/// Общий клиент для картинок: строить Client на каждый вызов дорого
+/// (TLS-хендлейк на соединение), а пачка из 20+ превью каталога иначе
+/// создаёт шторм новых подключений — GitHub начинал резать часть запросов.
+static IMAGE_CLIENT: std::sync::OnceLock<Result<reqwest::Client, String>> = std::sync::OnceLock::new();
+
+fn image_client() -> Result<&'static reqwest::Client, String> {
+    IMAGE_CLIENT
+        .get_or_init(|| {
+            reqwest::Client::builder()
+                .no_proxy() // см. game_update::downloader::client
+                .timeout(std::time::Duration::from_secs(30))
+                .build()
+                .map_err(|e| e.to_string())
+        })
+        .as_ref()
+        .map_err(|e| e.clone())
+}
+
 #[tauri::command]
 pub async fn fetch_image_as_base64(url: String) -> Result<serde_json::Value, String> {
     if let Err(msg) = check_image_url(&url) {
         return Ok(serde_json::json!({"success": false, "message": msg}));
     }
-    let client = match reqwest::Client::builder()
-        .no_proxy() // см. game_update::downloader::client
-        .timeout(std::time::Duration::from_secs(30))
-        .build()
-    {
+    let client = match image_client() {
         Ok(c) => c,
         Err(e) => return Ok(serde_json::json!({"success": false, "message": e.to_string()})),
     };

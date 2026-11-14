@@ -12625,6 +12625,23 @@
             });
         }
 
+        /** Ленивая загрузка превью каталога: карточка попросила картинку,
+            когда попала в зону видимости (+200px запаса). */
+        function _mlEnsureImgLoader() {
+            if (window._mlImgObserver) return window._mlImgObserver;
+            const io = new IntersectionObserver((entries) => {
+                entries.forEach(en => {
+                    if (!en.isIntersecting) return;
+                    io.unobserve(en.target);
+                    const img = en.target.querySelector('img[data-ml-src]');
+                    if (!img || img.src) return;
+                    _fetchImageData(img.dataset.mlSrc).then(src => { img.src = src; });
+                });
+            }, { rootMargin: '200px' });
+            window._mlImgObserver = io;
+            return io;
+        }
+
         function _renderMlCatalogItems(items) {
             const pane = document.getElementById('mlPaneCatalog');
             pane.querySelectorAll('.ml-catalog-card, .mods-empty').forEach(el => el.remove());
@@ -12658,20 +12675,34 @@
                 card.className = 'ml-catalog-card';
                 card.addEventListener('click', () => openScriptDetail(realIdx, 'moonloader'));
 
-                // Preview area
+                // Preview area. Картинка грузится через бэкенд (base64,
+                // no_proxy): у пользователей с мёртвым системным прокси
+                // (WebView2 ходит через него) прямой <img src> давал
+                // «Failed to fetch» на каждый хост — см. диагностику 15.11.
+                // Лениво: подложка-иконка сразу, картинка догружается,
+                // когда карточка попала в зону видимости.
                 const preview = document.createElement('div');
                 preview.className = 'ml-card-preview';
                 if (item.image) {
-                    const safeImg = _mlEscape(item.image);
                     const safeName = _mlEscape(item.name);
-                    // lazy/async: в каталоге до ~8 МБ картинок (одна 1920×1080,
-                    // 2.2 МБ) — жадный декод рвал скролл в первые секунды
-                    preview.innerHTML = `<img src="${safeImg}" alt="${safeName}" loading="lazy" decoding="async" onerror="this.style.display='none';this.parentElement.querySelector('.ml-preview-fallback').style.display='flex'">`;
+                    const img = document.createElement('img');
+                    img.alt = safeName;
+                    img.decoding = 'async';
+                    img.style.display = 'none';
+                    img.dataset.mlSrc = item.image;
+                    img.addEventListener('load', () => {
+                        img.style.display = '';
+                        const fb = preview.querySelector('.ml-preview-fallback');
+                        if (fb) fb.style.display = 'none';
+                    });
+                    preview.appendChild(img);
                     const fallback = document.createElement('div');
                     fallback.className = 'ml-preview-fallback';
-                    fallback.style.cssText = 'display:none;align-items:center;justify-content:center;width:100%;height:100%;position:absolute;inset:0;';
+                    fallback.style.cssText = 'display:flex;align-items:center;justify-content:center;width:100%;height:100%;position:absolute;inset:0;';
                     fallback.innerHTML = escapeHtml(item.icon) || '<i data-lucide="moon"></i>';
                     preview.appendChild(fallback);
+                    if (_imgCache[item.image]) img.src = _imgCache[item.image];
+                    else _mlEnsureImgLoader().observe(preview);
                 } else {
                     preview.innerHTML = escapeHtml(item.icon) || '<i data-lucide="moon"></i>';
                 }
@@ -13362,20 +13393,48 @@
             _sdShowDetailImage(_sdImgIdx + delta);
         }
 
-        /** Скачивает картинку через бэкенд (base64) с кэшем; фолбэк — прямой URL. */
+        /** Скачивает картинку через бэкенд (base64) с кэшем; фолбэк — прямой URL.
+            Неудачи НЕ кэшируем (картинка не «протухает» до перезапуска — при
+            следующем показе ретраим). Повторы той же картинки в полёте
+            склеиваются в один. Одновременно качаем максимум 3 — пачка из
+            20+ запросов ловила троттлинг GitHub (диагностика 15.11). */
+        const _imgInflight = {};
+        let _imgActive = 0;
+        const _imgQueue = [];
+        function _imgSlot() {
+            if (_imgActive < 3) { _imgActive++; return Promise.resolve(); }
+            return new Promise(res => _imgQueue.push(res));
+        }
+        function _imgRelease() {
+            _imgActive--;
+            if (_imgQueue.length) { _imgActive++; _imgQueue.shift()(); }
+        }
         async function _fetchImageData(url) {
             if (_imgCache[url]) return _imgCache[url];
-            let src = url;
-            if (window.pywebview && window.pywebview.api.fetch_image_as_base64) {
+            if (_imgInflight[url]) return _imgInflight[url];
+            _imgInflight[url] = (async () => {
+                await _imgSlot();
                 try {
-                    const result = await window.pywebview.api.fetch_image_as_base64(url);
-                    if (result && result.success && result.data_url) src = result.data_url;
-                } catch(e) {
-                    console.warn('fetch_image_as_base64, оставляю прямой url:', e);
+                    let src = url;
+                    let ok = false;
+                    if (window.pywebview && window.pywebview.api.fetch_image_as_base64) {
+                        try {
+                            const result = await window.pywebview.api.fetch_image_as_base64(url);
+                            if (result && result.success && result.data_url) { src = result.data_url; ok = true; }
+                        } catch(e) {
+                            console.warn('fetch_image_as_base64, оставляю прямой url:', e);
+                            _frontLog('warn', 'mods', 'fetch_image_as_base64: ' + e);
+                        }
+                    }
+                    if (ok) _imgCache[url] = src;
+                    return src;
+                } finally {
+                    _imgRelease();
                 }
-            }
-            _imgCache[url] = src;
-            return src;
+            })();
+            const res = await _imgInflight[url];
+            delete _imgInflight[url];
+            return res;
         }
 
         /** Открыть лайтбокс на текущем фото окна скрипта. */
