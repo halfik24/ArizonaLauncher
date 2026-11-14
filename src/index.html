@@ -931,6 +931,16 @@
         }
         .patch-handle-icon svg { width: 16px !important; height: 16px !important; }
 
+        /* Новости на левом краю (news-left): патч-язычок зеркалится на правую
+           кромку панели — иначе он оставался у левого края и уходил за экран
+           вместе с телом панели (аудит Ф2). rotate(180deg) визуально
+           переворачивает скругление и бордер, как у news-handle. */
+        .right-panel.news-left .patch-handle {
+            left: auto;
+            right: 0;
+            transform: rotate(180deg);
+        }
+
         .patch-handle-label {
             font-family: 'Montserrat Alternates', sans-serif;
             font-size: 11px;
@@ -10812,14 +10822,19 @@
         const NEWS_READ_KEY = 'arp_read_news_ids';
         let _newsPanelOpen = false;
         let _peekRunning = false;
+        let _peekT1 = 0, _peekT2 = 0; // таймеры подмигивания (гасятся при открытии панели)
 
         function toggleNewsPanel() {
             const panel = document.querySelector('.right-panel');
-            const iface = document.querySelector('.interface');
             _newsPanelOpen = !_newsPanelOpen;
             panel.classList.toggle('open', _newsPanelOpen);
-            iface.classList.toggle('news-open', _newsPanelOpen);
             if (_newsPanelOpen) {
+                // Открытие во время подмигивания: снимаем peek немедленно,
+                // иначе !important у .peek-anim перебивает .open и панель
+                // зависает на 218px до конца анимации (аудит Ф5)
+                clearTimeout(_peekT1); clearTimeout(_peekT2);
+                panel.classList.remove('peek-anim');
+                _peekRunning = false;
                 _markAllNewsRead();
                 _replayNewsReveal(); // каскад карточек при каждом открытии
             }
@@ -10833,10 +10848,10 @@
             const panel = document.querySelector('.right-panel');
 
             // Первый peek через 2.5 секунды после загрузки
-            setTimeout(() => {
+            _peekT1 = setTimeout(() => {
                 if (_newsPanelOpen) { _peekRunning = false; return; }
                 panel.classList.add('peek-anim');
-                setTimeout(() => {
+                _peekT2 = setTimeout(() => {
                     panel.classList.remove('peek-anim');
                     _peekRunning = false;
                 }, 1000);
@@ -10917,7 +10932,6 @@
             if (panel && !panel.contains(e.target)) {
                 _newsPanelOpen = false;
                 panel.classList.remove('open');
-                document.querySelector('.interface').classList.remove('news-open');
             }
         });
 
@@ -14307,6 +14321,13 @@
             const msgEl = document.getElementById('patchProgressMsg');
             const pctEl = document.getElementById('patchProgressPct');
             const fillEl = document.getElementById('patchProgressFill');
+            // Элементы кнопки/прогресса были убраны из разметки вместе с
+            // флагом; без guard'а включение флага падало бы на null.style
+            // (аудит Ф8). При возвращении функционала — вернуть и разметку.
+            if (!btn || !progressDiv || !msgEl || !pctEl || !fillEl) {
+                showNotification('UI установки патчей недоступен', 'error');
+                return;
+            }
 
             // Сначала проверяем доступность v2
             try {
@@ -14377,6 +14398,7 @@
         async function checkPatchesUpdate() {
             if (!PATCHES_DOWNLOAD_ENABLED) return;   // до выхода v2
             const btn = document.getElementById('patchCheckUpdateBtn');
+            if (!btn) return; // разметка убрана вместе с флагом (аудит Ф8)
             btn.disabled = true;
             btn.innerHTML = '<i data-lucide="loader" style="animation:spin 1s linear infinite;"></i> Проверка...';
             
@@ -15025,11 +15047,6 @@
                     loadSavedData();
                     refreshAirInstallSection();
                     showNotification('<i data-lucide="check-circle"></i> Лаунчер установлен!', 'success');
-                    if (_flInstallPending) {
-                        // Обновляем статус игры и вернёмся в FL после закрытия
-                        if (_flData) _flData.check_status = 'ok';
-                        _flInstallPending = false;
-                    }
                 } else if (data.stage === 'error') {
                     fill.classList.add('error');
                     document.getElementById('installModalTitle').innerHTML = '<i data-lucide="x-circle"></i> Ошибка установки';
@@ -16432,11 +16449,11 @@
                         }
                     } else {
                         // Fallback на thumb если full не загрузился
-                        applyBgImage(wp.data_url);
+                        applyBgImage(wp.data_url || null);
                     }
                 });
             } else {
-                applyBgImage(wp.data_url);
+                applyBgImage(wp.data_url || null);
             }
         }
 
@@ -17141,15 +17158,20 @@
             const cb = document.getElementById('statusBarCheck');
             if (cb) cb.checked = launcherSettings.status_bar;
             // Кнопки «Внизу/Вверху»: активна та, что совпадает с положением
-            // строки в текущей раскладке
+            // строки в текущей раскладке. Порог 5/95: остров в середине
+            // экрана не должен подсвечивать ни одну из кнопок (аудит Ф9)
             const layout = (typeof _effectiveLayout === 'function' && _layoutReady)
                 ? _effectiveLayout() : null;
             const atBottom = layout && layout.status
-                ? layout.status.y >= 50
+                ? layout.status.y >= 95
                 : (launcherSettings.status_bar_pos || 'bottom') !== 'top';
+            const atTop = layout && layout.status
+                ? layout.status.y <= 5
+                : (launcherSettings.status_bar_pos || 'bottom') === 'top';
             const btns = document.querySelectorAll('.sb-pos-btn[data-pos]');
             for (let i = 0; i < btns.length; i++) {
-                btns[i].classList.toggle('active', (btns[i].dataset.pos === 'bottom') === atBottom);
+                const active = btns[i].dataset.pos === 'bottom' ? atBottom : atTop;
+                btns[i].classList.toggle('active', active);
             }
             const sizeBtns = document.querySelectorAll('.sb-pos-btn[data-size]');
             for (let i = 0; i < sizeBtns.length; i++) {
@@ -17171,8 +17193,10 @@
             const profile = (typeof _activeProfile === 'function' && _layoutReady) ? _activeProfile() : null;
             if (typeof _layoutNormalize === 'function' && _layoutReady) {
                 if (profile) {
-                    profile.layout = _layoutNormalize(
-                        Object.assign({}, profile.layout || {}, { status: point }));
+                    // Без normalize: профильный layout хранится ЧАСТИЧНЫМ
+                    // (только status), недостающее наследуется от глобальной
+                    // через _effectiveLayout (аудит Ф3 14.11)
+                    profile.layout = Object.assign({}, profile.layout || {}, { status: point });
                     _saveProfiles();
                 } else {
                     _layoutGlobal = _layoutNormalize(
@@ -19903,7 +19927,6 @@
         // ══════════════════════════════════════════════
         let _flStep = 0;
         let _flData = null;
-        let _flInstallPending = false;
         let _flInstalling = false; // идёт установка из онбординга — кнопки убраны, виден прогресс
         let _flLaunchMethod = 'native'; // выбранный в онбординге способ запуска
         const FL_TOTAL = 5;
@@ -19938,6 +19961,22 @@
             _flStep = 0;
             // Грузим обои заранее чтобы шаг выбора обоев был готов
             if (_wallpapers.length === 0) await loadWallpapers();
+            // Превью для карточек шага «Обои»: бэк отдаёт только имена,
+            // без thumb карточки рендерились с url('undefined') и выбор
+            // шёл вслепую (аудит Ф1). get_wallpaper_thumb кэшируется бэком —
+            // повторное открытие почти бесплатно.
+            try {
+                if (window.pywebview && window.pywebview.api.get_wallpaper_thumb) {
+                    await Promise.all(_wallpapers.map(wp => {
+                        if (wp.data_url) return Promise.resolve();
+                        return window.pywebview.api.get_wallpaper_thumb(wp.filename)
+                            .then(res => { if (res && res.success) wp.data_url = res.data_url; })
+                            .catch(() => {});
+                    }));
+                }
+            } catch (e) {
+                console.warn('onboarding thumbs:', e);
+            }
             // Текущий способ запуска — для шага выбора (по умолчанию native)
             try {
                 if (window.pywebview && window.pywebview.api.get_launch_method) {
@@ -20248,7 +20287,7 @@
                     _wallpapers.forEach((wp, i) => {
                         const active = launcherSettings.bg_image === wp.filename;
                         wpCards += `<div class="fl-wp-card${active ? ' fl-wp-active' : ''}" onclick="_flApplyWallpaper(${i})">
-                            <div class="fl-wp-thumb" style="background-image:url('${wp.data_url}')">
+                            <div class="fl-wp-thumb" style="background-image:url('${wp.data_url || ''}')">
                                 ${active ? '<div class="fl-wp-check"><i data-lucide="check"></i></div>' : ''}
                             </div>
                             <div class="fl-wp-name">${wp.name}</div>
@@ -20376,14 +20415,6 @@
                     }
                 } else { showNotification('Доступно только в приложении', 'error'); }
             } catch(e) { showNotification('Ошибка: ' + (e && e.message || e), 'error'); }
-        }
-
-        function _flTriggerInstall() {
-            const d = _flData || {};
-            // Не закрываем FL-панель — прячем её за install modal
-            // После установки она вернётся с обновлённым статусом
-            _flInstallPending = true;
-            openInstallModal(d.folder, d.missing);
         }
 
         // ══════════════════════════════════════════════
@@ -20814,19 +20845,24 @@
         }
 
         function _effectiveLayout() {
+            const g = _layoutNormalize(_layoutGlobal || launcherSettings.layout);
             const p = _activeProfile();
             if (p && p.layout) {
-                const l = _layoutNormalize(p.layout);
-                // Строка — общая история: в раскладке профиля без своего
-                // status берём глобальное положение, иначе при переключении
-                // профиля, сохранённого до появления layout.status, строка
-                // «сама переезжала» на дефолт
-                if (!p.layout.status) {
-                    l.status = _layoutNormalize(_layoutGlobal || launcherSettings.layout).status;
-                }
+                // Профильная раскладка — ЧАСТИЧНОЕ перекрытие глобальной:
+                // перезаписываем только те блоки, что реально есть в профиле.
+                // Раньше тут была normalize(p.layout) — она подмешивала дефолты
+                // menu/profiles, и при смене положения строки кнопками
+                // «Внизу/Вверху» у профиля без своего layout меню «прыгало
+                // в центр» и сохранялось (аудит Ф3 14.11).
+                const l = JSON.parse(JSON.stringify(g));
+                ['menu', 'profiles', 'status'].forEach(k => {
+                    if (p.layout[k] && typeof p.layout[k] === 'object') {
+                        Object.assign(l[k] || (l[k] = {}), p.layout[k]);
+                    }
+                });
                 return l;
             }
-            return _layoutNormalize(_layoutGlobal || launcherSettings.layout);
+            return g;
         }
 
         /** Полезная зона для раскладки: отступ от краёв окна. */
@@ -21083,7 +21119,13 @@
             _layoutEditStart = {
                 layout: _layoutClone(_effectiveLayout()),
                 compactMenu: document.documentElement.classList.contains('compact-menu'),
-                profilesCompact: !!launcherSettings.profiles_compact
+                profilesCompact: !!launcherSettings.profiles_compact,
+                // Видимость/размер строки: ПКМ-действия над ней применяются
+                // сразу (не через draft) — поэтому снимок для «Отменить»
+                // (аудит Ф4)
+                statusBar: launcherSettings.status_bar !== false,
+                statusBarSize: (['lg','md','sm'].indexOf(launcherSettings.status_bar_size) >= 0)
+                    ? launcherSettings.status_bar_size : 'lg'
             };
             _layoutDraft = _layoutClone(_layoutEditStart.layout);
             if (presetName) _layoutPresetToDraft(presetName, false);
@@ -21145,6 +21187,14 @@
             const start = _layoutEditStart || { layout: _layoutDefault() };
             setCompactMenu(!!start.compactMenu);
             setProfilesCompact(!!start.profilesCompact, false);
+            // Видимость/размер строки: вернуть как до входа в редактор
+            // (снапшота может не быть — старый fallback-объект его не содержит)
+            if (_layoutEditStart) {
+                if ((launcherSettings.status_bar !== false) !== start.statusBar) toggleStatusBar();
+                if ((launcherSettings.status_bar_size || 'lg') !== start.statusBarSize) {
+                    setStatusBarSize(start.statusBarSize);
+                }
+            }
             const menu = document.querySelector('.left-panel');
             const prof = document.getElementById('profilesHoverWidget');
             [menu, prof].forEach(el => {
@@ -21629,7 +21679,10 @@
                 if (newsHandle) {
                     newsHandle.style.left = 'auto';
                     newsHandle.style.right = '0';
-                    newsHandle.style.transform = 'rotate(180deg)';
+                    // rotate затирал translateY(-50%) из CSS — язычок съезжал
+                    // на полвысоты (аудит Ф2); rotate нужен, чтобы визуально
+                    // перевернуть скругление/бордер на зеркальную сторону
+                    newsHandle.style.transform = 'translateY(-50%) rotate(180deg)';
                 }
             } else {
                 rightPanel.style.right = '';
