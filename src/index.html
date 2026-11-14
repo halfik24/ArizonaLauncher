@@ -612,49 +612,7 @@
             border-top: none;
             border-radius: 0 0 14px 14px;
         }
-        /* Лево */
-        .status-bar.sb-pos-left {
-            top: 0; bottom: 0; left: 0;
-            width: 40px;
-            flex-direction: column;
-            align-items: center;
-            justify-content: flex-start;
-            gap: 14px;
-            padding: 12px 0;
-            border-right: 1px solid rgba(255,255,255,0.07);
-        }
-        /* Право */
-        .status-bar.sb-pos-right {
-            top: 0; bottom: 0; right: 0;
-            width: 40px;
-            flex-direction: column;
-            align-items: center;
-            justify-content: flex-start;
-            gap: 14px;
-            padding: 12px 0;
-            border-left: 1px solid rgba(255,255,255,0.07);
-        }
-        /* Боковые положения: чипы столбиком, подпись в title */
-        .sb-pos-left .sb-chip,
-        .sb-pos-right .sb-chip {
-            flex-direction: column;
-            gap: 3px;
-            width: 100%;
-            align-items: center;
-            text-align: center;
-        }
-        .sb-pos-left .sb-key,
-        .sb-pos-right .sb-key { display: none; }
-        .sb-pos-left .sb-val,
-        .sb-pos-right .sb-val {
-            font-size: 9px;
-            line-height: 1.15;
-            max-width: 38px;
-            white-space: normal;
-        }
-        /* Место под боковые полосы и под виджет «Профили» при верхней */
-        body.sb-left .interface { padding-left: 48px; }
-        body.sb-right .interface { padding-right: 48px; }
+        /* Место под виджет «Профили» при верхней строке */
         body.sb-top #profilesHoverWidget { top: 64px; }
 
         /* Размеры строки состояния (толщина) */
@@ -665,8 +623,6 @@
         .status-bar.sb-size-md.sb-pos-bottom,
         .status-bar.sb-size-md.sb-pos-top,
         .status-bar.sb-size-md:not([class*="sb-pos-"]) { height: 28px; padding: 0 12px; }
-        .status-bar.sb-size-md.sb-pos-left,
-        .status-bar.sb-size-md.sb-pos-right { width: 33px; gap: 10px; padding: 10px 0; }
 
         .status-bar.sb-size-sm {
             font-size: 9px;
@@ -675,8 +631,6 @@
         .status-bar.sb-size-sm.sb-pos-bottom,
         .status-bar.sb-size-sm.sb-pos-top,
         .status-bar.sb-size-sm:not([class*="sb-pos-"]) { height: 24px; padding: 0 10px; }
-        .status-bar.sb-size-sm.sb-pos-left,
-        .status-bar.sb-size-sm.sb-pos-right { width: 29px; gap: 8px; padding: 8px 0; }
         .status-bar.sb-size-sm .sb-chip svg { width: 11px; height: 11px; }
 
         /* Сегмент положения строки в настройках */
@@ -710,23 +664,12 @@
         .sb-chip svg { width: 13px; height: 13px; opacity: 0.7; }
         .sb-key { color: rgba(255,255,255,0.4); letter-spacing: 0.3px; }
         .sb-val { color: rgba(255,255,255,0.78); font-weight: 600; }
-        /* Имя профиля: в горизонтальной строке обрезаем длинные названия,
-           в боковых — максимум 3 строки, чтобы чип не растягивал колонку. */
+        /* Имя профиля: длинные названия обрезаем многоточием */
         #sbProfileVal {
             max-width: 170px;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
-        }
-        .sb-pos-left #sbProfileVal,
-        .sb-pos-right #sbProfileVal {
-            max-width: 38px;
-            white-space: normal;
-            display: -webkit-box;
-            -webkit-line-clamp: 3;
-            -webkit-box-orient: vertical;
-            overflow: hidden;
-            word-break: break-all;
         }
         .sb-dot {
             width: 7px; height: 7px;
@@ -2663,8 +2606,8 @@
         }
         /* Своя рамка: панель кроет всё окно, но её содержимое начинается под
            тайтлбаром (42px) — плашка с названием и кнопки окна остаются видны
-           и не перекрываются. Левый сайдбар тянется до самого верха и получает
-           скругление, а его контент отступает от плашки названия. */
+           и не перекрываются. Левый сайдбар тянется до самого верха окна,
+           его контент отступает от плашки названия. */
         body.frame-custom .settings-panel.full-window {
             top: 50%;
             height: 100vh;
@@ -2672,11 +2615,6 @@
         }
         body.frame-custom .settings-panel.full-window #mainSettingsNav {
             padding-top: 42px;
-        }
-        /* Сайдбар в полноэкранном режиме скруглён сверху слева — как у панели
-           в оконном режиме; в своей рамке он ещё и тянется до верха окна. */
-        .settings-panel.full-window #mainSettingsNav {
-            border-top-left-radius: 18px;
         }
         body.frame-custom .settings-panel.full-window .settings-body {
             padding-top: 42px;
@@ -9008,8 +8946,6 @@
                                 <div class="sb-pos-row" id="sbPosRow">
                                     <button class="sb-pos-btn" data-pos="bottom" onclick="setStatusBarPos('bottom')">Внизу</button>
                                     <button class="sb-pos-btn" data-pos="top" onclick="setStatusBarPos('top')">Вверху</button>
-                                    <button class="sb-pos-btn" data-pos="left" onclick="setStatusBarPos('left')">Слева</button>
-                                    <button class="sb-pos-btn" data-pos="right" onclick="setStatusBarPos('right')">Справа</button>
                                 </div>
                             </div>
                             <div class="sb-pos-wrap">
@@ -9081,9 +9017,6 @@
                         </div>
                     </div>
 
-                    </div><!-- /.lt-grid: Зимние эффекты -->
-
-                    <div class="lt-grid">
                     <div class="s-section">
                         <div class="s-section-head">
                             <span class="s-section-head-icon"><i data-lucide="sparkles"></i></span>
@@ -9112,6 +9045,8 @@
                             </div>
                         </div>
                     </div>
+
+                    </div><!-- /.lt-grid: Зимние эффекты + Анимации -->
 
                     <div class="s-section">
                         <div class="s-section-head">
@@ -9154,7 +9089,6 @@
                             </div>
                         </div>
                     </div>
-                    </div><!-- /.lt-grid: Анимации + Звук -->
 
                 </div>
 
@@ -16941,19 +16875,21 @@
 
         function applyStatusBar() {
             if (typeof launcherSettings.status_bar !== 'boolean') launcherSettings.status_bar = true;
-            if (['bottom','top','left','right'].indexOf(launcherSettings.status_bar_pos) < 0) launcherSettings.status_bar_pos = 'bottom';
+            // Положения «слева/справа» убраны (14.11) — старые значения
+            // из конфига тихо мигрируют в «внизу»
+            if (['bottom','top'].indexOf(launcherSettings.status_bar_pos) < 0) launcherSettings.status_bar_pos = 'bottom';
             if (['lg','md','sm'].indexOf(launcherSettings.status_bar_size) < 0) launcherSettings.status_bar_size = 'lg';
             const bar = document.getElementById('statusBar');
             if (bar) {
-                bar.classList.remove('sb-pos-bottom', 'sb-pos-top', 'sb-pos-left', 'sb-pos-right');
+                bar.classList.remove('sb-pos-bottom', 'sb-pos-top');
                 bar.classList.add('sb-pos-' + launcherSettings.status_bar_pos);
                 bar.classList.remove('sb-size-md', 'sb-size-sm');
                 if (launcherSettings.status_bar_size !== 'lg') bar.classList.add('sb-size-' + launcherSettings.status_bar_size);
             }
-            // Отступы интерфейса/виджета — только пока строка видима
-            document.body.classList.remove('sb-top', 'sb-left', 'sb-right');
-            if (launcherSettings.status_bar && launcherSettings.status_bar_pos !== 'bottom') {
-                document.body.classList.add('sb-' + launcherSettings.status_bar_pos);
+            // Отступ виджета «Профили» — только пока строка видима наверху
+            document.body.classList.remove('sb-top');
+            if (launcherSettings.status_bar && launcherSettings.status_bar_pos === 'top') {
+                document.body.classList.add('sb-top');
             }
             if (launcherSettings.status_bar) startStatusBar(); else stopStatusBar();
             const cb = document.getElementById('statusBarCheck');
@@ -20598,11 +20534,8 @@
             if (!bar || bar.offsetParent === null) return ins;
             const pos = launcherSettings.status_bar_pos || 'bottom';
             const h = bar.offsetHeight || 34;
-            const w = bar.offsetWidth || 40;
             if (pos === 'top') ins.top = Math.max(ins.top, h + 10);
-            else if (pos === 'bottom') ins.bottom = Math.max(ins.bottom, h + 10);
-            else if (pos === 'left') ins.left = Math.max(ins.left, w + 10);
-            else if (pos === 'right') ins.right = Math.max(ins.right, w + 10);
+            else ins.bottom = Math.max(ins.bottom, h + 10);
             return ins;
         }
 
