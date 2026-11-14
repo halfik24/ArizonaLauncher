@@ -626,10 +626,12 @@
             border: 1px solid rgba(255,255,255,0.07);
             border-radius: 14px;
         }
-        /* Второй вид строки — полоса во всю ширину у края окна.
-           Высоту/толщину задают обычные правила sb-size-lg/md/sm (строка
-           без sb-pos-* попадает под :not([class*="sb-pos-"])). Верх/низ
-           прикрепления и линия ставит JS (sb-strip-top/bottom). */
+        /* Второй вид строки — полоса во всю ширину у края окна (пустого
+           места по бокам нет), углы со стороны окна скруглены крупно —
+           как скругление экрана iPhone 13 Pro. Высоту/толщину задают
+           обычные правила sb-size-lg/md/sm (строка без sb-pos-* попадает
+           под :not([class*="sb-pos-"])). Сторону прикрепления ставит JS
+           (sb-strip-top/bottom). */
         .status-bar.sb-strip {
             left: 0; right: 0;
             width: auto; max-width: none;
@@ -639,8 +641,8 @@
             border: none;
             border-radius: 0;
         }
-        .status-bar.sb-strip.sb-strip-top { border-bottom: 1px solid rgba(255,255,255,0.07); }
-        .status-bar.sb-strip.sb-strip-bottom { border-top: 1px solid rgba(255,255,255,0.07); }
+        .status-bar.sb-strip.sb-strip-bottom { border-radius: 20px 20px 0 0; }
+        .status-bar.sb-strip.sb-strip-top { border-radius: 0 0 20px 20px; }
         /* Место под виджет «Профили» при верхней строке */
         body.sb-top #profilesHoverWidget { top: 64px; }
 
