@@ -626,6 +626,21 @@
             border: 1px solid rgba(255,255,255,0.07);
             border-radius: 14px;
         }
+        /* Второй вид строки — полоса во всю ширину у края окна.
+           Высоту/толщину задают обычные правила sb-size-lg/md/sm (строка
+           без sb-pos-* попадает под :not([class*="sb-pos-"])). Верх/низ
+           прикрепления и линия ставит JS (sb-strip-top/bottom). */
+        .status-bar.sb-strip {
+            left: 0; right: 0;
+            width: auto; max-width: none;
+            transform: none;
+            justify-content: center;
+            padding: 0 16px;
+            border: none;
+            border-radius: 0;
+        }
+        .status-bar.sb-strip.sb-strip-top { border-bottom: 1px solid rgba(255,255,255,0.07); }
+        .status-bar.sb-strip.sb-strip-bottom { border-top: 1px solid rgba(255,255,255,0.07); }
         /* Место под виджет «Профили» при верхней строке */
         body.sb-top #profilesHoverWidget { top: 64px; }
 
@@ -16998,8 +17013,7 @@
                 ? _effectiveLayout() : null;
             if (layout && layout.status) {
                 bar.classList.remove('sb-pos-bottom', 'sb-pos-top');
-                bar.classList.add('sb-free');
-                _layoutSetPos(bar, layout.status);
+                _layoutSetStatusDom(bar, layout.status);
             } else {
                 // Положения «слева/справа» убраны (14.11) — старые значения
                 // из конфига тихо мигрируют в «внизу»
@@ -17011,7 +17025,7 @@
             // Отступ виджета «Профили» — только пока строка стоит у верхнего края
             document.body.classList.remove('sb-top');
             const atTop = layout && layout.status
-                ? layout.status.y < 1
+                ? layout.status.y < (layout.status.style === 'strip' ? 50 : 1)
                 : launcherSettings.status_bar_pos === 'top';
             if (launcherSettings.status_bar && atTop) document.body.classList.add('sb-top');
         }
@@ -20638,7 +20652,7 @@
                 v: LAYOUT_VERSION,
                 menu: { x: 50, y: 50 },
                 profiles: { x: 50, y: 0 },
-                status: { x: 50, y: 100 }
+                status: { x: 50, y: 100, style: 'pill' }
             };
         }
 
@@ -20661,7 +20675,7 @@
             // миграция, откат на прошлые версии работает как раньше).
             const st = (raw.status && typeof raw.status === 'object') ? raw.status : null;
             const statusFallback = launcherSettings.status_bar_pos === 'top'
-                ? { x: 50, y: 0 } : base.status;
+                ? { x: 50, y: 0, style: 'pill' } : base.status;
             return {
                 v: LAYOUT_VERSION,
                 menu: {
@@ -20675,7 +20689,11 @@
                     hidden: prof.hidden === true
                 },
                 status: st
-                    ? { x: _layoutNum(st.x, statusFallback.x), y: _layoutNum(st.y, statusFallback.y) }
+                    ? {
+                        x: _layoutNum(st.x, statusFallback.x),
+                        y: _layoutNum(st.y, statusFallback.y),
+                        style: st.style === 'strip' ? 'strip' : 'pill'
+                    }
                     : statusFallback
             };
         }
@@ -20708,6 +20726,30 @@
             // окна остаются доступны (просьба 15.11: в своей рамке вверх
             // не давало перенести 42px резерва под тайтлбар).
             return { top: 8, right: 8, bottom: 8, left: 8 };
+        }
+
+        /** Положение+вид статус-строки: «пилюля» — свободная точка,
+            «полоса» — лента во всю ширину у ближайшего края (по y). */
+        function _layoutSetStatusDom(bar, st) {
+            if (!bar || !st) return;
+            const strip = st.style === 'strip';
+            bar.classList.toggle('sb-strip', strip);
+            bar.classList.toggle('sb-free', !strip);
+            if (!strip) {
+                _layoutSetPos(bar, st);
+                return;
+            }
+            const atTop = _layoutNum(st.y, 100) < 50;
+            bar.classList.toggle('sb-strip-top', atTop);
+            bar.classList.toggle('sb-strip-bottom', !atTop);
+            const h = bar.offsetHeight || 34;
+            bar.style.left = '0px';
+            bar.style.right = '0px';
+            bar.style.width = 'auto';
+            bar.style.maxWidth = 'none';
+            bar.style.top = atTop ? '0px' : Math.max(0, window.innerHeight - h) + 'px';
+            bar.style.bottom = 'auto';
+            bar.style.transform = 'none';
         }
 
         function _layoutSetPos(el, pos) {
@@ -20769,8 +20811,7 @@
             if (prof) prof.classList.toggle('layout-hidden', layout.profiles.hidden === true);
             if (bar && layout.status) {
                 bar.classList.remove('sb-pos-bottom', 'sb-pos-top');
-                bar.classList.add('sb-free');
-                _layoutSetPos(bar, layout.status);
+                _layoutSetStatusDom(bar, layout.status);
             }
             _updateUnhideFab(layout);
             if (syncNews !== false) _layoutSyncNewsSide();
@@ -21085,8 +21126,21 @@
             let y = drag.start.y + (e.clientY - drag.startY) / drag.freeH * 100;
             x = _layoutSnap(Math.max(0, Math.min(100, x)), drag.freeW);
             y = _layoutSnap(Math.max(0, Math.min(100, y)), drag.freeH);
-            _layoutDraft[drag.kind] = { x, y };
-            _layoutSetPos(drag.el, _layoutDraft[drag.kind]);
+            // Полоса во всю ширину живёт только у края: тянем — прилипает
+            // к верху или низу, середину не занимает
+            if (drag.kind === 'status' && _layoutDraft.status && _layoutDraft.status.style === 'strip') {
+                x = 50;
+                y = y < 50 ? 0 : 100;
+            }
+            // Сохраняем доп. поля (hidden у меню/профилей, style у строки) —
+            // перезапись {x,y} стирала бы их
+            const prev = _layoutDraft[drag.kind] || {};
+            _layoutDraft[drag.kind] = Object.assign({}, prev, { x, y });
+            if (drag.kind === 'status' && prev.style === 'strip') {
+                _layoutSetStatusDom(drag.el, _layoutDraft[drag.kind]);
+            } else {
+                _layoutSetPos(drag.el, _layoutDraft[drag.kind]);
+            }
         }
 
         function _layoutDragEnd(e) {
@@ -21193,11 +21247,18 @@
             if (!m || !_layoutDraft) return;
             const hidden = _layoutObjHidden(kind);
             const items = [
-                { act: 'hide', label: hidden ? 'Показать' : 'Скрыть' },
+                { act: 'hide', label: hidden ? 'Показать' : 'Скрыть' }
+            ];
+            if (kind === 'status' && _layoutDraft.status) {
+                // Два вида строки: пилюля (свободная точка) и полоса во всю
+                // ширину у края — выбирается здесь же
+                items.push({ act: 'style', label: 'Вид — ' + (_layoutDraft.status.style === 'strip' ? 'полоса' : 'пилюля') });
+            }
+            items.push(
                 { act: 'compact', label: 'Компакт — ' + (_layoutObjCompact(kind) ? 'вкл' : 'выкл') },
                 { act: 'classic', label: 'Классика' },
                 { act: 'snap', label: 'Автопритяжение к краям — ' + (_layoutSnapEnabled() ? 'вкл' : 'выкл') }
-            ];
+            );
             m.dataset.kind = kind;
             m.innerHTML = '<div class="layout-ctx-title">' + LAYOUT_CTX_NAMES[kind] + '</div>' +
                 items.map(it => '<button class="layout-ctx-item" data-act="' + it.act + '">' + it.label + '</button>').join('');
@@ -21230,6 +21291,11 @@
                     if (el) el.classList.toggle('layout-hidden', _layoutDraft[kind].hidden === true);
                     _updateUnhideFab(_layoutDraft);
                 }
+            } else if (act === 'style') {
+                if (kind === 'status' && _layoutDraft.status) {
+                    _layoutDraft.status.style = (_layoutDraft.status.style === 'strip') ? 'pill' : 'strip';
+                    _layoutApplyToDom(_layoutDraft, true);
+                }
             } else if (act === 'compact') {
                 if (kind === 'menu') setCompactMenu(!document.documentElement.classList.contains('compact-menu'));
                 else if (kind === 'profiles') setProfilesCompact(!launcherSettings.profiles_compact, false);
@@ -21241,7 +21307,7 @@
                 // Классика для одного объекта: дефолтная позиция + некомпакт
                 if (kind === 'menu') { _layoutDraft.menu = { x: 50, y: 50, hidden: false }; setCompactMenu(false); }
                 else if (kind === 'profiles') { _layoutDraft.profiles = { x: 50, y: 0, hidden: false }; setProfilesCompact(false, false); }
-                else { _layoutDraft.status = { x: 50, y: 100 }; setStatusBarSize('lg'); }
+                else { _layoutDraft.status = { x: 50, y: 100, style: (_layoutDraft.status && _layoutDraft.status.style) || 'pill' }; setStatusBarSize('lg'); }
                 if (el) el.classList.remove('layout-hidden');
                 _layoutApplyToDom(_layoutDraft, true);
                 _layoutRefreshPresetButtons();
