@@ -3095,11 +3095,13 @@
             box-shadow: 0 0 0 2px rgba(79, 195, 247, 0.7);
         }
         /* В режиме правки язычки и кнопки не открывают панели:
-           они не объекты раскладки, случайный клик мешает правке */
-        .layout-edit-mode .news-handle,
-        .layout-edit-mode .patch-handle,
-        .layout-edit-mode #feedbackFab {
-            pointer-events: none;
+           они не объекты раскладки, случайный клик мешает правке.
+           !important — у .news-handle/.patch-handle есть правила
+           pointer-events с более высокой специфичностью. */
+        body.layout-edit-mode .news-handle,
+        body.layout-edit-mode .patch-handle,
+        body.layout-edit-mode #feedbackFab {
+            pointer-events: none !important;
             opacity: 0.35;
         }
         /* Сетка свободного хода: показывается только во время перетаскивания,
