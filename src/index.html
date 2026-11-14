@@ -612,6 +612,20 @@
             border-top: none;
             border-radius: 0 0 14px 14px;
         }
+        /* Свободное положение (редактор раскладки): координаты ставит JS,
+           пилюля со скруглением со всех сторон */
+        .status-bar.sb-free {
+            left: 0; top: 0; right: auto; bottom: auto;
+            transform: none;
+            width: max-content;
+            max-width: calc(100% - 16px);
+            height: 34px;
+            align-items: center;
+            justify-content: center;
+            padding: 0 18px;
+            border: 1px solid rgba(255,255,255,0.07);
+            border-radius: 14px;
+        }
         /* Место под виджет «Профили» при верхней строке */
         body.sb-top #profilesHoverWidget { top: 64px; }
 
@@ -3069,6 +3083,24 @@
         }
         .layout-edit-mode #profilesHoverWidget.dragging .ph-trigger {
             box-shadow: 0 0 0 2px rgba(79, 195, 247, 0.7);
+        }
+        /* Статус-строка — тоже объект перетаскивания */
+        .layout-edit-mode .status-bar {
+            cursor: grab;
+            touch-action: none;
+            box-shadow: 0 0 0 2px rgba(79, 195, 247, 0.35);
+        }
+        .layout-edit-mode .status-bar.dragging {
+            cursor: grabbing;
+            box-shadow: 0 0 0 2px rgba(79, 195, 247, 0.7);
+        }
+        /* В режиме правки язычки и кнопки не открывают панели:
+           они не объекты раскладки, случайный клик мешает правке */
+        .layout-edit-mode .news-handle,
+        .layout-edit-mode .patch-handle,
+        .layout-edit-mode #feedbackFab {
+            pointer-events: none;
+            opacity: 0.35;
         }
         /* Сетка свободного хода: показывается только во время перетаскивания,
            совпадает с точками snap 0/25/50/75/100. */
@@ -16873,30 +16905,56 @@
             try { localStorage.setItem(_PT_KEY, String(_ptTotal)); } catch (e) {}
         }
 
+        /** Положение строки. Раскладка — источник правды (layout.status,
+            двигается в редакторе); legacy status_bar_pos работает до
+            инициализации раскладки и для отката на прошлую версию. */
+        function applyStatusBarPos() {
+            const bar = document.getElementById('statusBar');
+            if (!bar) return;
+            const layout = (typeof _effectiveLayout === 'function' && _layoutReady)
+                ? _effectiveLayout() : null;
+            if (layout && layout.status) {
+                bar.classList.remove('sb-pos-bottom', 'sb-pos-top');
+                bar.classList.add('sb-free');
+                _layoutSetPos(bar, layout.status);
+            } else {
+                // Положения «слева/справа» убраны (14.11) — старые значения
+                // из конфига тихо мигрируют в «внизу»
+                const pos = (['bottom','top'].indexOf(launcherSettings.status_bar_pos) < 0)
+                    ? 'bottom' : launcherSettings.status_bar_pos;
+                bar.classList.remove('sb-free', 'sb-pos-bottom', 'sb-pos-top');
+                bar.classList.add('sb-pos-' + pos);
+            }
+            // Отступ виджета «Профили» — только пока строка стоит у верхнего края
+            document.body.classList.remove('sb-top');
+            const atTop = layout && layout.status
+                ? layout.status.y < 1
+                : launcherSettings.status_bar_pos === 'top';
+            if (launcherSettings.status_bar && atTop) document.body.classList.add('sb-top');
+        }
+
         function applyStatusBar() {
             if (typeof launcherSettings.status_bar !== 'boolean') launcherSettings.status_bar = true;
-            // Положения «слева/справа» убраны (14.11) — старые значения
-            // из конфига тихо мигрируют в «внизу»
-            if (['bottom','top'].indexOf(launcherSettings.status_bar_pos) < 0) launcherSettings.status_bar_pos = 'bottom';
             if (['lg','md','sm'].indexOf(launcherSettings.status_bar_size) < 0) launcherSettings.status_bar_size = 'lg';
             const bar = document.getElementById('statusBar');
             if (bar) {
-                bar.classList.remove('sb-pos-bottom', 'sb-pos-top');
-                bar.classList.add('sb-pos-' + launcherSettings.status_bar_pos);
                 bar.classList.remove('sb-size-md', 'sb-size-sm');
                 if (launcherSettings.status_bar_size !== 'lg') bar.classList.add('sb-size-' + launcherSettings.status_bar_size);
             }
-            // Отступ виджета «Профили» — только пока строка видима наверху
-            document.body.classList.remove('sb-top');
-            if (launcherSettings.status_bar && launcherSettings.status_bar_pos === 'top') {
-                document.body.classList.add('sb-top');
-            }
+            applyStatusBarPos();
             if (launcherSettings.status_bar) startStatusBar(); else stopStatusBar();
             const cb = document.getElementById('statusBarCheck');
             if (cb) cb.checked = launcherSettings.status_bar;
+            // Кнопки «Внизу/Вверху»: активна та, что совпадает с положением
+            // строки в текущей раскладке
+            const layout = (typeof _effectiveLayout === 'function' && _layoutReady)
+                ? _effectiveLayout() : null;
+            const atBottom = layout && layout.status
+                ? layout.status.y >= 50
+                : (launcherSettings.status_bar_pos || 'bottom') !== 'top';
             const btns = document.querySelectorAll('.sb-pos-btn[data-pos]');
             for (let i = 0; i < btns.length; i++) {
-                btns[i].classList.toggle('active', btns[i].dataset.pos === launcherSettings.status_bar_pos);
+                btns[i].classList.toggle('active', (btns[i].dataset.pos === 'bottom') === atBottom);
             }
             const sizeBtns = document.querySelectorAll('.sb-pos-btn[data-size]');
             for (let i = 0; i < sizeBtns.length; i++) {
@@ -16907,12 +16965,28 @@
         }
 
         function setStatusBarPos(pos) {
-            if (['bottom', 'top', 'left', 'right'].indexOf(pos) < 0) return;
-            launcherSettings.status_bar_pos = pos;
-            applyStatusBar();
-            if (window.pywebview && window.pywebview.api.save_launcher_settings) {
-                window.pywebview.api.save_launcher_settings(launcherSettings);
+            if (['bottom', 'top'].indexOf(pos) < 0) return;
+            // Положение строки — часть раскладки: кнопки ставят край
+            // («внизу»/«вверху» по центру), двигать свободно — редактор.
+            const point = { x: 50, y: pos === 'top' ? 0 : 100 };
+            const profile = (typeof _activeProfile === 'function' && _layoutReady) ? _activeProfile() : null;
+            if (typeof _layoutNormalize === 'function' && _layoutReady) {
+                if (profile) {
+                    profile.layout = _layoutNormalize(
+                        Object.assign({}, profile.layout || {}, { status: point }));
+                    _saveProfiles();
+                } else {
+                    _layoutGlobal = _layoutNormalize(
+                        Object.assign({}, _layoutGlobal || launcherSettings.layout || {}, { status: point }));
+                    launcherSettings.layout = _layoutClone(_layoutGlobal);
+                }
+                persistLauncherSettings();
+                _layoutApplyToDom(_effectiveLayout(), true);
+            } else {
+                launcherSettings.status_bar_pos = pos;
+                persistLauncherSettings();
             }
+            applyStatusBar();
         }
 
         function setStatusBarSize(size) {
@@ -20440,19 +20514,20 @@
         const LAYOUT_SNAP_PX = 18;
         const LAYOUT_SNAP_POINTS = [0, 25, 50, 75, 100];
         const LAYOUT_PRESETS = {
+            // Пресеты меняют ТОЛЬКО плотность блоков (просьба 14.11: меню
+            // не должно само переезжать). Позиции двигает перетаскивание.
+            // Лестница плотности: Классика → Компакт (плотное меню) →
+            // Минимал (плотное меню + компактная кнопка профилей).
             classic: {
                 label: 'Классика',
-                menu: { x: 50, y: 50 }, profiles: { x: 50, y: 0 },
                 compactMenu: false, profilesCompact: false
             },
             compact: {
                 label: 'Компакт',
-                menu: { x: 0, y: 50 }, profiles: { x: 100, y: 0 },
-                compactMenu: true, profilesCompact: true
+                compactMenu: true, profilesCompact: false
             },
             minimal: {
                 label: 'Минимал',
-                menu: { x: 0, y: 100 }, profiles: { x: 100, y: 0 },
                 compactMenu: true, profilesCompact: true
             }
         };
@@ -20469,7 +20544,8 @@
             return {
                 v: LAYOUT_VERSION,
                 menu: { x: 50, y: 50 },
-                profiles: { x: 50, y: 0 }
+                profiles: { x: 50, y: 0 },
+                status: { x: 50, y: 100 }
             };
         }
 
@@ -20487,6 +20563,12 @@
             if (!raw || typeof raw !== 'object') return base;
             const menu = (raw.menu && typeof raw.menu === 'object') ? raw.menu : {};
             const prof = (raw.profiles && typeof raw.profiles === 'object') ? raw.profiles : {};
+            // Статус-строка — третий объект раскладки. В старых раскладках
+            // поля нет: берём положение из настройки status_bar_pos (v2 →
+            // миграция, откат на прошлые версии работает как раньше).
+            const st = (raw.status && typeof raw.status === 'object') ? raw.status : null;
+            const statusFallback = launcherSettings.status_bar_pos === 'top'
+                ? { x: 50, y: 0 } : base.status;
             return {
                 v: LAYOUT_VERSION,
                 menu: {
@@ -20496,7 +20578,10 @@
                 profiles: {
                     x: _layoutNum(prof.x, base.profiles.x),
                     y: _layoutNum(prof.y, base.profiles.y)
-                }
+                },
+                status: st
+                    ? { x: _layoutNum(st.x, statusFallback.x), y: _layoutNum(st.y, statusFallback.y) }
+                    : statusFallback
             };
         }
 
@@ -20519,24 +20604,14 @@
             return _layoutNormalize(_layoutGlobal || launcherSettings.layout);
         }
 
-        /** Полезная зона для раскладки: отступ от рамки и элементов окна. */
+        /** Полезная зона для раскладки: отступ от краёв окна. */
         function _layoutInsets() {
-            // Оставляем свободное поле вокруг интерфейса, чтобы сетка и
-            // перетаскивание не занимали всё окно и не заходили под chrome.
-            const ins = {
-                top: Math.max(56, Math.round(window.innerHeight * 0.08)),
-                right: Math.max(36, Math.round(window.innerWidth * 0.035)),
-                bottom: Math.max(42, Math.round(window.innerHeight * 0.06)),
-                left: Math.max(36, Math.round(window.innerWidth * 0.035))
-            };
-            if (!launcherSettings.status_bar) return ins;
-            const bar = document.getElementById('statusBar');
-            if (!bar || bar.offsetParent === null) return ins;
-            const pos = launcherSettings.status_bar_pos || 'bottom';
-            const h = bar.offsetHeight || 34;
-            if (pos === 'top') ins.top = Math.max(ins.top, h + 10);
-            else ins.bottom = Math.max(ins.bottom, h + 10);
-            return ins;
+            // Поле перетаскивания — почти всё окно (просьба 14.11: прежние
+            // отступы 56/36/42 px сильно ограничивали). Статус-строка теперь
+            // сама объект раскладки, поэтому место под неё не резервируется:
+            // перекрытия разруливает пользователь перетаскиванием.
+            const top = document.body.classList.contains('frame-custom') ? 42 : 8;
+            return { top, right: 8, bottom: 8, left: 8 };
         }
 
         function _layoutSetPos(el, pos) {
@@ -20579,9 +20654,15 @@
         function _layoutApplyToDom(layout, syncNews) {
             const menu = document.querySelector('.left-panel');
             const prof = document.getElementById('profilesHoverWidget');
+            const bar = document.getElementById('statusBar');
             document.body.classList.add('layout-positioned');
             _layoutSetPos(menu, layout.menu);
             _layoutSetPos(prof, layout.profiles);
+            if (bar && layout.status) {
+                bar.classList.remove('sb-pos-bottom', 'sb-pos-top');
+                bar.classList.add('sb-free');
+                _layoutSetPos(bar, layout.status);
+            }
             if (syncNews !== false) _layoutSyncNewsSide();
         }
 
@@ -20589,12 +20670,14 @@
         function _layoutApplyAnimated(layout) {
             const menu = document.querySelector('.left-panel');
             const prof = document.getElementById('profilesHoverWidget');
+            const bar = document.getElementById('statusBar');
             const before = {
                 menu: menu ? menu.getBoundingClientRect() : null,
-                prof: prof ? prof.getBoundingClientRect() : null
+                prof: prof ? prof.getBoundingClientRect() : null,
+                bar: bar ? bar.getBoundingClientRect() : null
             };
             _layoutApplyToDom(layout, true);
-            [[menu, before.menu], [prof, before.prof]].forEach(([el, oldRect]) => {
+            [[menu, before.menu], [prof, before.prof], [bar, before.bar]].forEach(([el, oldRect]) => {
                 if (!el || !oldRect) return;
                 const now = el.getBoundingClientRect();
                 const dx = oldRect.left - now.left;
@@ -20666,36 +20749,27 @@
         function _layoutPresetToDraft(name, applyNow) {
             const preset = LAYOUT_PRESETS[name];
             if (!preset || !_layoutDraft) return;
-            const sizeOnly = name === 'classic' || name === 'compact';
             const menu = document.querySelector('.left-panel');
             const profiles = document.getElementById('profilesHoverWidget');
-            const fixedRects = sizeOnly ? {
+            // Позиции сохраняются: после изменения размеров держим экранные
+            // координаты левого верхнего угла обоих блоков.
+            const rects = {
                 menu: menu && menu.getBoundingClientRect(),
                 profiles: profiles && profiles.getBoundingClientRect()
-            } : null;
-            // Классика и Компакт меняют только плотность блоков. Перемещение
-            // доступно перетаскиванием; Минимал оставлен позиционным пресетом.
-            if (name === 'minimal') {
-                _layoutDraft.menu = { x: preset.menu.x, y: preset.menu.y };
-                _layoutDraft.profiles = { x: preset.profiles.x, y: preset.profiles.y };
-            }
+            };
             setCompactMenu(preset.compactMenu);
             setProfilesCompact(preset.profilesCompact, false);
-            if (fixedRects) {
-                // После изменения размеров сохраняем экранные координаты
-                // левого верхнего угла обоих элементов.
-                const ins = _layoutInsets();
-                [[menu, fixedRects.menu, 'menu'], [profiles, fixedRects.profiles, 'profiles']]
-                    .forEach(([el, rect, key]) => {
-                        if (!el || !rect || !rect.width || !rect.height) return;
-                        const freeW = Math.max(1, window.innerWidth - el.offsetWidth - ins.left - ins.right);
-                        const freeH = Math.max(1, window.innerHeight - el.offsetHeight - ins.top - ins.bottom);
-                        _layoutDraft[key] = {
-                            x: Math.max(0, Math.min(100, (rect.left - ins.left) / freeW * 100)),
-                            y: Math.max(0, Math.min(100, (rect.top - ins.top) / freeH * 100))
-                        };
-                    });
-            }
+            const ins = _layoutInsets();
+            [[menu, rects.menu, 'menu'], [profiles, rects.profiles, 'profiles']]
+                .forEach(([el, rect, key]) => {
+                    if (!el || !rect || !rect.width || !rect.height) return;
+                    const freeW = Math.max(1, window.innerWidth - el.offsetWidth - ins.left - ins.right);
+                    const freeH = Math.max(1, window.innerHeight - el.offsetHeight - ins.top - ins.bottom);
+                    _layoutDraft[key] = {
+                        x: Math.max(0, Math.min(100, (rect.left - ins.left) / freeW * 100)),
+                        y: Math.max(0, Math.min(100, (rect.top - ins.top) / freeH * 100))
+                    };
+                });
             if (applyNow) _layoutApplyAnimated(_layoutDraft);
             _layoutRefreshPresetButtons();
             _layoutTargetLabel();
@@ -20705,16 +20779,9 @@
             if (!_layoutDraft) return;
             document.querySelectorAll('#layoutFloatBar .layout-zone-btn').forEach(btn => {
                 const p = LAYOUT_PRESETS[btn.dataset.preset];
-                const sizeOnly = btn.dataset.preset === 'classic' || btn.dataset.preset === 'compact';
                 const active = !!p &&
                     document.documentElement.classList.contains('compact-menu') === p.compactMenu &&
-                    !!launcherSettings.profiles_compact === p.profilesCompact &&
-                    (sizeOnly || (
-                        Math.abs(p.menu.x - _layoutDraft.menu.x) < 0.5 &&
-                        Math.abs(p.menu.y - _layoutDraft.menu.y) < 0.5 &&
-                        Math.abs(p.profiles.x - _layoutDraft.profiles.x) < 0.5 &&
-                        Math.abs(p.profiles.y - _layoutDraft.profiles.y) < 0.5
-                    ));
+                    !!launcherSettings.profiles_compact === p.profilesCompact;
                 btn.classList.toggle('active', active);
             });
         }
@@ -20748,7 +20815,7 @@
                 _layoutRefreshPresetButtons();
                 _layoutTargetLabel();
                 if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
-                showNotification('Двигайте меню и кнопку профилей. Изменения — «Применить».', 'info');
+                showNotification('Двигайте меню, кнопку профилей и статус-строку. Изменения — «Применить».', 'info');
             }, 330);
         }
 
@@ -20862,8 +20929,10 @@
             if (!_layoutEditActive || e.button !== 0 || _layoutDrag) return;
             const el = kind === 'menu'
                 ? document.querySelector('.left-panel')
-                : document.getElementById('profilesHoverWidget');
-            if (!el || !_layoutDraft) return;
+                : (kind === 'status'
+                    ? document.getElementById('statusBar')
+                    : document.getElementById('profilesHoverWidget'));
+            if (!el || !_layoutDraft || !_layoutDraft[kind]) return;
             e.preventDefault();
             e.stopPropagation();
 
@@ -20914,6 +20983,10 @@
             if (e.target.closest && e.target.closest('.layout-float-bar')) return;
             if (e.target.closest && e.target.closest('.left-panel')) {
                 _layoutDragStart(e, 'menu');
+                return;
+            }
+            if (e.target.closest && e.target.closest('#statusBar')) {
+                _layoutDragStart(e, 'status');
                 return;
             }
             if (e.target.closest && e.target.closest('#profilesHoverWidget')) {
