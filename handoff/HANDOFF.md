@@ -1379,7 +1379,46 @@ check-tags/inline-JS OK; CDP на собранном exe: авто-пинг `cdn
 
 ---
 
-## 28. Ссылки
+## 28. Раунд 15.11 (2) — каталог «Моды из лаунчера Аризоны»
+
+Пользователь: добавить каталог оригинального лаунчера (графика+скрипты) с
+обновлением. Коммит `de4ce8a`-потомок (см. git log).
+
+**Бэк**: `get_arizona_mods` (SWR: cache/arizona_mods.json TTL 30 мин,
+swap-guard `arizona_mods_revalidating`; сеть main/reserve, merge
+topOfMonth+mods дедупом по id); `install_arizona_mod(mod_id, version, title)`
+— HeavyJobGuard + запрет при активном обновлении игры, JSON дерева мода
+(формат game.json), flatten, валидация rel-путей (`validate_mod_rel_path`:
+без `..`/абсолютных/двоеточий/`.exe`), лимиты 64 МБ/файл и 512 МБ/мод,
+скачивание `pc.az-ins.com/resource/mods/<id>/<rel>` (формула БЕЗ gameId —
+подтверждена md5-практикой) с резервом, md5-верификация, запись в
+game_dir/<rel>, mtime=date_change, события `arizona-mod-progress` (свой
+канал, gp-полоса не реагирует); состояние — `installed_arizona_mods`
+ОТДЕЛЬНОЕ поле конфига (фронтовые save_launcher_settings затирают extra —
+lost-update), `uninstall_arizona_mod` удаляет только добавленные файлы
+(заменённые вернёт обновление игры — безопаснее оригинала).
+`get_installed_arizona_mods` — чтение.
+
+**Фронт**: 4-я вкладка модалки «Из Аризоны» (`_MODS_TAB_MAP`+панель
+#modsTabAzmod+ветка switchModsTab); `loadArizonaMods` лениво; карточки в
+стиле ml-каталога: обложка (лениво _fetchImageData + IntersectionObserver),
+автор·версия·↓downloads, бейджи ДОСТУПНО/УСТАНОВЛЕНО/ЕСТЬ ОБНОВЛЕНИЕ,
+`changes` в details при обновлении, предупреждение «Требуется MoonLoader»
+с быстрым установщиком (deps содержит 1), фильтры
+Все/Скрипты/Графика/Установленные, сортировка по скачиваниям; прогресс на
+кнопке (файл N/M, %байт); сетка `grid-auto-rows: max-content` — БЕЗ него
+auto-ряды схлопывали карточки до 8px (превью 0px при правиле 120px —
+флекс-шринк в недостаточной строке; диагностика через CSSOM+бисекцию
+клонов).
+
+**Пробы**: cargo test 58/58; check-tags 754/754…; inline-JS 3/3; CDP:
+каталог 83 мода, вкладка 83 карточки/4 фильтра, round-trip install(24)
+→ файл `moonloader/Server Time by Kalashnikov.lua` в папке игры + запись в
+конфиге → uninstall → removed=1, запись чиста; скриншоты azmod_*.jpg.
+
+---
+
+## 29. Ссылки
 
 - `IDEA.md` — старая карта архитектуры (частично устарела; актуальная — §24).
 - `README.md` — публичное описание, скриншоты, установка.
