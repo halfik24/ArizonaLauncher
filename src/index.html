@@ -12525,6 +12525,7 @@
         // (install_arizona_mod), прогресс — событие arizona-mod-progress.
         let _azMods = null;            // каталог (массив)
         let _azInstalled = {};         // {modId: {version, files, replaced}}
+        let _azMoon = { installed: false, version: '' }; // реальный статус MoonLoader (лог)
         let _azFilter = 'all';
         let _azProgressListenerOn = false;
 
@@ -12542,15 +12543,19 @@
                 window.__TAURI.event.listen('arizona-mod-progress', (ev) => _azModProgress(ev.payload || {}));
             }
             try {
-                const [res, inst] = await Promise.all([
+                const [res, inst, moon] = await Promise.all([
                     window.pywebview.api.get_arizona_mods(),
                     window.pywebview.api.get_installed_arizona_mods(),
+                    window.pywebview.api.check_moonloader(),
                 ]);
                 if (res && res.success && Array.isArray(res.mods)) {
                     _azMods = res.mods;
                 }
                 if (inst && inst.success && inst.mods && typeof inst.mods === 'object') {
                     _azInstalled = inst.mods;
+                }
+                if (moon && moon.success) {
+                    _azMoon = { installed: !!moon.installed, version: moon.version || '' };
                 }
                 if (!_azMods) {
                     showErrorWithRetry(grid, (res && res.message) || 'Каталог недоступен', () => loadArizonaMods(true));
@@ -12565,6 +12570,9 @@
         }
 
         function _azModState(mod) {
+            // MoonLoader (id 1) — особый: рантайм может стоять из игры/оригинала
+            // (проверка по moonloader.log), тогда карточка «Установлено»
+            if (String(mod.id) === '1' && _azMoon.installed) return 'installed';
             const rec = _azInstalled[String(mod.id)];
             if (!rec) return 'available';
             return String(rec.version) !== String(mod.version) ? 'update' : 'installed';
@@ -12609,10 +12617,8 @@
 
         function _azCardHtml(m) {
             const st = _azModState(m);
-            const catBadge = m.category === 'graphic'
-                ? '<span class="ml-card-tag" style="color:rgba(140,190,255,.9);">Графика</span>'
-                : '<span class="ml-card-tag">Скрипт</span>';
-            const needsMoon = (m.dependencyModsIds || []).includes(1) && !_azInstalled['1'];
+            const isMoonSelf = String(m.id) === '1';
+            const needsMoon = (m.dependencyModsIds || []).includes(1) && !_azMoon.installed;
             const cover = m.image
                 ? `<div class="ml-card-preview"><img data-az-src="${escapeHtml(m.image)}" alt=""><span class="ml-card-status-badge ${st === 'available' ? 'available' : 'installed'}">${st === 'update' ? 'ЕСТЬ ОБНОВЛЕНИЕ' : st === 'installed' ? 'УСТАНОВЛЕНО' : 'ДОСТУПНО'}</span></div>`
                 : `<div class="ml-card-preview"><span class="ml-card-status-badge ${st === 'available' ? 'available' : 'installed'}">${st === 'update' ? 'ЕСТЬ ОБНОВЛЕНИЕ' : st === 'installed' ? 'УСТАНОВЛЕНО' : 'ДОСТУПНО'}</span></div>`;
@@ -12623,7 +12629,11 @@
                 ? `<div class="az-moon-warn">Требуется <b>MoonLoader</b> — <a href="#" onclick="event.preventDefault(); _azInstallById(1, 'MoonLoader', this)">установить</a></div>`
                 : '';
             let btn;
-            if (st === 'available') {
+            if (isMoonSelf && _azMoon.installed) {
+                // Рантайм стоит в игре (проверка по логу) — переустановка через
+                // каталог не нужна; версия из moonloader.log
+                btn = `<button class="ml-card-install-btn done" style="cursor:default;" disabled><i data-lucide="check"></i> Установлено${_azMoon.version ? ' (v' + escapeHtml(_azMoon.version) + ')' : ''}</button>`;
+            } else if (st === 'available') {
                 btn = `<button class="ml-card-install-btn" onclick="event.stopPropagation(); _azInstallCard(${m.id}, this)"><i data-lucide="download"></i> Установить</button>`;
             } else if (st === 'update') {
                 btn = `<button class="ml-card-install-btn" onclick="event.stopPropagation(); _azInstallCard(${m.id}, this)"><i data-lucide="refresh-cw"></i> Обновить (v${escapeHtml(String(m.version))})</button>`;
@@ -12730,6 +12740,13 @@
                 if (r && r.success) {
                     const inst = await window.pywebview.api.get_installed_arizona_mods();
                     if (inst && inst.success && inst.mods) _azInstalled = inst.mods;
+                    // MoonLoader: статус реальной установки обновить (лог/папка)
+                    if (String(modId) === '1') {
+                        try {
+                            const m = await window.pywebview.api.check_moonloader();
+                            if (m && m.success) _azMoon = { installed: !!m.installed, version: m.version || '' };
+                        } catch (e) {}
+                    }
                     showNotification(`<i data-lucide="check-circle"></i> «${escapeHtml(title)}» установлен`, 'success');
                 }
             } catch (e) {

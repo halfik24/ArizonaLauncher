@@ -2072,6 +2072,63 @@ fn spawn_arizona_mods_revalidate(app: &tauri::AppHandle) {
     });
 }
 
+/// Честная проверка MoonLoader в папке игры: runtime пишет лог
+/// `moonloader/moonloader.log` со строкой `MoonLoader v.026.5-beta loaded`
+/// (стандартный способ детекта, blast.hk/threads/155245). Файл MoonLoader.asi
+/// в корне у сборок Аризоны может отсутствовать — рантайм встроен в их asi-набор,
+/// поэтому ориентируемся на лог + папку moonloader/.
+#[tauri::command]
+pub fn check_moonloader(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
+    let game_dir = match util::game_dir(&state) {
+        Some(d) => d,
+        None => return Ok(serde_json::json!({"success": true, "installed": false, "version": "", "reason": "no-game-path"})),
+    };
+    // Кандидаты лога: стандартное место + корень (старые установки)
+    let candidates = [
+        game_dir.join("moonloader").join("moonloader.log"),
+        game_dir.join("moonloader.log"),
+    ];
+    let mut installed = false;
+    let mut version = String::new();
+    for log_path in &candidates {
+        if !log_path.is_file() {
+            continue;
+        }
+        installed = true;
+        match std::fs::read(log_path) {
+            Ok(bytes) => {
+                let head: Vec<u8> = bytes.iter().take(4096).cloned().collect();
+                let text = String::from_utf8_lossy(&head);
+                // MoonLoader v.026.5-beta / MoonLoader v.0.26 / v.27 ...
+                if let Some(caps) = regex::Regex::new(r"MoonLoader\s+v\.([0-9]+(?:\.[0-9]+)*)(-[a-z]+)?")
+                    .ok()
+                    .and_then(|re| re.captures(&text))
+                {
+                    // Нормализуем: 026.5 → 26.5 (срезаем ведущие нули сегментов)
+                    let raw = caps.get(1).map(|m| m.as_str()).unwrap_or("");
+                    let norm: Vec<String> = raw
+                        .split('.')
+                        .map(|seg| seg.trim_start_matches('0').to_string())
+                        .map(|seg| if seg.is_empty() { "0".to_string() } else { seg })
+                        .collect();
+                    version = norm.join(".");
+                    if let Some(beta) = caps.get(2) {
+                        version.push_str(beta.as_str());
+                    }
+                }
+                break;
+            }
+            Err(_) => continue,
+        }
+    }
+    // Папка moonloader/ без лога (лог пишется при первом запуске игры) —
+    // считаем установленным, но без версии
+    if !installed && game_dir.join("moonloader").is_dir() {
+        installed = true;
+    }
+    Ok(serde_json::json!({"success": true, "installed": installed, "version": version}))
+}
+
 /// Каталог модов Аризоны: диск мгновенно (+ фоновая ревалидация), пусто — сеть.
 #[tauri::command]
 pub async fn get_arizona_mods(
