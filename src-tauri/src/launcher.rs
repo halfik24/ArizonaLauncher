@@ -819,6 +819,7 @@ mod config_deadlock_tests {
             heavy_job_busy: std::sync::atomic::AtomicBool::new(false),
             cdn_auto_cache: std::sync::Mutex::new(None),
             arizona_news_revalidating: std::sync::atomic::AtomicBool::new(false),
+            arizona_mods_revalidating: std::sync::atomic::AtomicBool::new(false),
         });
 
         // Если дедлок — вызов никогда не вернётся; гоняем в отдельном потоке
@@ -1860,6 +1861,435 @@ pub async fn get_arizona_news(
             "Не удалось загрузить новости Arizona RP (проверьте интернет)".to_string(),
         ),
     }
+}
+
+// ==================== Каталог модов из оригинального лаунчера Аризоны ====================
+//
+// Источник (handoff/original-launcher/08): GET <mods-api>/arizona →
+// {topOfMonth, mods}; JSON одного мода — {data:[дерево]} в формате game.json;
+// файлы — <modsCDN>/<modId>/<rel> (main 302→pc2, резерв arz-pc.react-group.tech).
+// Установка: md5-верификация каждого файла, запись в game_dir/<rel>,
+// состояние — config.installed_arizona_mods (отдельное поле: фронтовые
+// save_launcher_settings затирают extra целиком).
+
+const ARIZONA_MODS_URLS: [&str; 2] = [
+    "https://api-samp.arizona-five.com/launcher/mods/arizona",
+    "https://arz-api-reserve.s-amp.com/launcher/mods/arizona",
+];
+const ARIZONA_MODS_TTL_MS: u128 = 30 * 60 * 1000;
+const ARIZONA_MOD_MAX_FILE: u64 = 64 * 1024 * 1024; // 64 МБ на файл
+const ARIZONA_MOD_TOTAL_MAX: u64 = 512 * 1024 * 1024; // 512 МБ на мод
+
+/// Плоское дерево файлов из {data:[...]}: (rel_path, hash, size, date_change).
+fn flatten_mod_tree(
+    nodes: &[serde_json::Value],
+    prefix: &str,
+    out: &mut Vec<(String, String, u64, i64)>,
+) {
+    for n in nodes {
+        let name = match n.get("name").and_then(|v| v.as_str()) {
+            Some(x) => x,
+            None => continue,
+        };
+        let rel = if prefix.is_empty() {
+            name.to_string()
+        } else {
+            format!("{prefix}/{name}")
+        };
+        match n.get("type").and_then(|v| v.as_str()) {
+            Some("dir") => {
+                if let Some(data) = n.get("data").and_then(|v| v.as_array()) {
+                    flatten_mod_tree(data, &rel, out);
+                }
+            }
+            _ => {
+                out.push((
+                    rel,
+                    n.get("hash").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                    n.get("size").and_then(|v| v.as_u64()).unwrap_or(0),
+                    n.get("date_change").and_then(|v| v.as_i64()).unwrap_or(0),
+                ));
+            }
+        }
+    }
+}
+
+/// Относительный путь мода безопасен (внутри папки игры): без `..`,
+/// абсолютных путей, дисков и `.exe`. Возвращает Ok(()) либо Err с причиной.
+fn validate_mod_rel_path(rel: &str) -> Result<(), String> {
+    let bad = |why: &str| Err(format!("Недопустимый путь файла мода ({why}): {rel}"));
+    let p = std::path::Path::new(rel);
+    if p.is_absolute() || rel.starts_with('/') || rel.starts_with('\\') {
+        return bad("абсолютный путь");
+    }
+    if rel.contains('\0') {
+        return bad("null-байт");
+    }
+    for comp in p.components() {
+        match comp {
+            std::path::Component::ParentDir => return bad(".."),
+            std::path::Component::RootDir | std::path::Component::Prefix(_) => {
+                return bad("выход за пределы папки игры")
+            }
+            _ => {}
+        }
+    }
+    for seg in rel.split(['/', '\\']) {
+        if seg.contains(':') {
+            return bad("двоеточие в сегменте");
+        }
+    }
+    if rel.to_ascii_lowercase().ends_with(".exe") {
+        return bad("исполняемый файл .exe");
+    }
+    Ok(())
+}
+
+/// Скачать файл мода с md5-верификацией: main CDN → резерв.
+async fn download_mod_file(url_main: String, url_reserve: String, expected: &str) -> Result<Vec<u8>, String> {
+    use md5::{Digest, Md5};
+    for url in [url_main, url_reserve] {
+        let mut headers = reqwest::header::HeaderMap::new();
+        headers.insert(
+            reqwest::header::USER_AGENT,
+            reqwest::header::HeaderValue::from_static("Mozilla/5.0"),
+        );
+        let resp = match util::http_request(
+            reqwest::Method::GET,
+            &url,
+            headers,
+            std::time::Duration::from_secs(120),
+        )
+        .await
+        {
+            Ok(r) => r,
+            Err(_) => continue,
+        };
+        if resp.status() != reqwest::StatusCode::OK {
+            continue;
+        }
+        let bytes = match resp.bytes().await {
+            Ok(b) => b,
+            Err(_) => continue,
+        };
+        if !expected.is_empty() {
+            let mut h = Md5::new();
+            h.update(&bytes);
+            let hash = format!("{:x}", h.finalize());
+            if hash != expected {
+                return Err(format!("MD5 не совпал у {url}"));
+            }
+        }
+        return Ok(bytes.to_vec());
+    }
+    Err("Зеркала не ответили".to_string())
+}
+
+/// Сеть: каталог модов (main → reserve), слитый {topOfMonth + mods} дедупом по id.
+async fn fetch_arizona_mods_network() -> Option<serde_json::Value> {
+    for base in ["https://api-samp.arizona-five.com/launcher/mods", "https://arz-api-reserve.s-amp.com/launcher/mods"] {
+        let url = format!("{base}/arizona");
+        let mut headers = reqwest::header::HeaderMap::new();
+        headers.insert(
+            reqwest::header::USER_AGENT,
+            reqwest::header::HeaderValue::from_static("Mozilla/5.0"),
+        );
+        let resp = match util::http_request(
+            reqwest::Method::GET,
+            &url,
+            headers,
+            std::time::Duration::from_secs(20),
+        )
+        .await
+        {
+            Ok(r) => r,
+            Err(_) => continue,
+        };
+        if resp.status() != reqwest::StatusCode::OK {
+            continue;
+        }
+        let bytes = match resp.bytes().await {
+            Ok(b) => b,
+            Err(_) => continue,
+        };
+        let body: serde_json::Value = match serde_json::from_slice(&bytes) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        let top = body.get("topOfMonth").cloned().unwrap_or(serde_json::Value::Null);
+        let mods = body.get("mods").cloned().unwrap_or(serde_json::Value::Null);
+        if top.is_null() && mods.is_null() {
+            continue;
+        }
+        // Слить, дедуп по id (topOfMonth частично дублирует mods)
+        let mut seen = std::collections::HashSet::new();
+        let mut all = Vec::new();
+        for item in [&top, &mods] {
+            if let Some(arr) = item.as_array() {
+                for m in arr {
+                    if let Some(id) = m.get("id").and_then(|v| v.as_i64()) {
+                        if seen.insert(id) {
+                            all.push(m.clone());
+                        }
+                    }
+                }
+            }
+        }
+        return Some(serde_json::Value::Array(all));
+    }
+    None
+}
+
+/// Фоновая ревалидация каталога (swap-guard + TTL 30 мин).
+fn spawn_arizona_mods_revalidate(app: &tauri::AppHandle) {
+    use std::sync::atomic::Ordering;
+    let state = app.state::<AppState>();
+    if state.arizona_mods_revalidating.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    if let Some(v) = read_cache_file(&state, "arizona_mods.json") {
+        let ts = v.get("ts_ms").and_then(|t| t.as_u64()).unwrap_or(0u64);
+        let age = now_ms().saturating_sub(ts as u128);
+        if age < ARIZONA_MODS_TTL_MS {
+            state.arizona_mods_revalidating.store(false, Ordering::SeqCst);
+            return;
+        }
+    }
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let result = fetch_arizona_mods_network().await;
+        let state = app.state::<AppState>();
+        if let Some(mods) = result {
+            write_cache_file(
+                &state,
+                "arizona_mods.json",
+                &serde_json::json!({"ts_ms": now_ms(), "mods": mods}),
+            );
+        }
+        state
+            .arizona_mods_revalidating
+            .store(false, Ordering::SeqCst);
+    });
+}
+
+/// Каталог модов Аризоны: диск мгновенно (+ фоновая ревалидация), пусто — сеть.
+#[tauri::command]
+pub async fn get_arizona_mods(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    if let Some(v) = read_cache_file(&state, "arizona_mods.json") {
+        // Только массив: битая форма (объект после правки формата) = стейл
+        if let Some(mods) = v.get("mods").cloned() {
+            if mods.is_array() {
+                spawn_arizona_mods_revalidate(&app);
+                return Ok(serde_json::json!({"success": true, "mods": mods}));
+            }
+        }
+    }
+    match fetch_arizona_mods_network().await {
+        Some(mods) => {
+            write_cache_file(
+                &state,
+                "arizona_mods.json",
+                &serde_json::json!({"ts_ms": now_ms(), "mods": mods}),
+            );
+            Ok(serde_json::json!({"success": true, "mods": mods}))
+        }
+        None => util::fail_message(
+            "Не удалось загрузить каталог модов Аризоны (проверьте интернет)".to_string(),
+        ),
+    }
+}
+
+/// Установленные моды Аризоны (для рендера состояния на фронте).
+#[tauri::command]
+pub fn get_installed_arizona_mods(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
+    let cfg = util::lock_config(&state)?;
+    Ok(serde_json::json!({"success": true, "mods": cfg.installed_arizona_mods}))
+}
+
+/// Установка мода из каталога Аризоны по id: JSON дерева → файлы с CDN
+/// (md5) → в папку игры. Прогресс — событие `arizona-mod-progress`.
+#[tauri::command(async)]
+pub async fn install_arizona_mod(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    mod_id: i64,
+    version: Option<String>,
+    title: Option<String>,
+) -> Result<serde_json::Value, String> {
+    use tauri::Emitter;
+    let _job = match HeavyJobGuard::try_acquire(&state.heavy_job_busy) {
+        Ok(g) => g,
+        Err(e) => return util::fail_message(e),
+    };
+    // Обновление/установка игры уже идёт? Папку игры не трогаем параллельно.
+    if let Ok(g) = state.game_update_cancel.lock() {
+        if g.is_some() {
+            return util::fail_message("Идёт установка/обновление игры — подожди завершения".to_string());
+        }
+    }
+    let game_dir = util::game_dir(&state).ok_or_else(|| "Путь к игре не установлен".to_string())?;
+
+    // 1. JSON дерева мода
+    let json_url = format!("https://api-samp.arizona-five.com/launcher/mods/arizona/{mod_id}");
+    let mut headers = reqwest::header::HeaderMap::new();
+    headers.insert(
+        reqwest::header::USER_AGENT,
+        reqwest::header::HeaderValue::from_static("Mozilla/5.0"),
+    );
+    let resp = util::http_request(reqwest::Method::GET, &json_url, headers.clone(), std::time::Duration::from_secs(20))
+        .await
+        .map_err(|e| format!("Не удалось получить дерево мода: {e}"))?;
+    if resp.status() != reqwest::StatusCode::OK {
+        return util::fail_message(format!("Мод {mod_id} недоступен (HTTP {})", resp.status()));
+    }
+    let bytes = resp.bytes().await.map_err(|e| e.to_string())?;
+    let tree: serde_json::Value = serde_json::from_slice(&bytes).map_err(|e| format!("Битый JSON мода: {e}"))?;
+    let data = tree
+        .get("data")
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| "В дереве мода нет файлов".to_string())?;
+
+    // 2. Плоское дерево + валидация путей и лимитов
+    let mut files: Vec<(String, String, u64, i64)> = Vec::new();
+    flatten_mod_tree(data, "", &mut files);
+    if files.is_empty() {
+        return util::fail_message("В дереве мода нет файлов".to_string());
+    }
+    let total: u64 = files.iter().map(|f| f.2).sum();
+    if total > ARIZONA_MOD_TOTAL_MAX {
+        return util::fail_message("Мод слишком большой".to_string());
+    }
+    for (rel, _, size, _) in &files {
+        validate_mod_rel_path(rel)?;
+        if *size > ARIZONA_MOD_MAX_FILE {
+            return util::fail_message("Файл мода слишком большой".to_string());
+        }
+    }
+
+    // 3. Скачивание с md5 + запись в папку игры; прогресс — событие
+    let emit = |stage: &str, done: usize, total_n: usize, bytes_done: u64, bytes_total: u64| {
+        let _ = app.emit(
+            "arizona-mod-progress",
+            serde_json::json!({
+                "modId": mod_id, "stage": stage,
+                "filesDone": done, "filesTotal": total_n,
+                "bytesDone": bytes_done, "bytesTotal": bytes_total,
+            }),
+        );
+    };
+    let bytes_total = total;
+    let mut bytes_done: u64 = 0;
+    let mut added: Vec<String> = Vec::new();
+    let mut replaced: Vec<String> = Vec::new();
+    let n = files.len();
+    for (i, (rel, hash, size, date_change)) in files.iter().enumerate() {
+        emit("dl", i, n, bytes_done, bytes_total);
+        let url_main = format!("https://pc.az-ins.com/resource/mods/{mod_id}/{}", f_encode_rel(rel));
+        let url_reserve = format!("https://arz-pc.react-group.tech/resource/mods/{mod_id}/{}", f_encode_rel(rel));
+        let body = download_mod_file(url_main, url_reserve, hash)
+            .await
+            .map_err(|e| format!("Файл «{rel}»: {e}"))?;
+        let dest = game_dir.join(rel);
+        if let Some(parent) = dest.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| format!("mkdir {}: {e}", parent.display()))?;
+        }
+        let existed = dest.exists();
+        std::fs::write(&dest, &body).map_err(|e| format!("write {}: {e}", dest.display()))?;
+        if existed {
+            replaced.push(rel.clone());
+        } else {
+            added.push(rel.clone());
+        }
+        // mtime = date_change из дерева (инкрементальные проверки дешевле)
+        if *date_change > 0 {
+            let _ = crate::game_update::downloader::set_mtime(&dest, *date_change);
+        }
+        bytes_done += *size;
+    }
+    emit("done", n, n, bytes_done, bytes_total);
+
+    // 4. Запись в конфиг: полное описание (версия/название — из меты каталога,
+    //    фронт передаёт их при вызове)
+    util::update_config(&state, |cfg| {
+        let mut obj = if cfg.installed_arizona_mods.is_object() {
+            cfg.installed_arizona_mods.clone()
+        } else {
+            serde_json::json!({})
+        };
+        obj[mod_id.to_string()] = serde_json::json!({
+            "version": version.unwrap_or_default(),
+            "title": title.unwrap_or_default(),
+            "files": added,
+            "replaced": replaced,
+        });
+        cfg.installed_arizona_mods = obj;
+        Ok(())
+    })?;
+    Ok(serde_json::json!({"success": true, "files": n, "bytes": bytes_total}))
+}
+
+/// Кодирование сегментов относительного пути для URL (пробелы и кириллица).
+fn f_encode_rel(rel: &str) -> String {
+    rel.split('/')
+        .map(|seg| seg.replace('%', "%25").replace(' ', "%20"))
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
+/// Деинсталляция: удаляем ТОЛЬКО добавленные модом файлы; заменённые файлы
+/// игры не трогаем — их вернёт обновление игры при несовпадении хэшей
+/// (безопаснее оригинала, который сносит всё).
+#[tauri::command(async)]
+pub async fn uninstall_arizona_mod(
+    state: State<'_, AppState>,
+    mod_id: i64,
+) -> Result<serde_json::Value, String> {
+    let _job = match HeavyJobGuard::try_acquire(&state.heavy_job_busy) {
+        Ok(g) => g,
+        Err(e) => return util::fail_message(e),
+    };
+    let game_dir = util::game_dir(&state).ok_or_else(|| "Путь к игре не установлен".to_string())?;
+    let record = {
+        let cfg = util::lock_config(&state)?;
+        cfg.installed_arizona_mods
+            .get(mod_id.to_string())
+            .cloned()
+    };
+    let Some(record) = record else {
+        return util::fail_message("Мод не установлен".to_string());
+    };
+    let files: Vec<String> = record
+        .get("files")
+        .and_then(|v| v.as_array())
+        .map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect())
+        .unwrap_or_default();
+    let mut removed = 0usize;
+    for rel in &files {
+        validate_mod_rel_path(rel)?;
+        let dest = game_dir.join(rel);
+        if dest.is_file() {
+            match std::fs::remove_file(&dest) {
+                Ok(_) => removed += 1,
+                Err(e) => log::warn!("uninstall_arizona_mod: {}: {e}", dest.display()),
+            }
+        }
+    }
+    util::update_config(&state, |cfg| {
+        let mut obj = if cfg.installed_arizona_mods.is_object() {
+            cfg.installed_arizona_mods.clone()
+        } else {
+            serde_json::json!({})
+        };
+        if let Some(o) = obj.as_object_mut() {
+            o.remove(&mod_id.to_string());
+        }
+        cfg.installed_arizona_mods = obj;
+        Ok(())
+    })?;
+    Ok(serde_json::json!({"success": true, "removed": removed}))
 }
 
 // ==================== Launcher Version ====================

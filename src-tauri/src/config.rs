@@ -118,6 +118,12 @@ pub struct LauncherConfig {
     pub profiles: Option<Vec<serde_json::Value>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub active_profile_id: Option<String>,
+    /// Установленные моды из каталога оригинального лаунчера Аризоны:
+    /// `{<modId>: {version, title, files: [rel], replaced: [rel]}}`.
+    /// Отдельное поле (не extra) — бэк пишет его сам при install/uninstall,
+    /// whole-object save_launcher_settings с фронта не должен терять ключ.
+    #[serde(default)]
+    pub installed_arizona_mods: serde_json::Value,
 }
 
 fn default_launch_method() -> String {
@@ -141,6 +147,7 @@ impl Default for LauncherConfig {
             read_news_ids: Vec::new(),
             profiles: None,
             active_profile_id: None,
+            installed_arizona_mods: serde_json::Value::Null,
         }
     }
 }
@@ -274,6 +281,8 @@ pub struct AppState {
     pub cdn_auto_cache: Mutex<Option<CdnAutoCache>>,
     /// Фоновое обновление новостей Arizona RP уже запущено (swap-guard).
     pub arizona_news_revalidating: std::sync::atomic::AtomicBool,
+    /// Фоновое обновление каталога модов Аризоны уже запущено (swap-guard).
+    pub arizona_mods_revalidating: std::sync::atomic::AtomicBool,
 }
 
 /// Кэш авто-CDN: значение + момент проверки.
@@ -313,6 +322,7 @@ impl AppState {
             heavy_job_busy: std::sync::atomic::AtomicBool::new(false),
             cdn_auto_cache: Mutex::new(None),
             arizona_news_revalidating: std::sync::atomic::AtomicBool::new(false),
+            arizona_mods_revalidating: std::sync::atomic::AtomicBool::new(false),
         };
         if strip_bg {
             // Сразу переписываем файл — иначе 2.8 МБ едут на каждое чтение

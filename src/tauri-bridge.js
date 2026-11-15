@@ -24,6 +24,8 @@
   "update_server": ["serverNumber"],
   "update_launch_params": ["params"],
   "set_launch_method": ["method"],
+  "install_arizona_mod": ["modId", "version", "title"],
+  "uninstall_arizona_mod": ["modId"],
   "save_read_news_ids": ["ids"],
   "get_install_action": ["folderPath"],
   "get_install_action_api": ["folderPath"],
