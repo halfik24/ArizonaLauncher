@@ -53,7 +53,7 @@
    `installedVersion !== version`), бейджи Новый/ТОП, red-dot на вкладке при новых.
 
 **Установка** (всё в main): `installMod(gameId, modId)` →
-`parseGameFilesFromJson(gameId, <modsAPI>/<gameId>/<modId>, <modsCDN>/<gameId>/<modId>, gamePath)`
+`parseGameFilesFromJson(gameId, <modsAPI>/<gameId>/<modId>, <modsCDN>/<modId>, gamePath)` — файлы БЕЗ gameId в пути (уточнено практикой, см. 08)
 — JSON мода имеет тот же формат дерева, что game.json (пути назначения `install_as`:
 `moonloader/`, `lib/` и т.п.), файлы качаются с CDN (`downloadMultipleFiles`).
 Перезаписанные файлы сохраняются в `installedMods` (для деинсталляции). Прогресс в UI —
@@ -69,7 +69,7 @@
 | Оригинал | Наш ArizonaLauncher v2 |
 |---|---|
 | Моды: API JSON (`launcher/mods/<gameId>`) с деревом файлов и `install_as` | Каталог `Lua/lua.txt` (строчный формат) → скрипты в `moonloader/`; библиотеки zip |
-| Файлы модов с `/resource/mods/<gameId>/<modId>/...` | Файлы с GitHub ArzLaunchRepo |
+| Файлы модов с `/resource/mods/<modId>/...` (без gameId) | Файлы с GitHub ArzLaunchRepo |
 | Состояние модов: settings `installedMods` + дерево JSON мода | `get_moonloader_scripts` сканирует папку + `.disabled` |
 | Новости: `launcher/projects` (title/imageUrl/url) | `updatenews.txt` с GitHub (наш формат) |
 | Вкладки модов: графические/скрипты/установленные + конфликты (`modsConflicts`, `requiredDependencyModsIds`) | Наши теги в каталоге; конфликты патчей — в настройках патчей |
