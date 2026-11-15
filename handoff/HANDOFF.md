@@ -1414,7 +1414,11 @@ auto-ряды схлопывали карточки до 8px (превью 0px �
 **Пробы**: cargo test 58/58; check-tags 754/754…; inline-JS 3/3; CDP:
 каталог 83 мода, вкладка 83 карточки/4 фильтра, round-trip install(24)
 → файл `moonloader/Server Time by Kalashnikov.lua` в папке игры + запись в
-конфиге → uninstall → removed=1, запись чиста; скриншоты azmod_*.jpg.
+конфиге → uninstall → removed=1, запись чиста; скриншоты azmod_*.jpg. Дополнено: `check_moonloader` — честная проверка рантайма по
+`moonloader/moonloader.log` (парсинг `MoonLoader v.XXX`, нормализация ведущих
+нулей; MoonLoader.asi в сборках Аризоны отсутствует — рантайм встроен),
+карточка MoonLoader показывает «Установлено (v26.5-beta)», ложные
+«Требуется MoonLoader» убраны (коммит после 78f9cd4).
 
 ---
 
