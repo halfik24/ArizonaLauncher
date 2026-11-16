@@ -67,8 +67,11 @@ jobs:
           $setup = Get-ChildItem "src-tauri/target/release/bundle/nsis/*-setup.exe" |
                    Select-Object -First 1
           if (-not $setup) { throw "NSIS-установщик не найден" }
-          Copy-Item $setup.FullName "out/$($setup.Name)"
-          $setup = Get-Item "out/$($setup.Name)"
+          # GitHub normalizes spaces in release asset names to dots. Normalize
+          # before hashing so SHA256SUMS.txt names the exact downloadable file.
+          $assetName = $setup.Name -replace '\s+', '.'
+          Copy-Item $setup.FullName "out/$assetName"
+          $setup = Get-Item "out/$assetName"
           $sha256 = (Get-FileHash -LiteralPath $setup.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
           "$sha256  $($setup.Name)" | Set-Content -LiteralPath "out/SHA256SUMS.txt" -Encoding ascii
           if ($env:GITHUB_REF -like "refs/tags/v*") {
