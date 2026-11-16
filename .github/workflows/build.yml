@@ -68,13 +68,103 @@ jobs:
                    Select-Object -First 1
           if (-not $setup) { throw "NSIS-установщик не найден" }
           Copy-Item $setup.FullName "out/$($setup.Name)"
+          $setup = Get-Item "out/$($setup.Name)"
+          $sha256 = (Get-FileHash -LiteralPath $setup.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$sha256  $($setup.Name)" | Set-Content -LiteralPath "out/SHA256SUMS.txt" -Encoding ascii
           Get-ChildItem out | Format-Table Name, Length
 
-      - name: Upload installer
+      # v*-релиз сначала проверяется без публикации: в VirusTotal отправляется
+      # тот же EXE, который затем попадёт в Release. При отсутствии секрета,
+      # незавершённом скане или malicious-детектах публикация не выполняется.
+      - name: Scan installer with VirusTotal
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          VIRUSTOTAL_API_KEY: ${{ secrets.VIRUSTOTAL_API_KEY }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          if ([string]::IsNullOrWhiteSpace($env:VIRUSTOTAL_API_KEY)) {
+            throw "Добавьте VIRUSTOTAL_API_KEY в GitHub Actions Secrets; Release не опубликован"
+          }
+
+          $setup = Get-ChildItem "out/*-setup.exe" | Select-Object -First 1
+          if (-not $setup) { throw "NSIS-установщик не найден" }
+          $sha256 = (Get-FileHash -LiteralPath $setup.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          $headers = @{ "x-apikey" = $env:VIRUSTOTAL_API_KEY }
+          $uploadUri = "https://www.virustotal.com/api/v3/files"
+
+          if ($setup.Length -gt 32MB) {
+            $uploadUrl = Invoke-RestMethod -Method Get `
+              -Uri "https://www.virustotal.com/api/v3/files/upload_url" `
+              -Headers $headers
+            $uploadUri = $uploadUrl.data
+          }
+
+          $uploaded = Invoke-RestMethod -Method Post -Uri $uploadUri `
+            -Headers $headers -Form @{ file = $setup }
+          $analysisId = $uploaded.data.id
+          if (-not $analysisId) { throw "VirusTotal не вернул ID анализа" }
+
+          $deadline = [DateTimeOffset]::UtcNow.AddMinutes(30)
+          do {
+            $analysis = Invoke-RestMethod -Method Get `
+              -Uri "https://www.virustotal.com/api/v3/analyses/$analysisId" `
+              -Headers $headers
+            $status = $analysis.data.attributes.status
+            if ($status -eq "completed") { break }
+            if ([DateTimeOffset]::UtcNow -ge $deadline) {
+              throw "VirusTotal не завершил анализ за 30 минут"
+            }
+            Start-Sleep -Seconds 30
+          } while ($true)
+
+          $report = Invoke-RestMethod -Method Get `
+            -Uri "https://www.virustotal.com/api/v3/files/$sha256" `
+            -Headers $headers
+          $stats = $report.data.attributes.last_analysis_stats
+          $malicious = [int]$stats.malicious
+          $suspicious = [int]$stats.suspicious
+          $harmless = [int]$stats.harmless
+          $undetected = [int]$stats.undetected
+          $reportUrl = "https://www.virustotal.com/gui/file/$sha256/detection"
+
+          @(
+            "VirusTotal scan for the exact release installer"
+            "SHA-256: $sha256"
+            "Report: $reportUrl"
+            "Malicious: $malicious"
+            "Suspicious: $suspicious"
+            "Harmless: $harmless"
+            "Undetected: $undetected"
+          ) | Set-Content -LiteralPath "out/VIRUSTOTAL.txt" -Encoding utf8
+
+          @(
+            "## VirusTotal"
+            "- SHA-256: ``$sha256``"
+            "- Report: $reportUrl"
+            "- Malicious: $malicious · Suspicious: $suspicious · Harmless: $harmless · Undetected: $undetected"
+          ) | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8
+
+          if ($malicious -gt 0) {
+            throw "VirusTotal отметил файл как malicious ($malicious); публичный Release не создан"
+          }
+
+          @(
+            "Установщик beta собран в GitHub Actions. Он не имеет цифровой подписи; Windows SmartScreen может предупреждать при первом запуске."
+            ""
+            "SHA-256: $sha256"
+            "VirusTotal: $reportUrl"
+            "VirusTotal counts — malicious: $malicious, suspicious: $suspicious, harmless: $harmless, undetected: $undetected. Это результат проверки именно данного SHA-256, не гарантия безопасности."
+            ""
+            "Требования: Windows 10/11 x64, права администратора не нужны."
+          ) | Set-Content -LiteralPath "out/RELEASE_NOTES.md" -Encoding utf8
+
+      - name: Upload build artifact (non-release builds)
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
         uses: actions/upload-artifact@v4
         with:
           name: installer
-          path: out/*-setup.exe
+          path: out/*
           if-no-files-found: error
 
       # ── Публикация Release на стабильных тегах ─────────────────────────────
@@ -90,13 +180,18 @@ jobs:
         run: |
           $setup = Get-ChildItem "out/*-setup.exe" | Select-Object -First 1
           if (-not $setup) { throw "NSIS-установщик не найден" }
-          $title = "Arizona RP Launcher $env:TAG_NAME"
-          $notes = "Установщик ``$env:TAG_NAME``.`n`nТребования: Windows 10/11 x64, права администратора не нужны.`nУстановщик не имеет цифровой подписи — SmartScreen может предупреждать при первом запуске."
           $exists = gh release view "$env:TAG_NAME" --repo $env:GITHUB_REPOSITORY 2>$null
           if ($LASTEXITCODE -eq 0) {
-            gh release upload "$env:TAG_NAME" "$($setup.FullName)" --repo $env:GITHUB_REPOSITORY --clobber
-          } else {
-            gh release create "$env:TAG_NAME" "$($setup.FullName)" --repo $env:GITHUB_REPOSITORY --title "$title" --notes "$notes"
+            throw "Release $env:TAG_NAME уже существует; запрещена тихая замена установщика и hash"
           }
+          $title = "Arizona RP Launcher $env:TAG_NAME"
+          gh release create "$env:TAG_NAME" `
+            "$($setup.FullName)" `
+            "out/SHA256SUMS.txt" `
+            "out/VIRUSTOTAL.txt" `
+            --repo $env:GITHUB_REPOSITORY `
+            --title "$title" `
+            --notes-file "out/RELEASE_NOTES.md" `
+            --prerelease
           if ($LASTEXITCODE -ne 0) { throw "не удалось создать/обновить Release" }
           Write-Host "Release $env:TAG_NAME опубликован с $($setup.Name)"
