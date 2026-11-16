@@ -1553,6 +1553,12 @@
         }
         .news-item-cover.visible { display: block; }
 
+        /* Тематическая прокрутка сетки «Из Аризоны» (как у вкладок модалки) */
+        #azmodGrid::-webkit-scrollbar { width: 5px; }
+        #azmodGrid::-webkit-scrollbar-track { background: transparent; }
+        #azmodGrid::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 4px; }
+        #azmodGrid::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.22); }
+
         /* ── Появление новостей: каскад карточек при открытии панели и
            переключении вкладок (класс news-reveal ставит JS, перезапуск —
            через remove/reflow/add). backwards — до своего delay карточка
@@ -12527,6 +12533,8 @@
         let _azInstalled = {};         // {modId: {version, files, replaced}}
         let _azMoon = { installed: false, version: '' }; // реальный статус MoonLoader (лог)
         let _azFilter = 'all';
+        let _azDetected = {};          // скрипты, найденные файлами в папке игры
+        let _azDetectToken = 0;        // отмена прохода детекта при перерендере
         let _azProgressListenerOn = false;
 
         async function loadArizonaMods(force) {
@@ -12573,6 +12581,9 @@
             // MoonLoader (id 1) — особый: рантайм может стоять из игры/оригинала
             // (проверка по moonloader.log), тогда карточка «Установлено»
             if (String(mod.id) === '1' && _azMoon.installed) return 'installed';
+            // Скрипт может быть установлен оригинальным лаунчером/вручную —
+            // детект по наличию файлов дерева в папке игры (_azDetectInstalled)
+            if (_azDetected[String(mod.id)]) return 'installed';
             const rec = _azInstalled[String(mod.id)];
             if (!rec) return 'available';
             return String(rec.version) !== String(mod.version) ? 'update' : 'installed';
@@ -12603,7 +12614,7 @@
             if (_azFilter === 'script' || _azFilter === 'graphic') {
                 items = items.filter(m => m.category === _azFilter);
             } else if (_azFilter === 'installed') {
-                items = items.filter(m => _azInstalled[String(m.id)]);
+                items = items.filter(m => _azInstalled[String(m.id)] || _azDetected[String(m.id)]);
             }
             if (!items.length) {
                 grid.innerHTML = '<div class="mods-empty">Ничего не найдено</div>';
@@ -12612,6 +12623,52 @@
             grid.innerHTML = items.map(m => _azCardHtml(m)).join('');
             _azLazyImages();
             if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
+            _renderAzFilters();
+            // Детект скриптов, установленных оригинальным лаунчером/вручную
+            _azDetectToken++;
+            _azDetectInstalled(_azDetectToken);
+        }
+
+        /** Очередь детекта (3 параллельно): дерево мода → файлы в папке игры. */
+        function _azDetectInstalled(token) {
+            const list = (_azMods || []).filter(m =>
+                String(m.id) !== '1' && m.category === 'script' &&
+                !_azInstalled[String(m.id)] && !_azDetected[String(m.id)]);
+            let idx = 0, active = 0;
+            const next = () => {
+                if (token !== _azDetectToken) return;
+                while (active < 3 && idx < list.length) {
+                    const m = list[idx++];
+                    active++;
+                    window.pywebview.api.check_arizona_mod(m.id, String(m.version || ''))
+                        .then(r => {
+                            if (token !== _azDetectToken) return;
+                            if (r && r.success && r.installed) {
+                                _azDetected[String(m.id)] = true;
+                                _azApplyDetectedInPlace(m.id);
+                            }
+                        })
+                        .catch(() => {})
+                        .finally(() => { active--; next(); });
+                }
+            };
+            next();
+        }
+
+        /** Обновить карточку на месте: скрипт обнаружен установленным. */
+        function _azApplyDetectedInPlace(modId) {
+            const card = document.getElementById('azCard_' + modId);
+            if (!card) return;
+            const badge = card.querySelector('.ml-card-status-badge');
+            if (badge) badge.textContent = 'УСТАНОВЛЕНО';
+            const btn = card.querySelector('.ml-card-install-btn');
+            if (btn) {
+                btn.className = 'ml-card-install-btn done';
+                btn.disabled = false;
+                btn.innerHTML = '<i data-lucide="trash-2"></i> Удалить';
+                btn.onclick = (e) => { e.stopPropagation(); _azUninstallCard(modId, btn); };
+            }
+            // Фильтр «Установленные» пересчитать
             _renderAzFilters();
         }
 
@@ -12640,7 +12697,7 @@
             } else {
                 btn = `<button class="ml-card-install-btn done" onclick="event.stopPropagation(); _azUninstallCard(${m.id}, this)"><i data-lucide="trash-2"></i> Удалить</button>`;
             }
-            return `<div class="ml-catalog-card az-card" id="azCard_${m.id}">
+            return `<div class="ml-catalog-card az-card" id="azCard_${m.id}" onclick="openAzScriptDetail(${m.id})">
                 ${cover}
                 <div class="ml-card-body">
                     <div class="ml-card-title">${escapeHtml(m.title || 'Мод #' + m.id)} ${m.top ? '<span class="ml-card-tag" style="color:rgba(255,215,120,.9);">ТОП</span>' : ''}</div>
@@ -12654,6 +12711,137 @@
                     <span class="ml-card-hint">Из лаунчера Аризоны →</span>
                 </div>
             </div>`;
+        }
+
+        /** Меню скрипта (детальное окно) для мода из Аризоны — заполняет
+            тот же sd-* оверлей, что и каталог Moonloader. */
+        function openAzScriptDetail(modId) {
+            const m = (_azMods || []).find(x => x.id === modId);
+            if (!m) return;
+            _sdCatalogType = 'azmod';
+            _sdCurrentIdx = modId;
+            _sdCurrentItemName = m.title || '';
+
+            document.getElementById('sdCrumb').textContent = 'Каталог · Моды из лаунчера Аризоны';
+            document.getElementById('sdIcon').innerHTML = '<i data-lucide="gamepad-2"></i>';
+            document.getElementById('sdName').textContent = m.title || 'Без названия';
+            document.getElementById('sdAuthor').textContent = m.author ? 'от ' + m.author : '';
+
+            const catLabel = m.category === 'graphic' ? 'Графика' : 'Скрипт';
+            const tagEl = document.getElementById('sdTag');
+            const dotEl = document.getElementById('sdMetaDot');
+            tagEl.textContent = catLabel;
+            tagEl.classList.remove('hide');
+            dotEl.classList.toggle('hide', !m.author);
+
+            // Полное описание + изменения версии (если есть)
+            let desc = (m.description || m.shortDescription || '').replace(/\r\n/g, '\n') || 'Нет описания';
+            if (m.changes) desc += '\n\nИзменения:\n' + m.changes;
+            document.getElementById('sdDesc').textContent = desc;
+
+            document.getElementById('sdFile').textContent = '(мод из лаунчера Аризоны — файлы ставятся в папку игры)';
+            document.getElementById('sdDest').textContent = '';
+            document.getElementById('sdUsageBlock').style.display = 'none';
+            document.getElementById('sdLibsBlock').style.display = 'none';
+
+            // Превью-баннер — картинка каталога
+            _sdImages = m.image ? [m.image] : [];
+            _sdImgIdx = 0;
+            const gallery = document.getElementById('sdGallery');
+            if (_sdImages.length) {
+                gallery.style.display = '';
+                _renderDetailGallery();
+            } else {
+                gallery.style.display = 'none';
+                document.getElementById('sdImageWrap').innerHTML = '';
+            }
+
+            _azUpdateDetailButtons(modId);
+            document.getElementById('scriptDetailOverlay').classList.add('open');
+            if (window.lucide) refreshLucideIcons();
+        }
+
+        /** Кнопки детального окна для az-мода. */
+        function _azUpdateDetailButtons(modId) {
+            const m = (_azMods || []).find(x => x.id === modId);
+            if (!m) return;
+            const st = _azModState(m);
+            const installBtn = document.getElementById('sdInstallBtn');
+            const uninstallBtn = document.getElementById('sdUninstallBtn');
+
+            if (String(modId) === '1' && _azMoon.installed) {
+                installBtn.disabled = true;
+                installBtn.className = 'sd-install-btn done';
+                installBtn.innerHTML = '<i data-lucide="check-circle"></i> Установлено' + (_azMoon.version ? ' (v' + escapeHtml(_azMoon.version) + ')' : '');
+                uninstallBtn.style.display = 'none';
+            } else if (st === 'available') {
+                installBtn.disabled = false;
+                installBtn.className = 'sd-install-btn';
+                installBtn.innerHTML = '<i data-lucide="download"></i> Установить';
+                uninstallBtn.style.display = 'none';
+            } else if (st === 'update') {
+                installBtn.disabled = false;
+                installBtn.className = 'sd-install-btn';
+                installBtn.innerHTML = '<i data-lucide="refresh-cw"></i> Обновить (v' + escapeHtml(String(m.version)) + ')';
+                uninstallBtn.style.display = 'flex';
+            } else {
+                installBtn.disabled = true;
+                installBtn.className = 'sd-install-btn done';
+                installBtn.innerHTML = '<i data-lucide="check-circle"></i> Установлено';
+                uninstallBtn.style.display = 'flex';
+            }
+            if (window.lucide) refreshLucideIcons();
+        }
+
+        async function _azInstallFromDetail() {
+            const modId = _sdCurrentIdx;
+            const m = (_azMods || []).find(x => x.id === modId);
+            const btn = document.getElementById('sdInstallBtn');
+            btn.disabled = true; btn.className = 'sd-install-btn progress';
+            btn.innerHTML = '<i data-lucide="loader"></i> Установка...';
+            try {
+                const r = await window.pywebview.api.install_arizona_mod(
+                    modId,
+                    m ? String(m.version) : undefined,
+                    m ? String(m.title || '') : undefined
+                );
+                if (!(r && r.success)) throw new Error((r && r.message) || 'Ошибка установки');
+                const inst = await window.pywebview.api.get_installed_arizona_mods();
+                if (inst && inst.success && inst.mods) _azInstalled = inst.mods;
+                if (String(modId) === '1') {
+                    try {
+                        const mn = await window.pywebview.api.check_moonloader();
+                        if (mn && mn.success) _azMoon = { installed: !!mn.installed, version: mn.version || '' };
+                    } catch (e) {}
+                }
+                showNotification(`<i data-lucide="check-circle"></i> «${escapeHtml(m ? m.title : modId)}» установлен`, 'success');
+                _renderAzMods();
+                _azUpdateDetailButtons(modId);
+            } catch (e) {
+                btn.disabled = false; btn.className = 'sd-install-btn';
+                btn.innerHTML = '<i data-lucide="download"></i> Установить';
+                showNotification(`<i data-lucide="x-circle"></i> ${escapeHtml(String(e.message || e))}`, 'error');
+            }
+        }
+
+        async function _azUninstallFromDetail() {
+            const modId = _sdCurrentIdx;
+            const m = (_azMods || []).find(x => x.id === modId);
+            const btn = document.getElementById('sdUninstallBtn');
+            btn.disabled = true; btn.innerHTML = '<i data-lucide="loader"></i> Удаление...';
+            try {
+                const r = await window.pywebview.api.uninstall_arizona_mod(modId, m ? String(m.version || '') : '');
+                if (!(r && r.success)) throw new Error((r && r.message) || 'Ошибка удаления');
+                const inst = await window.pywebview.api.get_installed_arizona_mods();
+                if (inst && inst.success && inst.mods) _azInstalled = inst.mods;
+                delete _azDetected[String(modId)];
+                showNotification('Удалён: ' + escapeHtml(m ? m.title : String(modId)), 'success');
+                _renderAzMods();
+                _azUpdateDetailButtons(modId);
+            } catch (e) {
+                btn.disabled = false; btn.innerHTML = '<i data-lucide="trash-2"></i> Удалить';
+                showNotification('Ошибка: ' + escapeHtml(String(e.message || e)), 'error');
+            }
         }
 
         function _azLazyImages() {
@@ -12719,7 +12907,8 @@
             btn.disabled = true;
             btn.innerHTML = '<i data-lucide="loader"></i> Удаление...';
             try {
-                const r = await window.pywebview.api.uninstall_arizona_mod(modId);
+                const meta = (_azMods || []).find(x => x.id === modId);
+                const r = await window.pywebview.api.uninstall_arizona_mod(modId, String((meta && meta.version) || ''));
                 if (r && r.success) {
                     const inst = await window.pywebview.api.get_installed_arizona_mods();
                     if (inst && inst.success && inst.mods) _azInstalled = inst.mods;
@@ -14262,6 +14451,7 @@
 
         async function installFromDetail() {
             if (_sdCatalogType === 'other') { await _installOtherFromDetail(); return; }
+            if (_sdCatalogType === 'azmod') { await _azInstallFromDetail(); return; }
             const idx  = _sdCurrentIdx;
             const item = window._mlCatalog?.[idx];
             if (!item) return;
@@ -14336,6 +14526,7 @@
 
         async function uninstallFromDetail() {
             if (_sdCatalogType === 'other') { await _uninstallOtherFromDetail(); return; }
+            if (_sdCatalogType === 'azmod') { await _azUninstallFromDetail(); return; }
             const idx  = _sdCurrentIdx;
             const item = window._mlCatalog?.[idx];
             if (!item) return;

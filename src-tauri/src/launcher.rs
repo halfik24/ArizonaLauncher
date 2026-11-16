@@ -2166,6 +2166,82 @@ pub fn get_installed_arizona_mods(state: State<'_, AppState>) -> Result<serde_js
     Ok(serde_json::json!({"success": true, "mods": cfg.installed_arizona_mods}))
 }
 
+/// Кэш деревьев модов (id:version → плоское дерево): проверка «какие скрипты
+/// стоят» не должна ходить в сеть на каждую карточку.
+static AZ_MOD_TREE_CACHE: std::sync::Mutex<Option<std::collections::HashMap<String, Vec<(String, String, u64, i64)>>>> =
+    std::sync::Mutex::new(None);
+
+/// Дерево мода из сети → плоское дерево с валидацией путей.
+async fn fetch_mod_tree(mod_id: i64) -> Result<Vec<(String, String, u64, i64)>, String> {
+    let json_url = format!("https://api-samp.arizona-five.com/launcher/mods/arizona/{mod_id}");
+    let mut headers = reqwest::header::HeaderMap::new();
+    headers.insert(
+        reqwest::header::USER_AGENT,
+        reqwest::header::HeaderValue::from_static("Mozilla/5.0"),
+    );
+    let resp = util::http_request(reqwest::Method::GET, &json_url, headers, std::time::Duration::from_secs(20))
+        .await
+        .map_err(|e| format!("Не удалось получить дерево мода: {e}"))?;
+    if resp.status() != reqwest::StatusCode::OK {
+        return Err(format!("Мод {mod_id} недоступен (HTTP {})", resp.status()));
+    }
+    let bytes = resp.bytes().await.map_err(|e| e.to_string())?;
+    let tree: serde_json::Value = serde_json::from_slice(&bytes).map_err(|e| format!("Битый JSON мода: {e}"))?;
+    let data = tree
+        .get("data")
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| "В дереве мода нет файлов".to_string())?;
+    let mut files: Vec<(String, String, u64, i64)> = Vec::new();
+    flatten_mod_tree(data, "", &mut files);
+    for (rel, _, _, _) in &files {
+        validate_mod_rel_path(rel)?;
+    }
+    Ok(files)
+}
+
+/// Дерево мода с кэшем (ключ id:version — версия из меты каталога).
+async fn get_mod_tree_cached(mod_id: i64, version: &str) -> Result<Vec<(String, String, u64, i64)>, String> {
+    let key = format!("{mod_id}:{version}");
+    if let Ok(cache) = AZ_MOD_TREE_CACHE.lock() {
+        if let Some(map) = cache.as_ref() {
+            if let Some(list) = map.get(&key) {
+                return Ok(list.clone());
+            }
+        }
+    }
+    let files = fetch_mod_tree(mod_id).await?;
+    if let Ok(mut cache) = AZ_MOD_TREE_CACHE.lock() {
+        let map = cache.get_or_insert_with(std::collections::HashMap::new);
+        map.insert(key, files.clone());
+    }
+    Ok(files)
+}
+
+/// Какие файлы мода уже есть в папке игры: для детекта скриптов,
+/// установленных оригинальным лаунчером/вручную.
+#[tauri::command(async)]
+pub async fn check_arizona_mod(
+    state: State<'_, AppState>,
+    mod_id: i64,
+    version: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let game_dir = util::game_dir(&state).ok_or_else(|| "Путь к игре не установлен".to_string())?;
+    let version = version.unwrap_or_default();
+    let files = get_mod_tree_cached(mod_id, &version).await?;
+    let mut present = 0usize;
+    for (rel, _, _, _) in &files {
+        if game_dir.join(rel).is_file() {
+            present += 1;
+        }
+    }
+    Ok(serde_json::json!({
+        "success": true,
+        "installed": !files.is_empty() && present == files.len(),
+        "present": present,
+        "total": files.len(),
+    }))
+}
+
 /// Установка мода из каталога Аризоны по id: JSON дерева → файлы с CDN
 /// (md5) → в папку игры. Прогресс — событие `arizona-mod-progress`.
 #[tauri::command(async)]
@@ -2189,29 +2265,9 @@ pub async fn install_arizona_mod(
     }
     let game_dir = util::game_dir(&state).ok_or_else(|| "Путь к игре не установлен".to_string())?;
 
-    // 1. JSON дерева мода
-    let json_url = format!("https://api-samp.arizona-five.com/launcher/mods/arizona/{mod_id}");
-    let mut headers = reqwest::header::HeaderMap::new();
-    headers.insert(
-        reqwest::header::USER_AGENT,
-        reqwest::header::HeaderValue::from_static("Mozilla/5.0"),
-    );
-    let resp = util::http_request(reqwest::Method::GET, &json_url, headers.clone(), std::time::Duration::from_secs(20))
-        .await
-        .map_err(|e| format!("Не удалось получить дерево мода: {e}"))?;
-    if resp.status() != reqwest::StatusCode::OK {
-        return util::fail_message(format!("Мод {mod_id} недоступен (HTTP {})", resp.status()));
-    }
-    let bytes = resp.bytes().await.map_err(|e| e.to_string())?;
-    let tree: serde_json::Value = serde_json::from_slice(&bytes).map_err(|e| format!("Битый JSON мода: {e}"))?;
-    let data = tree
-        .get("data")
-        .and_then(|v| v.as_array())
-        .ok_or_else(|| "В дереве мода нет файлов".to_string())?;
-
-    // 2. Плоское дерево + валидация путей и лимитов
-    let mut files: Vec<(String, String, u64, i64)> = Vec::new();
-    flatten_mod_tree(data, "", &mut files);
+    // 1-2. Дерево мода (кэш по версии) + лимиты
+    let version_str = version.clone().unwrap_or_default();
+    let files = get_mod_tree_cached(mod_id, &version_str).await?;
     if files.is_empty() {
         return util::fail_message("В дереве мода нет файлов".to_string());
     }
@@ -2303,6 +2359,7 @@ fn f_encode_rel(rel: &str) -> String {
 pub async fn uninstall_arizona_mod(
     state: State<'_, AppState>,
     mod_id: i64,
+    version: Option<String>,
 ) -> Result<serde_json::Value, String> {
     let _job = match HeavyJobGuard::try_acquire(&state.heavy_job_busy) {
         Ok(g) => g,
@@ -2315,14 +2372,25 @@ pub async fn uninstall_arizona_mod(
             .get(mod_id.to_string())
             .cloned()
     };
-    let Some(record) = record else {
-        return util::fail_message("Мод не установлен".to_string());
+    let files: Vec<String> = match record {
+        Some(r) => r
+            .get("files")
+            .and_then(|v| v.as_array())
+            .map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect())
+            .unwrap_or_default(),
+        None => {
+            // Записи нет (мод поставлен оригинальным лаунчером/вручную) —
+            // удаляем по дереву из каталога: фронт передаёт версию из меты.
+            let v = version.unwrap_or_default();
+            if v.is_empty() {
+                return util::fail_message("Мод не установлен".to_string());
+            }
+            get_mod_tree_cached(mod_id, &v).await?
+                .into_iter()
+                .map(|(rel, _, _, _)| rel)
+                .collect()
+        }
     };
-    let files: Vec<String> = record
-        .get("files")
-        .and_then(|v| v.as_array())
-        .map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect())
-        .unwrap_or_default();
     let mut removed = 0usize;
     for rel in &files {
         validate_mod_rel_path(rel)?;

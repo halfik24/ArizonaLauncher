@@ -151,6 +151,7 @@ fn main() {
             launcher::get_arizona_mods,
             launcher::check_moonloader,
             launcher::get_installed_arizona_mods,
+            launcher::check_arizona_mod,
             launcher::install_arizona_mod,
             launcher::uninstall_arizona_mod,
             launcher::get_read_news_ids,
